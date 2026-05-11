@@ -272,7 +272,7 @@ function renderMessages() {
   if (visibleMessages.length === 0) {
     dom.messages.innerHTML = `
       <div class="empty-state">
-        <div class="brand">Xwork</div>
+        <div class="brand">xwork</div>
         <p>Ask anything. Configure channels in Settings to get started.</p>
       </div>`;
   } else {
