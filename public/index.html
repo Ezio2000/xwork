@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xwork — AI Chat</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h1 id="logo" class="logo">Xwork</h1>
+      <button id="btn-new-chat" class="btn-icon" title="New Chat">+</button>
+    </div>
+    <nav id="conv-list"></nav>
+    <div class="sidebar-footer">
+      <button id="btn-settings" class="btn-text">Settings</button>
+    </div>
+  </aside>
+
+  <!-- Chat view -->
+  <main id="chat-main">
+    <div id="chat-header">
+      <div class="header-selectors">
+        <select id="channel-select"></select>
+        <select id="model-select"></select>
+      </div>
+      <span id="chat-title" class="chat-title"></span>
+    </div>
+    <div id="messages"></div>
+    <div id="input-area">
+      <div class="input-wrapper">
+        <textarea id="msg-input" rows="1" placeholder="Send a message…" autofocus></textarea>
+        <button id="btn-send" class="btn-send" title="Send">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M2 10L18 2L10 18L9 11L2 10Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <p class="input-hint">Enter to send · Shift+Enter for new line</p>
+    </div>
+  </main>
+
+  <!-- Channels page (replaces chat-main) -->
+  <main id="channels-page" class="hidden">
+    <div id="channels-header">
+      <button id="btn-back-chat" class="btn-icon">←</button>
+      <h2>Channels</h2>
+      <button id="btn-add-channel-page" class="btn-primary small">+ Add Channel</button>
+    </div>
+    <div id="channels-content">
+      <div id="channel-list"></div>
+      <div id="channel-editor" class="channel-editor-page hidden">
+        <h3 id="editor-title">New Channel</h3>
+        <input type="hidden" id="edit-channel-id">
+        <label>
+          <span>Name</span>
+          <input type="text" id="edit-name" placeholder="My Provider">
+        </label>
+        <label>
+          <span>API Base URL</span>
+          <input type="text" id="edit-base-url" placeholder="https://api.openai.com">
+        </label>
+        <label>
+          <span>API Key</span>
+          <div class="key-row">
+            <input type="password" id="edit-api-key" placeholder="sk-...">
+            <button id="btn-toggle-key" class="btn-text small">Show</button>
+          </div>
+        </label>
+        <label>
+          <span>Models (comma separated)</span>
+          <input type="text" id="edit-models" placeholder="model-a, model-b">
+        </label>
+        <label>
+          <span>Max Tokens</span>
+          <input type="number" id="edit-max-tokens" min="1" max="200000">
+        </label>
+        <div class="editor-actions">
+          <button id="btn-cancel-edit" class="btn-text">Cancel</button>
+          <button id="btn-save-channel" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Settings Modal -->
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button id="btn-close-settings" class="btn-icon">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="setting-channels" class="setting-item clickable">
+        <div class="setting-info">
+          <span class="setting-label">Channels</span>
+          <span class="setting-desc">Manage API providers and models</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
