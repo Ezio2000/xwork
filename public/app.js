@@ -338,11 +338,12 @@ function showToolRunDetail(run) {
   `);
 
   // Error info
-  if (run.isError || run.output?.errorCode) {
+  if (run.isError || run.output?.errorCode || run.output?.errors?.length) {
+    const errorMsg = run.output?.errors?.join(', ') || run.output?.errorCode || String(run.output || 'Unknown error');
     parts.push(`
       <div class="detail-section">
         <div class="detail-label">Error</div>
-        <div class="detail-error">${escHtml(run.output?.errorCode || run.output || 'Unknown error')}</div>
+        <div class="detail-error">${escHtml(errorMsg)}</div>
       </div>
     `);
   }
@@ -356,24 +357,8 @@ function showToolRunDetail(run) {
   `);
 
   // Output (non-source)
-  if (run.output?.resultCount !== undefined) {
-    parts.push(`
-      <div class="detail-section">
-        <div class="detail-label">Output</div>
-        <div class="detail-value">${run.output.resultCount} result(s)</div>
-      </div>
-    `);
-  } else if (run.output && !run.output.sources) {
-    parts.push(`
-      <div class="detail-section">
-        <div class="detail-label">Output</div>
-        <div class="detail-value"><pre>${escHtml(JSON.stringify(run.output, null, 2))}</pre></div>
-      </div>
-    `);
-  }
-
-  // Sources
   if (run.output?.sources?.length) {
+    // source-cards renderType
     parts.push(`
       <div class="detail-section">
         <div class="detail-label">Sources (${run.output.sources.length})</div>
@@ -389,7 +374,23 @@ function showToolRunDetail(run) {
         </div>
       </div>
     `);
+  } else if (run.output?.resultCount !== undefined) {
+    parts.push(`
+      <div class="detail-section">
+        <div class="detail-label">Output</div>
+        <div class="detail-value">${run.output.resultCount} result(s)</div>
+      </div>
+    `);
+  } else if (run.output && !run.output.sources) {
+    parts.push(`
+      <div class="detail-section">
+        <div class="detail-label">Output</div>
+        <div class="detail-value"><pre>${escHtml(JSON.stringify(run.output, null, 2))}</pre></div>
+      </div>
+    `);
   }
+
+
 
   // Context
   parts.push(`
@@ -478,7 +479,7 @@ function renderMessages() {
     dom.messages.innerHTML = visibleMessages.map(m =>
       `<div class="message ${m.role}">
         <div class="role-label">${m.role === 'user' ? 'YOU' : 'ASSISTANT'}</div>
-        ${m.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(m))}</div>` : ''}
+        ${m.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(m), true, m.searchCount || 0)}</div>` : ''}
         <div class="content">${renderContent(messageText(m))}</div>
       </div>`
     ).join('');
@@ -516,7 +517,11 @@ function renderContent(text) {
 }
 
 function normalizeMarkdownForDisplay(text) {
-  const value = String(text || '').replace(/^\n+/, '');
+  let value = String(text || '').replace(/^\n+/, '');
+  // Insert zero-width space between CJK char and ** or * markers
+  // so CommonMark can recognize the delimiter (CJK chars are not valid delimiter boundaries)
+  value = value.replace(/([一-鿿　-〿＀-￯])(\*{1,2})/g, '$1​$2');
+  value = value.replace(/(\*{1,2})([一-鿿　-〿＀-￯])/g, '$1​$2');
   const match = value.match(/^\s*```(?:markdown|md)\s*\n([\s\S]*?)\n```\s*$/i);
   return match ? match[1].replace(/^\n+/, '') : value;
 }
@@ -557,32 +562,72 @@ function mergeSources(existing, incoming) {
   return out;
 }
 
-function renderSourceCards(sources) {
+function renderSourceCards(sources, collapsed = false, searchCount = 0) {
   if (!sources?.length) return '';
+  const label = searchCount > 0
+    ? `${searchCount} search${searchCount > 1 ? 'es' : ''} · ${sources.length} result${sources.length !== 1 ? 's' : ''}`
+    : `${sources.length} result${sources.length !== 1 ? 's' : ''}`;
   return `
-    <div class="source-list" aria-label="Web search sources">
-      ${sources.map((source, index) => `
-        <a class="source-card" href="${escHtml(source.url || '#')}" target="_blank" rel="noreferrer">
-          <span class="source-index">${index + 1}</span>
-          <span class="source-body">
-            <span class="source-title">${escHtml(source.title || source.url || 'Untitled source')}</span>
-            <span class="source-meta">${escHtml(sourceMeta(source))}</span>
-          </span>
-        </a>
-      `).join('')}
+    <div class="sources-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="sources-toggle-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="sources-toggle-label">${escHtml(label)}</span>
+        <span class="sources-toggle-arrow">▾</span>
+      </div>
+      <div class="sources-toggle-body">
+        <div class="source-list" aria-label="Web search sources">
+          ${sources.map((source, index) => `
+            <a class="source-card" href="${escHtml(source.url || '#')}" target="_blank" rel="noreferrer">
+              <span class="source-index">${index + 1}</span>
+              <span class="source-body">
+                <span class="source-title">${escHtml(source.title || source.url || 'Untitled source')}</span>
+                <span class="source-meta">${escHtml(sourceMeta(source))}</span>
+              </span>
+            </a>
+          `).join('')}
+        </div>
+      </div>
     </div>
   `;
 }
 
-function renderSourcesInto(el, sources) {
+function renderSourcesInto(el, sources, searchCount = 0) {
   if (!el) return;
-  el.innerHTML = renderSourceCards(sources);
+  el.innerHTML = renderSourceCards(sources, false, searchCount);
 }
 
 function scrollBottom() {
   requestAnimationFrame(() => {
     dom.messages.scrollTop = dom.messages.scrollHeight;
   });
+}
+
+// ===== Thinking popup =====
+let thinkingPopup = null;
+let thinkingPopupTimer = null;
+
+function ensureThinkingPopup() {
+  if (thinkingPopup) return thinkingPopup;
+  thinkingPopup = document.createElement('div');
+  thinkingPopup.id = 'thinking-popup';
+  thinkingPopup.className = 'hidden';
+  thinkingPopup.innerHTML = '<div class="thinking-popup-content"></div>';
+  document.body.appendChild(thinkingPopup);
+  return thinkingPopup;
+}
+
+function showThinkingPopup(text) {
+  const popup = ensureThinkingPopup();
+  const contentEl = popup.querySelector('.thinking-popup-content');
+  popup.classList.remove('hidden');
+  contentEl.textContent = text;
+  contentEl.scrollTop = contentEl.scrollHeight;
+  clearTimeout(thinkingPopupTimer);
+}
+
+function hideThinkingPopup() {
+  if (!thinkingPopup) return;
+  thinkingPopup.classList.add('hidden');
+  clearTimeout(thinkingPopupTimer);
 }
 
 // ===== Chat / Streaming =====
@@ -668,6 +713,7 @@ async function sendMessage(text) {
     let buffer = '';
     let fullText = '';
     let sources = [];
+    let searchCount = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -681,7 +727,10 @@ async function sendMessage(text) {
         if (jsonStr === '[DONE]') continue;
         try {
           const evt = JSON.parse(jsonStr);
-          if (evt.type === 'delta') {
+          if (evt.type === 'thinking') {
+            showThinkingPopup(evt.text);
+          } else if (evt.type === 'delta') {
+            hideThinkingPopup();
             fullText += evt.text;
             contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText));
             scrollBottom();
@@ -690,9 +739,13 @@ async function sendMessage(text) {
             contentEl.innerHTML = renderContent(`${stripLeadingNewlines(fullText)}\n\n[Using tool: ${names}]`);
             scrollBottom();
           } else if (evt.type === 'tool_result') {
-            const nextSources = evt.tools.flatMap(tool => tool.sources || []);
-            sources = mergeSources(sources, nextSources);
-            renderSourcesInto(sourcesEl, sources);
+            for (const tool of evt.tools) {
+              if (tool.renderType === 'source-cards' && tool.data?.sources?.length) {
+                searchCount++;
+                sources = mergeSources(sources, tool.data.sources);
+                renderSourcesInto(sourcesEl, sources, searchCount);
+              }
+            }
             const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
             const status = errored ? `Tool error: ${errored}` : 'Processing tool result...';
             contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText) || status);
@@ -704,11 +757,16 @@ async function sendMessage(text) {
       }
     }
 
+    hideThinkingPopup();
     const streamingEl = dom.messages.querySelector('.streaming');
-    if (streamingEl) streamingEl.classList.remove('streaming');
+    if (streamingEl) {
+      streamingEl.classList.remove('streaming');
+      const toggle = streamingEl.querySelector('.sources-toggle');
+      if (toggle) toggle.classList.add('collapsed');
+    }
 
     state.messages.push({ role: 'user', content: message });
-    state.messages.push({ role: 'assistant', content: fullText, model: state.activeModel, sources });
+    state.messages.push({ role: 'assistant', content: fullText, model: state.activeModel, sources, searchCount });
 
     const conv = state.conversations.find(c => c.id === state.activeId);
     if (conv && (state.messages.length <= 2 || conv.title === 'New Chat')) {
@@ -746,7 +804,7 @@ dom.convList.addEventListener('click', (e) => {
   const id = item.dataset.id;
   if (e.target.closest('.conv-delete')) {
     e.stopPropagation();
-    if (confirm('Delete this conversation?')) deleteConversation(id);
+    deleteConversation(id);
     return;
   }
   showChatPage();

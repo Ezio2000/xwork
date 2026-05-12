@@ -87,19 +87,22 @@ body {
 .conv-item .conv-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .conv-item .conv-delete {
-  opacity: 0;
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
   line-height: 1;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
 }
 
-.conv-item:hover .conv-delete { opacity: 1; }
-.conv-item .conv-delete:hover { color: var(--danger); }
+.conv-item .conv-delete:hover {
+  color: var(--danger);
+  background: var(--bg-tertiary);
+}
 
 .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
 
@@ -175,7 +178,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 14px;
-  margin-left: -40px;
 }
 
 .message.user .role-label { color: var(--text-secondary); }
@@ -280,10 +282,56 @@ body {
 
 .web-sources:empty { display: none; }
 
+.sources-toggle {
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sources-toggle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-secondary);
+  transition: background 0.15s;
+}
+
+.sources-toggle-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.sources-toggle-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sources-toggle-arrow {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.sources-toggle.collapsed .sources-toggle-arrow {
+  transform: rotate(-90deg);
+}
+
+.sources-toggle.collapsed .sources-toggle-body {
+  display: none;
+}
+
+.sources-toggle-body {
+  border-top: 1px solid var(--border);
+}
+
 .source-list {
   display: grid;
   gap: 8px;
-  margin: 0 0 14px;
+  padding: 10px 12px;
 }
 
 .source-card {
@@ -340,6 +388,48 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ===== Thinking Popup ===== */
+#thinking-popup {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  max-width: 360px;
+  max-height: 200px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  z-index: 100;
+  overflow: hidden;
+  animation: fadeIn 0.2s ease-out;
+}
+
+#thinking-popup.hidden {
+  display: none;
+}
+
+#thinking-popup::before {
+  content: 'Thinking';
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.thinking-popup-content {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 140px;
+  overflow: hidden;
 }
 
 .streaming .content::after {

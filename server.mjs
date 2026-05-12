@@ -277,6 +277,9 @@ app.post('/api/chat', async (req, res) => {
           fullResponse += delta;
           res.write(`data: ${JSON.stringify({ type: 'delta', text: delta })}\n\n`);
         },
+        (thinkingText) => {
+          res.write(`data: ${JSON.stringify({ type: 'thinking', text: thinkingText })}\n\n`);
+        },
         (_fullText, stopReason, usage) => {
           lastStopReason = stopReason;
           lastUsage = usage;
@@ -293,20 +296,19 @@ app.post('/api/chat', async (req, res) => {
               tools: [{ id: event.id, name: event.name, input: event.input || {} }],
             })}\n\n`);
           } else if (event.phase === 'result') {
-            const sources = Array.isArray(event.sources) ? event.sources : [];
             const input = serverToolInputs.get(event.id) || {};
+            const output = {
+              ...(event.data || {}),
+              ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+            };
             appendToolRun({
               id: event.id,
               name: event.name,
               isError: event.isError,
               input,
-              output: {
-                resultCount: event.resultCount,
-                errorCode: event.errorCode,
-                sources,
-              },
+              output,
               durationMs: Date.now() - (serverToolStartedAt.get(event.id) || Date.now()),
-	              context: { conversationId, channelId: ch.id, model: requestModel, adapter: 'anthropic_server' },
+              context: { conversationId, channelId: ch.id, model: requestModel, adapter: event.name },
             }).catch(() => {});
             res.write(`data: ${JSON.stringify({
               type: 'tool_result',
@@ -314,9 +316,10 @@ app.post('/api/chat', async (req, res) => {
                 id: event.id,
                 name: event.name,
                 isError: event.isError,
-                durationMs: 0,
+                durationMs: Date.now() - (serverToolStartedAt.get(event.id) || Date.now()),
                 input,
-                sources,
+                renderType: event.renderType,
+                data: event.data,
               }],
             })}\n\n`);
           }
