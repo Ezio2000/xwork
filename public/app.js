@@ -10,6 +10,8 @@ const state = {
   channels: [],
   activeChannelId: null,
   activeModel: null,
+  tools: [],
+  toolRuns: [],
 };
 
 // ===== DOM refs =====
@@ -28,10 +30,13 @@ const dom = {
   btnSettings: $('#btn-settings'),
   btnCloseSettings: $('#btn-close-settings'),
   settingChannels: $('#setting-channels'),
+  settingTools: $('#setting-tools'),
   logo: $('#logo'),
   chatMain: $('#chat-main'),
   channelsPage: $('#channels-page'),
+  toolsPage: $('#tools-page'),
   btnBackChat: $('#btn-back-chat'),
+  btnBackChatTools: $('#btn-back-chat-tools'),
   channelList: $('#channel-list'),
   btnAddChannelPage: $('#btn-add-channel-page'),
   channelEditor: $('#channel-editor'),
@@ -45,6 +50,10 @@ const dom = {
   btnToggleKey: $('#btn-toggle-key'),
   btnCancelEdit: $('#btn-cancel-edit'),
   btnSaveChannel: $('#btn-save-channel'),
+  btnRefreshTools: $('#btn-refresh-tools'),
+  btnRefreshToolRuns: $('#btn-refresh-tool-runs'),
+  toolList: $('#tool-list'),
+  toolRunList: $('#tool-run-list'),
 };
 
 // ===== API helpers =====
@@ -103,6 +112,7 @@ function renderSelectors() {
 // ===== Pages =====
 function showChannelsPage() {
   dom.chatMain.classList.add('hidden');
+  dom.toolsPage.classList.add('hidden');
   dom.channelsPage.classList.remove('hidden');
   renderChannelList();
   dom.channelEditor.classList.add('hidden');
@@ -110,6 +120,25 @@ function showChannelsPage() {
 
 function hideChannelsPage() {
   dom.channelsPage.classList.add('hidden');
+  dom.chatMain.classList.remove('hidden');
+}
+
+async function showToolsPage() {
+  dom.chatMain.classList.add('hidden');
+  dom.channelsPage.classList.add('hidden');
+  dom.toolsPage.classList.remove('hidden');
+  await loadTools();
+  await loadToolRuns();
+}
+
+function hideToolsPage() {
+  dom.toolsPage.classList.add('hidden');
+  dom.chatMain.classList.remove('hidden');
+}
+
+function showChatPage() {
+  dom.channelsPage.classList.add('hidden');
+  dom.toolsPage.classList.add('hidden');
   dom.chatMain.classList.remove('hidden');
 }
 
@@ -128,12 +157,12 @@ function renderChannelList() {
     <div class="channel-card${c.id === state.activeChannelId ? ' active' : ''}" data-channel-id="${c.id}">
       <div class="ch-info">
         <div class="ch-name">${escHtml(c.name)}</div>
-        <div class="ch-meta">${escHtml(c.baseUrl)} · OpenAI Chat · ${c.models.length} models</div>
+        <div class="ch-meta">${escHtml(c.baseUrl)} · Anthropic Messages · ${c.models.length} models</div>
       </div>
-      <span class="ch-badge">openai</span>
+      <span class="ch-badge">anthropic</span>
       <div class="ch-actions">
         <button data-action="edit" data-id="${c.id}">Edit</button>
-        <button data-action="delete" data-id="${c.id}" class="danger" ${state.channels.length <= 1 ? 'disabled' : ''}>Del</button>
+        <button data-action="delete" data-id="${c.id}" class="danger">Del</button>
       </div>
     </div>
   `).join('');
@@ -154,7 +183,7 @@ function showChannelEditor(channel) {
     dom.editorTitle.textContent = 'New Channel';
     dom.editChannelId.value = '';
     dom.editName.value = '';
-    dom.editBaseUrl.value = '';
+    dom.editBaseUrl.value = 'https://api.deepseek.com/anthropic';
     dom.editApiKey.value = '';
     dom.editApiKey.type = 'password';
     dom.btnToggleKey.textContent = 'Show';
@@ -192,13 +221,15 @@ async function saveChannel() {
     state.channels.push(created);
   }
 
+  const active = await api('GET', '/api/active');
+  state.activeChannelId = active.activeChannelId;
+  state.activeModel = active.activeModel;
   renderChannelList();
   renderSelectors();
   hideChannelEditor();
 }
 
 async function deleteChannel(id) {
-  if (state.channels.length <= 1) return;
   if (!confirm('Delete this channel?')) return;
   await api('DELETE', `/api/channels/${id}`);
   state.channels = state.channels.filter(c => c.id !== id);
@@ -213,6 +244,72 @@ async function useChannel(id) {
   await setActiveChannel(id);
   renderChannelList();
   renderSelectors();
+}
+
+// ===== Tool list (on tools page) =====
+async function loadTools() {
+  state.tools = await api('GET', '/api/tools');
+  renderToolList();
+}
+
+async function loadToolRuns() {
+  state.toolRuns = await api('GET', '/api/tool-runs?limit=20');
+  renderToolRuns();
+}
+
+function renderToolList() {
+  if (!state.tools.length) {
+    dom.toolList.innerHTML = '<div class="empty-panel">No tools available.</div>';
+    return;
+  }
+
+  dom.toolList.innerHTML = state.tools.map(tool => `
+    <div class="tool-card${tool.enabled ? ' enabled' : ''}" data-tool-id="${escHtml(tool.id)}">
+      <div class="tool-info">
+        <div class="tool-title-row">
+          <div class="tool-title">${escHtml(tool.title || tool.name)}</div>
+          <span class="tool-status">${tool.enabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+        <div class="tool-desc">${escHtml(tool.description || '')}</div>
+        <div class="tool-meta">
+          <span>${escHtml(tool.name)}</span>
+          <span>${escHtml(tool.adapter || 'builtin')}</span>
+          <span>${escHtml(tool.category || 'general')}</span>
+          <span>${Number(tool.timeoutMs || 0)}ms</span>
+        </div>
+      </div>
+      <label class="switch" title="Toggle tool">
+        <input type="checkbox" data-action="toggle-tool" ${tool.enabled ? 'checked' : ''}>
+        <span></span>
+      </label>
+    </div>
+  `).join('');
+}
+
+function renderToolRuns() {
+  if (!state.toolRuns.length) {
+    dom.toolRunList.innerHTML = '<div class="empty-panel">No tool runs yet.</div>';
+    return;
+  }
+
+  dom.toolRunList.innerHTML = state.toolRuns.map(run => `
+    <div class="tool-run${run.isError ? ' error' : ''}">
+      <div class="tool-run-main">
+        <span class="tool-run-name">${escHtml(run.name || '')}</span>
+        <span class="tool-run-status">${run.isError ? 'Error' : 'OK'}</span>
+      </div>
+      <div class="tool-run-meta">
+        ${Number(run.durationMs || 0)}ms · ${escHtml(formatDateTime(run.createdAt))}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function toggleTool(id, enabled) {
+  const updated = await api('PUT', `/api/tools/${id}`, { enabled });
+  const idx = state.tools.findIndex(tool => tool.id === id);
+  if (idx !== -1) state.tools[idx] = updated;
+  renderToolList();
 }
 
 // ===== Conversations =====
@@ -279,6 +376,7 @@ function renderMessages() {
     dom.messages.innerHTML = visibleMessages.map(m =>
       `<div class="message ${m.role}">
         <div class="role-label">${m.role === 'user' ? 'YOU' : 'ASSISTANT'}</div>
+        ${m.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(m))}</div>` : ''}
         <div class="content">${renderContent(messageText(m))}</div>
       </div>`
     ).join('');
@@ -303,6 +401,10 @@ function messageText(message) {
   return message.role === 'assistant' ? stripLeadingNewlines(text) : text;
 }
 
+function messageSources(message) {
+  return Array.isArray(message?.sources) ? message.sources : [];
+}
+
 function stripLeadingNewlines(text) {
   return String(text || '').replace(/^\n+/, '');
 }
@@ -318,7 +420,61 @@ function normalizeMarkdownForDisplay(text) {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function sourceHost(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function sourceMeta(source) {
+  return [sourceHost(source.url), source.pageAge].filter(Boolean).join(' · ');
+}
+
+function mergeSources(existing, incoming) {
+  const out = [...existing];
+  const seen = new Set(out.map(source => source.url || `${source.title}|${source.pageAge}`));
+  for (const source of incoming || []) {
+    if (!source || (!source.title && !source.url)) continue;
+    const key = source.url || `${source.title}|${source.pageAge}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(source);
+  }
+  return out;
+}
+
+function renderSourceCards(sources) {
+  if (!sources?.length) return '';
+  return `
+    <div class="source-list" aria-label="Web search sources">
+      ${sources.map((source, index) => `
+        <a class="source-card" href="${escHtml(source.url || '#')}" target="_blank" rel="noreferrer">
+          <span class="source-index">${index + 1}</span>
+          <span class="source-body">
+            <span class="source-title">${escHtml(source.title || source.url || 'Untitled source')}</span>
+            <span class="source-meta">${escHtml(sourceMeta(source))}</span>
+          </span>
+        </a>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderSourcesInto(el, sources) {
+  if (!el) return;
+  el.innerHTML = renderSourceCards(sources);
 }
 
 function scrollBottom() {
@@ -341,10 +497,18 @@ function addUserMessage(text) {
 function addAssistantPlaceholder() {
   const div = document.createElement('div');
   div.className = 'message assistant streaming';
-  div.innerHTML = `<div class="role-label">ASSISTANT</div><div class="content"></div>`;
+  div.innerHTML = `
+    <div class="role-label">ASSISTANT</div>
+    <div class="web-sources"></div>
+    <div class="content"></div>
+  `;
   dom.messages.appendChild(div);
   scrollBottom();
-  return div.querySelector('.content');
+  return {
+    rootEl: div,
+    sourcesEl: div.querySelector('.web-sources'),
+    contentEl: div.querySelector('.content'),
+  };
 }
 
 async function sendMessage(text) {
@@ -375,7 +539,8 @@ async function sendMessage(text) {
     renderConvoList();
   }
 
-  const contentEl = addAssistantPlaceholder();
+  const assistantView = addAssistantPlaceholder();
+  const { contentEl, sourcesEl } = assistantView;
 
   try {
     const res = await fetch('/api/chat', {
@@ -400,6 +565,7 @@ async function sendMessage(text) {
     const decoder = new TextDecoder();
     let buffer = '';
     let fullText = '';
+    let sources = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -422,7 +588,12 @@ async function sendMessage(text) {
             contentEl.innerHTML = renderContent(`${stripLeadingNewlines(fullText)}\n\n[Using tool: ${names}]`);
             scrollBottom();
           } else if (evt.type === 'tool_result') {
-            contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText) || 'Processing tool result...');
+            const nextSources = evt.tools.flatMap(tool => tool.sources || []);
+            sources = mergeSources(sources, nextSources);
+            renderSourcesInto(sourcesEl, sources);
+            const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
+            const status = errored ? `Tool error: ${errored}` : 'Processing tool result...';
+            contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText) || status);
             scrollBottom();
           } else if (evt.type === 'error') {
             contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(evt.message)}</span>`;
@@ -435,7 +606,7 @@ async function sendMessage(text) {
     if (streamingEl) streamingEl.classList.remove('streaming');
 
     state.messages.push({ role: 'user', content: message });
-    state.messages.push({ role: 'assistant', content: fullText, model: state.activeModel });
+    state.messages.push({ role: 'assistant', content: fullText, model: state.activeModel, sources });
 
     const conv = state.conversations.find(c => c.id === state.activeId);
     if (conv && (state.messages.length <= 2 || conv.title === 'New Chat')) {
@@ -476,10 +647,10 @@ dom.convList.addEventListener('click', (e) => {
     if (confirm('Delete this conversation?')) deleteConversation(id);
     return;
   }
-  hideChannelsPage();
+  showChatPage();
   if (id !== state.activeId) selectConversation(id);
 });
-dom.logo.addEventListener('click', hideChannelsPage);
+dom.logo.addEventListener('click', showChatPage);
 dom.channelSelect.addEventListener('change', () => setActiveChannel(dom.channelSelect.value));
 dom.modelSelect.addEventListener('change', () => setActiveModel(dom.modelSelect.value));
 
@@ -493,9 +664,13 @@ dom.settingChannels.addEventListener('click', () => {
   hideSettings();
   showChannelsPage();
 });
+dom.settingTools.addEventListener('click', () => {
+  hideSettings();
+  showToolsPage();
+});
 
 // Channels page
-dom.btnBackChat.addEventListener('click', hideChannelsPage);
+dom.btnBackChat.addEventListener('click', showChatPage);
 dom.btnAddChannelPage.addEventListener('click', () => showChannelEditor(null));
 dom.channelList.addEventListener('click', (e) => {
   const card = e.target.closest('.channel-card');
@@ -528,11 +703,26 @@ dom.btnToggleKey.addEventListener('click', () => {
   }
 });
 
+// Tools page
+dom.btnBackChatTools.addEventListener('click', showChatPage);
+dom.btnRefreshTools.addEventListener('click', loadTools);
+dom.btnRefreshToolRuns.addEventListener('click', loadToolRuns);
+dom.toolList.addEventListener('change', (e) => {
+  const toggle = e.target.closest('input[data-action="toggle-tool"]');
+  if (!toggle) return;
+  const card = e.target.closest('.tool-card');
+  if (!card) return;
+  toggleTool(card.dataset.toolId, toggle.checked).catch(err => {
+    alert(err.message);
+    toggle.checked = !toggle.checked;
+  });
+});
+
 // Ctrl+N new chat
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
     e.preventDefault();
-    hideChannelsPage();
+    showChatPage();
     newConversation();
   }
 });

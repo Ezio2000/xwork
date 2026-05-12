@@ -1,7 +1,7 @@
 {
   "name": "xwork",
   "version": "1.0.0",
-  "description": "Claude Code style AI chat with OpenAI Chat Completions-compatible API support",
+  "description": "Claude Code style AI chat with Anthropic Messages-compatible API support",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",

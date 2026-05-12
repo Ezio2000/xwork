@@ -60,7 +60,7 @@
         </label>
         <label>
           <span>API Base URL</span>
-          <input type="text" id="edit-base-url" placeholder="https://api.openai.com">
+          <input type="text" id="edit-base-url" placeholder="https://api.deepseek.com/anthropic">
         </label>
         <label>
           <span>API Key</span>
@@ -84,6 +84,25 @@
       </div>
     </div>
   </main>
+
+  <!-- Tools page (replaces chat-main) -->
+  <main id="tools-page" class="hidden">
+    <div id="tools-header">
+      <button id="btn-back-chat-tools" class="btn-icon">←</button>
+      <h2>Tools</h2>
+      <button id="btn-refresh-tools" class="btn-text small">Refresh</button>
+    </div>
+    <div id="tools-content">
+      <div id="tool-list"></div>
+      <div class="tool-runs-panel">
+        <div class="tool-runs-header">
+          <h3>Recent Runs</h3>
+          <button id="btn-refresh-tool-runs" class="btn-text small">Refresh</button>
+        </div>
+        <div id="tool-run-list"></div>
+      </div>
+    </div>
+  </main>
 </div>
 
 <!-- Settings Modal -->
@@ -99,6 +118,12 @@
         <div class="setting-info">
           <span class="setting-label">Channels</span>
           <span class="setting-desc">Manage API providers and models</span>
+        </div>
+      </div>
+      <div id="setting-tools" class="setting-item clickable">
+        <div class="setting-info">
+          <span class="setting-label">Tools</span>
+          <span class="setting-desc">Manage built-in tools and execution state</span>
         </div>
       </div>
     </div>

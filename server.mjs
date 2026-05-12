@@ -1,16 +1,24 @@
 import express from 'express';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 import { assistantMessage, streamChat } from './lib/api.mjs';
 import * as storage from './lib/storage.mjs';
+import { formatToolOutput, runTool } from './lib/tools/runner.mjs';
+import { getEnabledToolDefinitions, listTools, updateToolConfig } from './lib/tools/registry.mjs';
+import { appendToolRun, listToolRuns } from './lib/tools/runs.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = join(__dirname, 'config.json');
+const DEFAULT_CONFIG = { channels: [], activeChannelId: null, activeModel: null };
 
 function readConfig() {
+  if (!existsSync(CONFIG_PATH)) {
+    writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2));
+    return { ...DEFAULT_CONFIG };
+  }
   return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
 }
 
@@ -32,89 +40,23 @@ function getActiveChannel(cfg) {
   return ch || cfg.channels[0] || null;
 }
 
-const TOOLS = [
-  {
-    name: 'get_current_time',
-    description: 'Get the current date and time for a timezone.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        timezone: {
-          type: 'string',
-          description: 'IANA timezone name, for example Asia/Shanghai or America/New_York.',
-        },
-      },
-      required: ['timezone'],
-      additionalProperties: false,
-    },
-  },
-];
-
-const toolHandlers = {
-  get_current_time: async ({ timezone }) => ({
-    timezone,
-    currentTime: new Date().toLocaleString('zh-CN', {
-      timeZone: timezone || 'Asia/Shanghai',
-      hour12: false,
-    }),
-  }),
-};
-
-async function runTool(call) {
-  const handler = toolHandlers[call.name];
-  if (!handler) {
-    return {
-      id: call.id,
-      name: call.name,
-      isError: true,
-      output: `Unknown tool: ${call.name}`,
-    };
-  }
-  try {
-    return {
-      id: call.id,
-      name: call.name,
-      isError: false,
-      output: await handler(call.input || {}),
-    };
-  } catch (err) {
-    return {
-      id: call.id,
-      name: call.name,
-      isError: true,
-      output: err.message || String(err),
-    };
-  }
-}
-
-function formatToolOutput(output) {
-  return typeof output === 'string' ? output : JSON.stringify(output);
-}
-
-function appendAssistantToolMessage(history, result) {
-  history.push({
-    role: 'assistant',
-    content: result.text || null,
-    ...(result.reasoningContent ? { reasoning_content: result.reasoningContent } : {}),
-    tool_calls: result.toolCalls.map(call => ({
-      id: call.id,
-      type: 'function',
-      function: {
-        name: call.name,
-        arguments: call.arguments || JSON.stringify(call.input || {}),
-      },
-    })),
-  });
+function appendAssistantMessage(history, result) {
+  const content = Array.isArray(result.content) && result.content.length
+    ? result.content
+    : [{ type: 'text', text: result.text || '' }];
+  history.push({ role: 'assistant', content });
 }
 
 function appendToolResults(history, results) {
-  for (const result of results) {
-    history.push({
-      role: 'tool',
-      tool_call_id: result.id,
+  history.push({
+    role: 'user',
+    content: results.map(result => ({
+      type: 'tool_result',
+      tool_use_id: result.id,
       content: formatToolOutput(result.output),
-    });
-  }
+      ...(result.isError ? { is_error: true } : {}),
+    })),
+  });
 }
 
 const app = express();
@@ -164,7 +106,7 @@ app.post('/api/channels', (req, res) => {
   const ch = {
     id: randomUUID().slice(0, 8),
     name,
-    baseUrl: baseUrl || 'https://api.openai.com',
+    baseUrl: baseUrl || 'https://api.deepseek.com/anthropic',
     apiKey: apiKey || '',
     models: models || [],
     maxTokens: maxTokens || 8192,
@@ -203,16 +145,41 @@ app.delete('/api/channels/:id', (req, res) => {
   const cfg = readConfig();
   const idx = cfg.channels.findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Channel not found' });
-  if (cfg.channels.length <= 1) {
-    return res.status(400).json({ error: 'Cannot delete the last channel' });
-  }
   cfg.channels.splice(idx, 1);
   if (cfg.activeChannelId === req.params.id) {
-    cfg.activeChannelId = cfg.channels[0].id;
-    cfg.activeModel = cfg.channels[0].models[0] || '';
+    cfg.activeChannelId = cfg.channels[0]?.id || null;
+    cfg.activeModel = cfg.channels[0]?.models?.[0] || null;
   }
   writeConfig(cfg);
   res.json({ ok: true });
+});
+
+// --- Tools ---
+app.get('/api/tools', async (_req, res) => {
+  res.json(await listTools());
+});
+
+app.put('/api/tools/:id', async (req, res) => {
+  const tool = await updateToolConfig(req.params.id, req.body || {});
+  if (!tool) return res.status(404).json({ error: 'Tool not found' });
+  res.json(tool);
+});
+
+app.post('/api/tools/:id/enable', async (req, res) => {
+  const tool = await updateToolConfig(req.params.id, { enabled: true });
+  if (!tool) return res.status(404).json({ error: 'Tool not found' });
+  res.json(tool);
+});
+
+app.post('/api/tools/:id/disable', async (req, res) => {
+  const tool = await updateToolConfig(req.params.id, { enabled: false });
+  if (!tool) return res.status(404).json({ error: 'Tool not found' });
+  res.json(tool);
+});
+
+app.get('/api/tool-runs', async (req, res) => {
+  const limit = Number(req.query.limit) || 50;
+  res.json(await listToolRuns(limit));
 });
 
 // --- Conversation routes ---
@@ -260,13 +227,14 @@ app.post('/api/chat', async (req, res) => {
     cfg.activeChannelId = ch.id;
     writeConfig(cfg);
   }
+  const enabledTools = await getEnabledToolDefinitions();
   const channelConfig = {
     baseUrl: ch.baseUrl,
     apiKey: ch.apiKey,
     model: requestModel,
     maxTokens: ch.maxTokens,
     extraHeaders: ch.extraHeaders,
-    tools: TOOLS,
+    tools: enabledTools,
   };
 
   let history = [];
@@ -293,6 +261,7 @@ app.post('/api/chat', async (req, res) => {
   let finalResult = null;
   let lastUsage = null;
   let lastStopReason = null;
+  const serverToolInputs = new Map();
   let closed = false;
   req.on('close', () => {
     closed = true;
@@ -314,6 +283,42 @@ app.post('/api/chat', async (req, res) => {
         (err) => {
           throw err;
         },
+        (event) => {
+          if (event.phase === 'call') {
+            serverToolInputs.set(event.id, event.input || {});
+            res.write(`data: ${JSON.stringify({
+              type: 'tool_call',
+              tools: [{ id: event.id, name: event.name, input: event.input || {} }],
+            })}\n\n`);
+          } else if (event.phase === 'result') {
+            const sources = Array.isArray(event.sources) ? event.sources : [];
+            const input = serverToolInputs.get(event.id) || {};
+            appendToolRun({
+              id: event.id,
+              name: event.name,
+              isError: event.isError,
+              input,
+              output: {
+                resultCount: event.resultCount,
+                errorCode: event.errorCode,
+                sources,
+              },
+              durationMs: 0,
+              context: { conversationId, channelId: ch.id, model: requestModel, adapter: 'anthropic_server' },
+            }).catch(() => {});
+            res.write(`data: ${JSON.stringify({
+              type: 'tool_result',
+              tools: [{
+                id: event.id,
+                name: event.name,
+                isError: event.isError,
+                durationMs: 0,
+                input,
+                sources,
+              }],
+            })}\n\n`);
+          }
+        },
       );
 
       lastStopReason = result.stopReason || lastStopReason;
@@ -322,13 +327,14 @@ app.post('/api/chat', async (req, res) => {
 
       if (!result.toolCalls?.length) break;
 
-      appendAssistantToolMessage(history, result);
+      appendAssistantMessage(history, result);
       res.write(`data: ${JSON.stringify({
         type: 'tool_call',
         tools: result.toolCalls.map(call => ({ id: call.id, name: call.name })),
       })}\n\n`);
 
-      const toolResults = await Promise.all(result.toolCalls.map(runTool));
+      const toolContext = { conversationId, channelId: ch.id, model: requestModel };
+      const toolResults = await Promise.all(result.toolCalls.map(call => runTool(call, toolContext)));
       appendToolResults(history, toolResults);
       res.write(`data: ${JSON.stringify({
         type: 'tool_result',
@@ -336,6 +342,7 @@ app.post('/api/chat', async (req, res) => {
           id: result.id,
           name: result.name,
           isError: result.isError,
+          durationMs: result.durationMs,
         })),
       })}\n\n`);
     }
