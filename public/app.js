@@ -491,17 +491,23 @@ function isVisibleMessage(message) {
   return messageText(message).trim().length > 0;
 }
 
+function stripSearchQueryText(text) {
+  return String(text || '').replace(/^Search results for query: .*/gm, '').replace(/\n{3,}/g, '\n\n');
+}
+
 function messageText(message) {
   const { content } = message;
-  const text = typeof content === 'string'
-    ? content
-    : Array.isArray(content)
-      ? content
-    .filter(part => part?.type === 'text')
-    .map(part => part.text || '')
-    .join('\n')
-      : '';
-  return message.role === 'assistant' ? stripLeadingNewlines(text) : text;
+  if (typeof content === 'string') {
+    return message.role === 'assistant' ? stripLeadingNewlines(stripSearchQueryText(content)) : content;
+  }
+  if (Array.isArray(content)) {
+    const text = content
+      .filter(part => part?.type === 'text' && !part.text?.startsWith('Search results for query:'))
+      .map(part => part.text || '')
+      .join('\n');
+    return message.role === 'assistant' ? stripLeadingNewlines(text) : text;
+  }
+  return '';
 }
 
 function messageSources(message) {
@@ -732,11 +738,11 @@ async function sendMessage(text) {
           } else if (evt.type === 'delta') {
             hideThinkingPopup();
             fullText += evt.text;
-            contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText));
+            contentEl.innerHTML = renderContent(stripLeadingNewlines(stripSearchQueryText(fullText)));
             scrollBottom();
           } else if (evt.type === 'tool_call') {
             const names = evt.tools.map(t => t.name).join(', ');
-            contentEl.innerHTML = renderContent(`${stripLeadingNewlines(fullText)}\n\n[Using tool: ${names}]`);
+            contentEl.innerHTML = renderContent(`${stripLeadingNewlines(stripSearchQueryText(fullText))}\n\n[Using tool: ${names}]`);
             scrollBottom();
           } else if (evt.type === 'tool_result') {
             for (const tool of evt.tools) {
@@ -748,7 +754,7 @@ async function sendMessage(text) {
             }
             const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
             const status = errored ? `Tool error: ${errored}` : 'Processing tool result...';
-            contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText) || status);
+            contentEl.innerHTML = renderContent(stripLeadingNewlines(stripSearchQueryText(fullText)) || status);
             scrollBottom();
           } else if (evt.type === 'error') {
             contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(evt.message)}</span>`;
