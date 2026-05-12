@@ -7,16 +7,12 @@ const state = {
   activeId: null,
   messages: [],
   streaming: false,
-  streamingConvId: null,
   channels: [],
   activeChannelId: null,
   activeModel: null,
   tools: [],
   toolRuns: [],
 };
-
-// Cache in-progress stream content so switching conversations doesn't lose it
-const pendingStreams = {};
 
 // ===== DOM refs =====
 const $ = (sel) => document.querySelector(sel);
@@ -437,23 +433,7 @@ function renderConvoList() {
 async function selectConversation(id) {
   state.activeId = id;
   const convo = await api('GET', `/api/conversations/${id}`);
-  const pending = pendingStreams[id];
-  if (pending) {
-    // Merge server-saved messages with in-progress stream content,
-    // deduplicating by checking if the user message already exists
-    state.messages = [...convo.messages];
-    const last = state.messages[state.messages.length - 1];
-    if (!last || last.role !== 'user' || messageText(last) !== pending.userMsg) {
-      state.messages.push({ role: 'user', content: pending.userMsg });
-    }
-    state.messages.push({
-      role: 'assistant', content: pending.fullText,
-      model: state.activeModel, sources: pending.sources, searchCount: pending.searchCount,
-    });
-    pending.rendered = true;
-  } else {
-    state.messages = convo.messages;
-  }
+  state.messages = convo.messages;
   dom.chatTitle.textContent = convo.title;
   renderMessages();
   renderConvoList();
@@ -690,7 +670,6 @@ async function sendMessage(text) {
   dom.msgInput.style.height = 'auto';
   dom.btnSend.disabled = true;
   state.streaming = true;
-  state.streamingConvId = state.activeId;
 
   addUserMessage(message);
 
@@ -749,84 +728,59 @@ async function sendMessage(text) {
         try {
           const evt = JSON.parse(jsonStr);
           if (evt.type === 'thinking') {
-            if (state.activeId === state.streamingConvId) showThinkingPopup(evt.text);
+            showThinkingPopup(evt.text);
           } else if (evt.type === 'delta') {
-            if (state.activeId === state.streamingConvId) hideThinkingPopup();
+            hideThinkingPopup();
             fullText += evt.text;
-            pendingStreams[state.streamingConvId] = { userMsg: message, fullText, sources: [...sources], searchCount, rendered: pendingStreams[state.streamingConvId]?.rendered };
-            if (state.activeId === state.streamingConvId) {
-              contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText));
-              scrollBottom();
-            }
+            contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText));
+            scrollBottom();
           } else if (evt.type === 'tool_call') {
             const names = evt.tools.map(t => t.name).join(', ');
-            pendingStreams[state.streamingConvId] = { userMsg: message, fullText, sources: [...sources], searchCount, rendered: pendingStreams[state.streamingConvId]?.rendered };
-            if (state.activeId === state.streamingConvId) {
-              contentEl.innerHTML = renderContent(`${stripLeadingNewlines(fullText)}\n\n[Using tool: ${names}]`);
-              scrollBottom();
-            }
+            contentEl.innerHTML = renderContent(`${stripLeadingNewlines(fullText)}\n\n[Using tool: ${names}]`);
+            scrollBottom();
           } else if (evt.type === 'tool_result') {
             for (const tool of evt.tools) {
               if (tool.renderType === 'source-cards' && tool.data?.sources?.length) {
                 searchCount++;
                 sources = mergeSources(sources, tool.data.sources);
+                renderSourcesInto(sourcesEl, sources, searchCount);
               }
             }
-            pendingStreams[state.streamingConvId] = { userMsg: message, fullText, sources: [...sources], searchCount, rendered: pendingStreams[state.streamingConvId]?.rendered };
-            if (state.activeId === state.streamingConvId) {
-              renderSourcesInto(sourcesEl, sources, searchCount);
-              const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
-              const status = errored ? `Tool error: ${errored}` : 'Processing tool result...';
-              contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText) || status);
-              scrollBottom();
-            }
+            const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
+            const status = errored ? `Tool error: ${errored}` : 'Processing tool result...';
+            contentEl.innerHTML = renderContent(stripLeadingNewlines(fullText) || status);
+            scrollBottom();
           } else if (evt.type === 'error') {
-            if (state.activeId === state.streamingConvId) {
-              contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(evt.message)}</span>`;
-            }
+            contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(evt.message)}</span>`;
           }
         } catch {}
       }
     }
 
-    const isActive = state.activeId === state.streamingConvId;
-    if (isActive) {
-      hideThinkingPopup();
-      const streamingEl = dom.messages.querySelector('.streaming');
-      if (streamingEl) {
-        streamingEl.classList.remove('streaming');
-        const toggle = streamingEl.querySelector('.sources-toggle');
-        if (toggle) toggle.classList.add('collapsed');
-      }
+    hideThinkingPopup();
+    const streamingEl = dom.messages.querySelector('.streaming');
+    if (streamingEl) {
+      streamingEl.classList.remove('streaming');
+      const toggle = streamingEl.querySelector('.sources-toggle');
+      if (toggle) toggle.classList.add('collapsed');
     }
 
-    // Save to local state for the streaming conversation
-    const pending = pendingStreams[state.streamingConvId];
-    if (isActive && !pending?.rendered) {
-      state.messages.push({ role: 'user', content: message });
-      state.messages.push({ role: 'assistant', content: fullText, model: state.activeModel, sources, searchCount });
-    }
-    // Always update cache so it's available when switching back
-    pendingStreams[state.streamingConvId] = { userMsg: message, fullText, sources: [...sources], searchCount };
+    state.messages.push({ role: 'user', content: message });
+    state.messages.push({ role: 'assistant', content: fullText, model: state.activeModel, sources, searchCount });
 
-    if (isActive) {
-      const conv = state.conversations.find(c => c.id === state.activeId);
-      if (conv && (state.messages.length <= 2 || conv.title === 'New Chat')) {
-        conv.title = message.slice(0, 50) + (message.length > 50 ? '…' : '');
-        dom.chatTitle.textContent = conv.title;
-        renderConvoList();
-      }
+    const conv = state.conversations.find(c => c.id === state.activeId);
+    if (conv && (state.messages.length <= 2 || conv.title === 'New Chat')) {
+      conv.title = message.slice(0, 50) + (message.length > 50 ? '…' : '');
+      dom.chatTitle.textContent = conv.title;
+      renderConvoList();
     }
   } catch (err) {
-    if (state.activeId === state.streamingConvId) {
-      contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(err.message)}</span>`;
-      const streamingEl = dom.messages.querySelector('.streaming');
-      if (streamingEl) streamingEl.classList.remove('streaming');
-    }
+    contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(err.message)}</span>`;
+    const streamingEl = dom.messages.querySelector('.streaming');
+    if (streamingEl) streamingEl.classList.remove('streaming');
   }
 
   state.streaming = false;
-  state.streamingConvId = null;
   dom.btnSend.disabled = false;
   dom.msgInput.focus();
 }
