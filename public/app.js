@@ -54,6 +54,10 @@ const dom = {
   btnRefreshToolRuns: $('#btn-refresh-tool-runs'),
   toolList: $('#tool-list'),
   toolRunList: $('#tool-run-list'),
+  btnCloseDetail: $('#btn-close-detail'),
+  toolRunDetail: $('#tool-run-detail'),
+  detailTitle: $('#detail-title'),
+  detailBody: $('#detail-body'),
 };
 
 // ===== API helpers =====
@@ -292,8 +296,8 @@ function renderToolRuns() {
     return;
   }
 
-  dom.toolRunList.innerHTML = state.toolRuns.map(run => `
-    <div class="tool-run${run.isError ? ' error' : ''}">
+  dom.toolRunList.innerHTML = state.toolRuns.map((run, i) => `
+    <div class="tool-run${run.isError ? ' error' : ''}" data-run-index="${i}">
       <div class="tool-run-main">
         <span class="tool-run-name">${escHtml(run.name || '')}</span>
         <span class="tool-run-status">${run.isError ? 'Error' : 'OK'}</span>
@@ -303,6 +307,104 @@ function renderToolRuns() {
       </div>
     </div>
   `).join('');
+}
+
+function showToolRunDetail(run) {
+  dom.detailTitle.textContent = run.name || 'Tool Run';
+  const parts = [];
+
+  // Status + duration
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item">
+          <div class="dm-label">Status</div>
+          <div class="dm-value" style="color:${run.isError ? 'var(--danger)' : 'var(--accent)'}">${run.isError ? 'Error' : 'OK'}</div>
+        </div>
+        <div class="detail-meta-item">
+          <div class="dm-label">Duration</div>
+          <div class="dm-value">${Number(run.durationMs || 0)}ms</div>
+        </div>
+        <div class="detail-meta-item">
+          <div class="dm-label">Time</div>
+          <div class="dm-value">${escHtml(formatDateTime(run.createdAt))}</div>
+        </div>
+        <div class="detail-meta-item">
+          <div class="dm-label">Run ID</div>
+          <div class="dm-value" style="font-size:11px">${escHtml(run.runId || '')}</div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  // Error info
+  if (run.isError || run.output?.errorCode) {
+    parts.push(`
+      <div class="detail-section">
+        <div class="detail-label">Error</div>
+        <div class="detail-error">${escHtml(run.output?.errorCode || run.output || 'Unknown error')}</div>
+      </div>
+    `);
+  }
+
+  // Input
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-label">Input</div>
+      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.input || {}, null, 2))}</pre></div>
+    </div>
+  `);
+
+  // Output (non-source)
+  if (run.output?.resultCount !== undefined) {
+    parts.push(`
+      <div class="detail-section">
+        <div class="detail-label">Output</div>
+        <div class="detail-value">${run.output.resultCount} result(s)</div>
+      </div>
+    `);
+  } else if (run.output && !run.output.sources) {
+    parts.push(`
+      <div class="detail-section">
+        <div class="detail-label">Output</div>
+        <div class="detail-value"><pre>${escHtml(JSON.stringify(run.output, null, 2))}</pre></div>
+      </div>
+    `);
+  }
+
+  // Sources
+  if (run.output?.sources?.length) {
+    parts.push(`
+      <div class="detail-section">
+        <div class="detail-label">Sources (${run.output.sources.length})</div>
+        <div class="detail-sources">
+          ${run.output.sources.map(s => `
+            <div class="detail-source">
+              <div class="ds-title">${escHtml(s.title || 'Untitled')}</div>
+              ${s.url ? `<a class="ds-url" href="${escHtml(s.url)}" target="_blank" rel="noreferrer">${escHtml(s.url)}</a>` : ''}
+              ${s.snippet ? `<div class="ds-snippet">${escHtml(s.snippet)}</div>` : ''}
+              ${s.pageAge ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${escHtml(s.pageAge)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `);
+  }
+
+  // Context
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-label">Context</div>
+      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.context || {}, null, 2))}</pre></div>
+    </div>
+  `);
+
+  dom.detailBody.innerHTML = parts.join('');
+  dom.toolRunDetail.classList.remove('hidden');
+}
+
+function hideToolRunDetail() {
+  dom.toolRunDetail.classList.add('hidden');
 }
 
 async function toggleTool(id, enabled) {
@@ -717,6 +819,17 @@ dom.toolList.addEventListener('change', (e) => {
     toggle.checked = !toggle.checked;
   });
 });
+
+dom.toolRunList.addEventListener('click', (e) => {
+  const item = e.target.closest('.tool-run');
+  if (!item) return;
+  const idx = Number(item.dataset.runIndex);
+  const run = state.toolRuns[idx];
+  if (run) showToolRunDetail(run);
+});
+
+dom.btnCloseDetail.addEventListener('click', hideToolRunDetail);
+dom.toolRunDetail.querySelector('.detail-backdrop').addEventListener('click', hideToolRunDetail);
 
 // Ctrl+N new chat
 document.addEventListener('keydown', (e) => {

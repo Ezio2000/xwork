@@ -262,6 +262,7 @@ app.post('/api/chat', async (req, res) => {
   let lastUsage = null;
   let lastStopReason = null;
   const serverToolInputs = new Map();
+	  const serverToolStartedAt = new Map();
   let closed = false;
   req.on('close', () => {
     closed = true;
@@ -286,6 +287,7 @@ app.post('/api/chat', async (req, res) => {
         (event) => {
           if (event.phase === 'call') {
             serverToolInputs.set(event.id, event.input || {});
+	            serverToolStartedAt.set(event.id, Date.now());
             res.write(`data: ${JSON.stringify({
               type: 'tool_call',
               tools: [{ id: event.id, name: event.name, input: event.input || {} }],
@@ -303,8 +305,8 @@ app.post('/api/chat', async (req, res) => {
                 errorCode: event.errorCode,
                 sources,
               },
-              durationMs: 0,
-              context: { conversationId, channelId: ch.id, model: requestModel, adapter: 'anthropic_server' },
+              durationMs: Date.now() - (serverToolStartedAt.get(event.id) || Date.now()),
+	              context: { conversationId, channelId: ch.id, model: requestModel, adapter: 'anthropic_server' },
             }).catch(() => {});
             res.write(`data: ${JSON.stringify({
               type: 'tool_result',
