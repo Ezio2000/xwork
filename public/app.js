@@ -838,8 +838,7 @@ async function sendMessage(text) {
             contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
           } else if (evt.type === 'tool_call') {
-            const names = evt.tools.map(t => t.name).join(', ');
-            currentTextBlock().content += `\n\n[Using tool: ${names}]`;
+            // Sources cards from tool_result already indicate tool activity
             contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
           } else if (evt.type === 'tool_result') {
