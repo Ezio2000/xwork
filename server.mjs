@@ -258,6 +258,8 @@ app.post('/api/chat', async (req, res) => {
   });
 
   let fullResponse = '';
+  let allContent = [];
+  let allServerToolEvents = [];
   let finalResult = null;
   let lastUsage = null;
   let lastStopReason = null;
@@ -329,6 +331,8 @@ app.post('/api/chat', async (req, res) => {
       lastStopReason = result.stopReason || lastStopReason;
       lastUsage = result.usage || lastUsage;
       finalResult = result;
+      if (result.content) allContent.push(...result.content);
+      if (result.serverToolEvents) allServerToolEvents.push(...result.serverToolEvents);
 
       if (!result.toolCalls?.length) break;
 
@@ -352,9 +356,16 @@ app.post('/api/chat', async (req, res) => {
       })}\n\n`);
     }
 
-    history.push(assistantMessage(finalResult || {
+    // Consolidate: remove intermediate messages added during tool rounds
+    // and save a single assistant message with content from all rounds
+    history.splice(originalMessageCount + 1);
+    const mergedResult = {
+      ...(finalResult || {}),
       text: fullResponse,
-    }, requestModel));
+      content: allContent,
+      serverToolEvents: allServerToolEvents,
+    };
+    history.push(assistantMessage(mergedResult, requestModel));
     const title = originalMessageCount === 0 || existingTitle === 'New Chat'
       ? message.slice(0, 50) + (message.length > 50 ? '…' : '')
       : undefined;
