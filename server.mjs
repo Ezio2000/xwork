@@ -4,9 +4,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
-import { assistantMessage, streamChat } from './lib/api.mjs';
+import { assistantMessage } from './lib/api.mjs';
 import * as storage from './lib/storage.mjs';
-import { formatToolOutput, runTool } from './lib/tools/runner.mjs';
+import { queryLoop } from './lib/query-loop.mjs';
 import { getEnabledToolDefinitions, listTools, updateToolConfig } from './lib/tools/registry.mjs';
 import { appendToolRun, listToolRuns } from './lib/tools/runs.mjs';
 
@@ -38,25 +38,6 @@ function maskChannel(ch) {
 function getActiveChannel(cfg) {
   const ch = cfg.channels.find(c => c.id === cfg.activeChannelId);
   return ch || cfg.channels[0] || null;
-}
-
-function appendAssistantMessage(history, result) {
-  const content = Array.isArray(result.content) && result.content.length
-    ? result.content
-    : [{ type: 'text', text: result.text || '' }];
-  history.push({ role: 'assistant', content });
-}
-
-function appendToolResults(history, results) {
-  history.push({
-    role: 'user',
-    content: results.map(result => ({
-      type: 'tool_result',
-      tool_use_id: result.id,
-      content: formatToolOutput(result.output),
-      ...(result.isError ? { is_error: true } : {}),
-    })),
-  });
 }
 
 const app = express();
@@ -257,124 +238,112 @@ app.post('/api/chat', async (req, res) => {
     'X-Accel-Buffering': 'no',
   });
 
-  let fullResponse = '';
-  let allContent = [];
-  let allServerToolEvents = [];
-  let finalResult = null;
-  let lastUsage = null;
-  let lastStopReason = null;
   const serverToolInputs = new Map();
-	  const serverToolStartedAt = new Map();
-  let closed = false;
-  req.on('close', () => {
-    closed = true;
-  });
+  const serverToolStartedAt = new Map();
+
+  // AbortController: tied to client disconnect
+  const ac = new AbortController();
+  req.on('close', () => ac.abort());
+
+  const toolContext = { conversationId, channelId: ch.id, model: requestModel };
 
   try {
-    for (let round = 0; round < 5 && !closed; round++) {
-      const result = await streamChat(
-        channelConfig,
-        history,
-        (delta) => {
-          fullResponse += delta;
-          res.write(`data: ${JSON.stringify({ type: 'delta', text: delta })}\n\n`);
-        },
-        (thinkingText) => {
-          res.write(`data: ${JSON.stringify({ type: 'thinking', text: thinkingText })}\n\n`);
-        },
-        (_fullText, stopReason, usage) => {
-          lastStopReason = stopReason;
-          lastUsage = usage;
-        },
-        (err) => {
-          throw err;
-        },
-        (event) => {
-          if (event.phase === 'call') {
-            serverToolInputs.set(event.id, event.input || {});
-	            serverToolStartedAt.set(event.id, Date.now());
-            res.write(`data: ${JSON.stringify({
-              type: 'tool_call',
-              tools: [{ id: event.id, name: event.name, input: event.input || {} }],
-            })}\n\n`);
-          } else if (event.phase === 'result') {
-            const input = serverToolInputs.get(event.id) || {};
-            const output = {
-              ...(event.data || {}),
-              ...(event.errorCode ? { errorCode: event.errorCode } : {}),
-            };
-            appendToolRun({
+    const iterator = queryLoop({
+      config: channelConfig,
+      history,
+      maxTurns: 5,
+      signal: ac.signal,
+      toolContext,
+      onDelta: (delta) => {
+        res.write(`data: ${JSON.stringify({ type: 'delta', text: delta })}\n\n`);
+      },
+      onThinkingDelta: (thinkingText) => {
+        res.write(`data: ${JSON.stringify({ type: 'thinking', text: thinkingText })}\n\n`);
+      },
+      onServerToolEvent: (event) => {
+        if (event.phase === 'call') {
+          serverToolInputs.set(event.id, event.input || {});
+          serverToolStartedAt.set(event.id, Date.now());
+          res.write(`data: ${JSON.stringify({
+            type: 'tool_call',
+            tools: [{ id: event.id, name: event.name, input: event.input || {} }],
+          })}\n\n`);
+        } else if (event.phase === 'result') {
+          const input = serverToolInputs.get(event.id) || {};
+          const output = {
+            ...(event.data || {}),
+            ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+          };
+          appendToolRun({
+            id: event.id,
+            name: event.name,
+            isError: event.isError,
+            input,
+            output,
+            durationMs: Date.now() - (serverToolStartedAt.get(event.id) || Date.now()),
+            context: { conversationId, channelId: ch.id, model: requestModel, adapter: event.name },
+          }).catch(() => {});
+          res.write(`data: ${JSON.stringify({
+            type: 'tool_result',
+            tools: [{
               id: event.id,
               name: event.name,
               isError: event.isError,
-              input,
-              output,
               durationMs: Date.now() - (serverToolStartedAt.get(event.id) || Date.now()),
-              context: { conversationId, channelId: ch.id, model: requestModel, adapter: event.name },
-            }).catch(() => {});
-            res.write(`data: ${JSON.stringify({
-              type: 'tool_result',
-              tools: [{
-                id: event.id,
-                name: event.name,
-                isError: event.isError,
-                durationMs: Date.now() - (serverToolStartedAt.get(event.id) || Date.now()),
-                input,
-                renderType: event.renderType,
-                data: event.data,
-              }],
-            })}\n\n`);
-          }
-        },
-      );
+              input,
+              renderType: event.renderType,
+              data: event.data,
+            }],
+          })}\n\n`);
+        }
+      },
+    });
 
-      lastStopReason = result.stopReason || lastStopReason;
-      lastUsage = result.usage || lastUsage;
-      finalResult = result;
-      if (result.content) allContent.push(...result.content);
-      if (result.serverToolEvents) allServerToolEvents.push(...result.serverToolEvents);
-
-      if (!result.toolCalls?.length) break;
-
-      appendAssistantMessage(history, result);
-      res.write(`data: ${JSON.stringify({
-        type: 'tool_call',
-        tools: result.toolCalls.map(call => ({ id: call.id, name: call.name })),
-      })}\n\n`);
-
-      const toolContext = { conversationId, channelId: ch.id, model: requestModel };
-      const toolResults = await Promise.all(result.toolCalls.map(call => runTool(call, toolContext)));
-      appendToolResults(history, toolResults);
-      res.write(`data: ${JSON.stringify({
-        type: 'tool_result',
-        tools: toolResults.map(result => ({
-          id: result.id,
-          name: result.name,
-          isError: result.isError,
-          durationMs: result.durationMs,
-        })),
-      })}\n\n`);
+    // Consume tool events from the loop
+    let iterResult = await iterator.next();
+    while (!iterResult.done) {
+      const evt = iterResult.value;
+      if (evt.type === 'tool_call') {
+        res.write(`data: ${JSON.stringify({
+          type: 'tool_call',
+          tools: [{ id: evt.id, name: evt.name, input: evt.input }],
+        })}\n\n`);
+      } else if (evt.type === 'tool_result') {
+        res.write(`data: ${JSON.stringify({
+          type: 'tool_result',
+          tools: [{
+            id: evt.id,
+            name: evt.name,
+            isError: evt.isError,
+            durationMs: evt.durationMs,
+          }],
+        })}\n\n`);
+      }
+      iterResult = await iterator.next();
     }
 
-    // Consolidate: remove intermediate messages added during tool rounds
-    // and save a single assistant message with content from all rounds
-    history.splice(originalMessageCount + 1);
+    const finalState = iterResult.value;
+
+    // Consolidate: keep only the original messages + merged assistant message
     const mergedResult = {
-      ...(finalResult || {}),
-      text: fullResponse,
-      content: allContent,
-      serverToolEvents: allServerToolEvents,
+      ...(finalState.result || {}),
+      text: finalState.text,
+      content: finalState.content,
+      serverToolEvents: finalState.serverToolEvents,
     };
-    history.push(assistantMessage(mergedResult, requestModel));
+
+    const storeMessages = [...history.slice(0, originalMessageCount + 1)];
+    storeMessages.push(assistantMessage(mergedResult, requestModel));
+
     const title = originalMessageCount === 0 || existingTitle === 'New Chat'
       ? message.slice(0, 50) + (message.length > 50 ? '…' : '')
       : undefined;
 
     if (conversationId) {
-      storage.saveConversation(conversationId, history, title).catch(() => {});
+      storage.saveConversation(conversationId, storeMessages, title).catch(() => {});
     }
 
-    res.write(`data: ${JSON.stringify({ type: 'done', stopReason: lastStopReason, usage: lastUsage })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'done', stopReason: finalState.stopReason, usage: finalState.usage })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (err) {
