@@ -430,10 +430,63 @@ function renderConvoList() {
   ).join('');
 }
 
+function contentToBlocks(content, sourcesMeta, searchCountMeta) {
+  // Convert Anthropic content array (text + tool_result blocks) into ordered blocks
+  if (!Array.isArray(content)) return null;
+
+  const blocks = [];
+  let textBuf = '';
+
+  function flushText() {
+    const t = stripLeadingNewlines(stripSearchQueryText(textBuf));
+    if (t) blocks.push({ type: 'text', content: t });
+    textBuf = '';
+  }
+
+  for (const part of content) {
+    if (part.type === 'text') {
+      textBuf += (textBuf ? '\n' : '') + (part.text || '');
+    } else if (part.type === 'web_search_tool_result') {
+      flushText();
+      const items = Array.isArray(part.content) ? part.content : [];
+      const sources = items
+        .filter(item => item?.type === 'web_search_result')
+        .map(item => ({
+          title: item.title || '',
+          url: item.url || '',
+          pageAge: item.page_age || item.pageAge || '',
+          snippet: item.snippet || item.description || item.text || '',
+        }))
+        .filter(s => s.title || s.url);
+      if (sources.length) {
+        blocks.push({ type: 'sources', sources, searchCount: 1 });
+      }
+    }
+    // skip thinking, server_tool_use, tool_use blocks
+  }
+  flushText();
+
+  // If no tool_result in content but message has sources metadata, append at end
+  if (!blocks.some(b => b.type === 'sources')) {
+    const srcs = Array.isArray(sourcesMeta) ? sourcesMeta : [];
+    if (srcs.length && blocks.length) {
+      blocks.push({ type: 'sources', sources: srcs, searchCount: searchCountMeta || 0 });
+    }
+  }
+
+  return blocks.length ? blocks : null;
+}
+
 async function selectConversation(id) {
   state.activeId = id;
   const convo = await api('GET', `/api/conversations/${id}`);
-  state.messages = convo.messages;
+  state.messages = convo.messages.map(m => {
+    if (m.role === 'assistant' && !Array.isArray(m.blocks)) {
+      const blocks = contentToBlocks(m.content, m.sources, m.searchCount);
+      if (blocks) return { ...m, blocks };
+    }
+    return m;
+  });
   dom.chatTitle.textContent = convo.title;
   renderMessages();
   renderConvoList();
@@ -476,13 +529,19 @@ function renderMessages() {
         <p>Ask anything. Configure channels in Settings to get started.</p>
       </div>`;
   } else {
-    dom.messages.innerHTML = visibleMessages.map(m =>
-      `<div class="message ${m.role}">
+    dom.messages.innerHTML = visibleMessages.map(m => {
+      if (m.role === 'assistant' && Array.isArray(m.blocks)) {
+        return `<div class="message assistant">
+          <div class="role-label">ASSISTANT</div>
+          <div class="content">${renderBlocks(m.blocks, true)}</div>
+        </div>`;
+      }
+      return `<div class="message ${m.role}">
         <div class="role-label">${m.role === 'user' ? 'YOU' : 'ASSISTANT'}</div>
-        ${m.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(m), true, m.searchCount || 0)}</div>` : ''}
         <div class="content">${renderContent(messageText(m))}</div>
-      </div>`
-    ).join('');
+        ${m.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(m), true, m.searchCount || 0)}</div>` : ''}
+      </div>`;
+    }).join('');
   }
 }
 
@@ -496,6 +555,14 @@ function stripSearchQueryText(text) {
 }
 
 function messageText(message) {
+  // blocks format (new): extract text from blocks array
+  if (Array.isArray(message.blocks)) {
+    const text = message.blocks
+      .filter(b => b.type === 'text')
+      .map(b => b.content || '')
+      .join('\n');
+    return message.role === 'assistant' ? stripLeadingNewlines(stripSearchQueryText(text)) : text;
+  }
   const { content } = message;
   if (typeof content === 'string') {
     return message.role === 'assistant' ? stripLeadingNewlines(stripSearchQueryText(content)) : content;
@@ -511,7 +578,32 @@ function messageText(message) {
 }
 
 function messageSources(message) {
+  if (Array.isArray(message.blocks)) {
+    return message.blocks
+      .filter(b => b.type === 'sources')
+      .flatMap(b => b.sources || []);
+  }
   return Array.isArray(message?.sources) ? message.sources : [];
+}
+
+function messageSearchCount(message) {
+  if (Array.isArray(message.blocks)) {
+    return message.blocks.reduce((sum, b) => sum + (b.type === 'sources' ? (b.searchCount || 0) : 0), 0);
+  }
+  return message.searchCount || 0;
+}
+
+function renderBlocks(blocks, collapsed) {
+  if (!blocks?.length) return '';
+  return blocks.map(block => {
+    if (block.type === 'text') {
+      return renderContent(stripLeadingNewlines(stripSearchQueryText(block.content || '')));
+    }
+    if (block.type === 'sources') {
+      return renderSourceCards(block.sources || [], collapsed, block.searchCount || 0);
+    }
+    return '';
+  }).join('');
 }
 
 function stripLeadingNewlines(text) {
@@ -650,16 +742,11 @@ function addUserMessage(text) {
 function addAssistantPlaceholder() {
   const div = document.createElement('div');
   div.className = 'message assistant streaming';
-  div.innerHTML = `
-    <div class="role-label">ASSISTANT</div>
-    <div class="web-sources"></div>
-    <div class="content"></div>
-  `;
+  div.innerHTML = `<div class="role-label">ASSISTANT</div><div class="content"></div>`;
   dom.messages.appendChild(div);
   scrollBottom();
   return {
     rootEl: div,
-    sourcesEl: div.querySelector('.web-sources'),
     contentEl: div.querySelector('.content'),
   };
 }
@@ -693,7 +780,7 @@ async function sendMessage(text) {
   }
 
   const assistantView = addAssistantPlaceholder();
-  const { contentEl, sourcesEl } = assistantView;
+  const { contentEl } = assistantView;
 
   try {
     const res = await fetch('/api/chat', {
@@ -717,9 +804,19 @@ async function sendMessage(text) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    let fullText = '';
-    let sources = [];
-    let searchCount = 0;
+
+    // blocks: ordered stream of {type:'text',content} | {type:'sources',sources,searchCount}
+    let blocks = [{ type: 'text', content: '' }];
+    let totalSearchCount = 0;
+
+    function currentTextBlock() {
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].type === 'text') return blocks[i];
+      }
+      const b = { type: 'text', content: '' };
+      blocks.push(b);
+      return b;
+    }
 
     while (true) {
       const { done, value } = await reader.read();
@@ -737,24 +834,30 @@ async function sendMessage(text) {
             showThinkingPopup(evt.text);
           } else if (evt.type === 'delta') {
             hideThinkingPopup();
-            fullText += evt.text;
-            contentEl.innerHTML = renderContent(stripLeadingNewlines(stripSearchQueryText(fullText)));
+            currentTextBlock().content += evt.text;
+            contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
           } else if (evt.type === 'tool_call') {
             const names = evt.tools.map(t => t.name).join(', ');
-            contentEl.innerHTML = renderContent(`${stripLeadingNewlines(stripSearchQueryText(fullText))}\n\n[Using tool: ${names}]`);
+            currentTextBlock().content += `\n\n[Using tool: ${names}]`;
+            contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
           } else if (evt.type === 'tool_result') {
+            let hasSources = false;
             for (const tool of evt.tools) {
               if (tool.renderType === 'source-cards' && tool.data?.sources?.length) {
-                searchCount++;
-                sources = mergeSources(sources, tool.data.sources);
-                renderSourcesInto(sourcesEl, sources, searchCount);
+                totalSearchCount++;
+                hasSources = true;
+                blocks.push({ type: 'sources', sources: tool.data.sources, searchCount: 1 });
               }
             }
             const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
-            const status = errored ? `Tool error: ${errored}` : 'Processing tool result...';
-            contentEl.innerHTML = renderContent(stripLeadingNewlines(stripSearchQueryText(fullText)) || status);
+            const status = errored ? `Tool error: ${errored}` : (hasSources ? '' : 'Processing tool result...');
+            if (status) {
+              currentTextBlock().content += `\n\n_${status}_`;
+            }
+            blocks.push({ type: 'text', content: '' });
+            contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
           } else if (evt.type === 'error') {
             contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(evt.message)}</span>`;
@@ -771,8 +874,14 @@ async function sendMessage(text) {
       if (toggle) toggle.classList.add('collapsed');
     }
 
+    // Dedup sources across blocks for backwards compat
+    const allSources = blocks
+      .filter(b => b.type === 'sources')
+      .flatMap(b => b.sources || [])
+      .reduce((acc, s) => mergeSources(acc, [s]), []);
+
     state.messages.push({ role: 'user', content: message });
-    state.messages.push({ role: 'assistant', content: fullText, model: state.activeModel, sources, searchCount });
+    state.messages.push({ role: 'assistant', blocks, model: state.activeModel, sources: allSources, searchCount: totalSearchCount });
 
     const conv = state.conversations.find(c => c.id === state.activeId);
     if (conv && (state.messages.length <= 2 || conv.title === 'New Chat')) {
