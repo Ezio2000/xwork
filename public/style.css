@@ -328,7 +328,7 @@ body {
   border-top: 1px solid var(--border);
 }
 
-.sources-toggle-body a {
+.sources-toggle-body a.source-card {
   color: var(--text-primary);
 }
 
