@@ -852,10 +852,10 @@ async function sendMessage(text) {
               }
             }
             const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
-            const status = errored ? `Tool error: ${errored}` : (hasSources ? '' : 'Processing tool result...');
-            if (status) {
-              currentTextBlock().content += `\n\n_${status}_`;
+            if (errored) {
+              currentTextBlock().content += `\n\n_Tool error: ${errored}_`;
             }
+            // Don't add placeholder status — [Using tool: ...] already shows progress
             blocks.push({ type: 'text', content: '' });
             contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
@@ -870,8 +870,7 @@ async function sendMessage(text) {
     const streamingEl = dom.messages.querySelector('.streaming');
     if (streamingEl) {
       streamingEl.classList.remove('streaming');
-      const toggle = streamingEl.querySelector('.sources-toggle');
-      if (toggle) toggle.classList.add('collapsed');
+      streamingEl.querySelectorAll('.sources-toggle').forEach(t => t.classList.add('collapsed'));
     }
 
     // Dedup sources across blocks for backwards compat
