@@ -41,11 +41,20 @@ function getActiveChannel(cfg) {
 }
 
 const app = express();
+app.use((_req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (_req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.json());
 app.use(express.static(join(__dirname, 'public')));
 
+const api = express.Router();
+
 // --- Active channel + model ---
-app.get('/api/active', (_req, res) => {
+api.get('/active', (_req, res) => {
   const cfg = readConfig();
   res.json({
     activeChannelId: cfg.activeChannelId,
@@ -54,7 +63,7 @@ app.get('/api/active', (_req, res) => {
   });
 });
 
-app.post('/api/active', (req, res) => {
+api.post('/active', (req, res) => {
   const cfg = readConfig();
   const { channelId, model } = req.body;
   if (channelId !== undefined) {
@@ -73,12 +82,12 @@ app.post('/api/active', (req, res) => {
 });
 
 // --- Channels CRUD ---
-app.get('/api/channels', (_req, res) => {
+api.get('/channels', (_req, res) => {
   const cfg = readConfig();
   res.json(cfg.channels.map(maskChannel));
 });
 
-app.post('/api/channels', (req, res) => {
+api.post('/channels', (req, res) => {
   const cfg = readConfig();
   const { name, baseUrl, apiKey, models, maxTokens, extraHeaders } = req.body;
   if (!name || !baseUrl) {
@@ -102,7 +111,7 @@ app.post('/api/channels', (req, res) => {
   res.json(maskChannel(ch));
 });
 
-app.put('/api/channels/:id', (req, res) => {
+api.put('/channels/:id', (req, res) => {
   const cfg = readConfig();
   const idx = cfg.channels.findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Channel not found' });
@@ -122,7 +131,7 @@ app.put('/api/channels/:id', (req, res) => {
   res.json(maskChannel(ch));
 });
 
-app.delete('/api/channels/:id', (req, res) => {
+api.delete('/channels/:id', (req, res) => {
   const cfg = readConfig();
   const idx = cfg.channels.findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Channel not found' });
@@ -136,57 +145,57 @@ app.delete('/api/channels/:id', (req, res) => {
 });
 
 // --- Tools ---
-app.get('/api/tools', async (_req, res) => {
+api.get('/tools', async (_req, res) => {
   res.json(await listTools());
 });
 
-app.put('/api/tools/:id', async (req, res) => {
+api.put('/tools/:id', async (req, res) => {
   const tool = await updateToolConfig(req.params.id, req.body || {});
   if (!tool) return res.status(404).json({ error: 'Tool not found' });
   res.json(tool);
 });
 
-app.post('/api/tools/:id/enable', async (req, res) => {
+api.post('/tools/:id/enable', async (req, res) => {
   const tool = await updateToolConfig(req.params.id, { enabled: true });
   if (!tool) return res.status(404).json({ error: 'Tool not found' });
   res.json(tool);
 });
 
-app.post('/api/tools/:id/disable', async (req, res) => {
+api.post('/tools/:id/disable', async (req, res) => {
   const tool = await updateToolConfig(req.params.id, { enabled: false });
   if (!tool) return res.status(404).json({ error: 'Tool not found' });
   res.json(tool);
 });
 
-app.get('/api/tool-runs', async (req, res) => {
+api.get('/tool-runs', async (req, res) => {
   const limit = Number(req.query.limit) || 50;
   res.json(await listToolRuns(limit));
 });
 
 // --- Conversation routes ---
-app.get('/api/conversations', async (_req, res) => {
+api.get('/conversations', async (_req, res) => {
   res.json(await storage.listConversations());
 });
 
-app.post('/api/conversations', async (req, res) => {
+api.post('/conversations', async (req, res) => {
   const id = randomUUID();
   const convo = await storage.createConversation(id, req.body.title || 'New Chat');
   res.json(convo);
 });
 
-app.get('/api/conversations/:id', async (req, res) => {
+api.get('/conversations/:id', async (req, res) => {
   const convo = await storage.getConversation(req.params.id);
   if (!convo) return res.status(404).json({ error: 'Not found' });
   res.json(convo);
 });
 
-app.delete('/api/conversations/:id', async (req, res) => {
+api.delete('/conversations/:id', async (req, res) => {
   await storage.deleteConversation(req.params.id);
   res.json({ ok: true });
 });
 
 // --- Chat route (SSE stream) ---
-app.post('/api/chat', async (req, res) => {
+api.post('/chat', async (req, res) => {
   const { conversationId, message, channelId, model } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
 
@@ -351,6 +360,8 @@ app.post('/api/chat', async (req, res) => {
     res.end();
   }
 });
+
+app.use('/api/v1', api);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

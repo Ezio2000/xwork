@@ -79,7 +79,7 @@ async function api(method, url, body) {
 
 // ===== Active state =====
 async function loadActive() {
-  const data = await api('GET', '/api/active');
+  const data = await api('GET', '/api/v1/active');
   state.channels = data.channels;
   state.activeChannelId = data.activeChannelId;
   state.activeModel = data.activeModel;
@@ -90,12 +90,12 @@ async function setActiveChannel(channelId) {
   state.activeChannelId = channelId;
   const ch = state.channels.find(c => c.id === channelId);
   if (ch) state.activeModel = ch.models[0] || '';
-  await api('POST', '/api/active', { channelId, model: state.activeModel });
+  await api('POST', '/api/v1/active', { channelId, model: state.activeModel });
   renderSelectors();
 }
 
 async function setActiveModel(model) {
-  await api('POST', '/api/active', { model });
+  await api('POST', '/api/v1/active', { model });
   state.activeModel = model;
 }
 
@@ -217,15 +217,15 @@ async function saveChannel() {
   }
 
   if (id) {
-    const updated = await api('PUT', `/api/channels/${id}`, payload);
+    const updated = await api('PUT', `/api/v1/channels/${id}`, payload);
     const idx = state.channels.findIndex(c => c.id === id);
     if (idx !== -1) state.channels[idx] = updated;
   } else {
-    const created = await api('POST', '/api/channels', payload);
+    const created = await api('POST', '/api/v1/channels', payload);
     state.channels.push(created);
   }
 
-  const active = await api('GET', '/api/active');
+  const active = await api('GET', '/api/v1/active');
   state.activeChannelId = active.activeChannelId;
   state.activeModel = active.activeModel;
   renderChannelList();
@@ -235,9 +235,9 @@ async function saveChannel() {
 
 async function deleteChannel(id) {
   if (!confirm('Delete this channel?')) return;
-  await api('DELETE', `/api/channels/${id}`);
+  await api('DELETE', `/api/v1/channels/${id}`);
   state.channels = state.channels.filter(c => c.id !== id);
-  const data = await api('GET', '/api/active');
+  const data = await api('GET', '/api/v1/active');
   state.activeChannelId = data.activeChannelId;
   state.activeModel = data.activeModel;
   renderChannelList();
@@ -252,12 +252,12 @@ async function useChannel(id) {
 
 // ===== Tool list (on tools page) =====
 async function loadTools() {
-  state.tools = await api('GET', '/api/tools');
+  state.tools = await api('GET', '/api/v1/tools');
   renderToolList();
 }
 
 async function loadToolRuns() {
-  state.toolRuns = await api('GET', '/api/tool-runs?limit=20');
+  state.toolRuns = await api('GET', '/api/v1/tool-runs?limit=20');
   renderToolRuns();
 }
 
@@ -409,7 +409,7 @@ function hideToolRunDetail() {
 }
 
 async function toggleTool(id, enabled) {
-  const updated = await api('PUT', `/api/tools/${id}`, { enabled });
+  const updated = await api('PUT', `/api/v1/tools/${id}`, { enabled });
   const idx = state.tools.findIndex(tool => tool.id === id);
   if (idx !== -1) state.tools[idx] = updated;
   renderToolList();
@@ -417,7 +417,7 @@ async function toggleTool(id, enabled) {
 
 // ===== Conversations =====
 async function loadConversations() {
-  state.conversations = await api('GET', '/api/conversations');
+  state.conversations = await api('GET', '/api/v1/conversations');
   renderConvoList();
 }
 
@@ -479,7 +479,7 @@ function contentToBlocks(content, sourcesMeta, searchCountMeta) {
 
 async function selectConversation(id) {
   state.activeId = id;
-  const convo = await api('GET', `/api/conversations/${id}`);
+  const convo = await api('GET', `/api/v1/conversations/${id}`);
   state.messages = convo.messages.map(m => {
     if (m.role === 'assistant' && !Array.isArray(m.blocks)) {
       const blocks = contentToBlocks(m.content, m.sources, m.searchCount);
@@ -494,7 +494,7 @@ async function selectConversation(id) {
 }
 
 async function newConversation() {
-  const convo = await api('POST', '/api/conversations', { title: 'New Chat' });
+  const convo = await api('POST', '/api/v1/conversations', { title: 'New Chat' });
   state.conversations.unshift({
     id: convo.id, title: convo.title,
     createdAt: convo.createdAt, updatedAt: convo.updatedAt, messageCount: 0,
@@ -508,7 +508,7 @@ async function newConversation() {
 }
 
 async function deleteConversation(id) {
-  await api('DELETE', `/api/conversations/${id}`);
+  await api('DELETE', `/api/v1/conversations/${id}`);
   if (state.activeId === id) {
     state.activeId = null;
     state.messages = [];
@@ -767,7 +767,7 @@ async function sendMessage(text) {
   addUserMessage(message);
 
   if (!state.activeId) {
-    const convo = await api('POST', '/api/conversations', {
+    const convo = await api('POST', '/api/v1/conversations', {
       title: message.slice(0, 50) + (message.length > 50 ? '…' : ''),
     });
     state.activeId = convo.id;
@@ -783,7 +783,7 @@ async function sendMessage(text) {
   const { contentEl } = assistantView;
 
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch('/api/v1/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
