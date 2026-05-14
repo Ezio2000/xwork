@@ -325,6 +325,8 @@ api.post('/chat', async (req, res) => {
             name: evt.name,
             isError: evt.isError,
             durationMs: evt.durationMs,
+            input: evt.input,
+            ...(evt.renderType ? { renderType: evt.renderType, data: evt.data } : {}),
           }],
         })}\n\n`);
       }
