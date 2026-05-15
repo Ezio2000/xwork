@@ -430,7 +430,7 @@ function renderConvoList() {
   ).join('');
 }
 
-function contentToBlocks(content, sourcesMeta, searchCountMeta) {
+function contentToBlocks(content, sourcesMeta, searchCountMeta, toolResultsMap) {
   // Convert Anthropic content array (text + tool_result blocks) into ordered blocks
   if (!Array.isArray(content)) return null;
 
@@ -469,8 +469,16 @@ function contentToBlocks(content, sourcesMeta, searchCountMeta) {
           blocks.push({ type: 'uuid-list', uuids: data.uuids, count: data.count ?? data.uuids.length });
         }
       } catch {}
+    } else if (part.type === 'tool_use' || part.type === 'server_tool_use') {
+      flushText();
+      if (toolResultsMap) {
+        const tr = toolResultsMap[part.id || part.tool_use_id];
+        if (tr?.type === 'uuid-list') {
+          blocks.push(tr);
+          blocks.push({ type: 'text', content: '' });
+        }
+      }
     }
-    // skip thinking, server_tool_use, tool_use blocks
   }
   flushText();
 
@@ -488,40 +496,66 @@ function contentToBlocks(content, sourcesMeta, searchCountMeta) {
 async function selectConversation(id) {
   state.activeId = id;
   const convo = await api('GET', `/api/v1/conversations/${id}`);
-  state.messages = convo.messages.map(m => {
-    if (m.role === 'assistant' && !Array.isArray(m.blocks)) {
-      const blocks = contentToBlocks(m.content, m.sources, m.searchCount);
-      if (blocks) return { ...m, blocks };
-    }
-    return m;
-  });
 
-  // Second pass: inject uuid-list from tool_result into preceding assistant messages
-  for (let i = 0; i < state.messages.length; i++) {
-    const msg = state.messages[i];
+  // Pre-scan: build tool result maps for each assistant message
+  // Maps tool_use_id → { type: 'uuid-list', uuids, count }
+  const toolResultsByAssistant = {};
+  for (let i = 0; i < convo.messages.length; i++) {
+    const msg = convo.messages[i];
     if (msg.role !== 'assistant') continue;
-    if (Array.isArray(msg.blocks) && msg.blocks.some(b => b.type === 'uuid-list')) continue;
-
-    const uuidBlocks = [];
-    for (let j = i + 1; j < state.messages.length; j++) {
-      const next = state.messages[j];
-      if (next.role !== 'user' || !Array.isArray(next.content)) continue;
+    const map = {};
+    for (let j = i + 1; j < convo.messages.length; j++) {
+      const next = convo.messages[j];
+      if (next.role !== 'user') break;
+      if (!Array.isArray(next.content)) continue;
       for (const part of next.content) {
         if (part.type === 'tool_result' && typeof part.content === 'string') {
           try {
             const data = JSON.parse(part.content);
             if (Array.isArray(data.uuids)) {
-              uuidBlocks.push({ type: 'uuid-list', uuids: data.uuids, count: data.count ?? data.uuids.length });
+              map[part.tool_use_id] = { type: 'uuid-list', uuids: data.uuids, count: data.count ?? data.uuids.length };
             }
           } catch {}
         }
       }
-      if (uuidBlocks.length) break;
     }
-    if (uuidBlocks.length) {
-      if (!Array.isArray(msg.blocks)) msg.blocks = [];
-      msg.blocks = [...msg.blocks, ...uuidBlocks, { type: 'text', content: '' }];
+    if (Object.keys(map).length) {
+      toolResultsByAssistant[i] = map;
     }
+  }
+
+  state.messages = convo.messages.map((m, i) => {
+    if (m.role === 'assistant') {
+      const toolMap = toolResultsByAssistant[i];
+      if (Array.isArray(m.blocks)) {
+        if (toolMap && !m.blocks.some(b => b.type === 'uuid-list')) {
+          const blocks = contentToBlocks(m.content, m.sources, m.searchCount, toolMap);
+          if (blocks) return { ...m, blocks };
+        }
+        return m;
+      }
+      const blocks = contentToBlocks(m.content, m.sources, m.searchCount, toolMap);
+      if (blocks) return { ...m, blocks };
+    }
+    return m;
+  });
+
+  // Fix: move uuid-list before the last contentful text if misplaced
+  // (covers old conversations saved before server-side position fix)
+  for (const msg of state.messages) {
+    if (msg.role !== 'assistant' || !Array.isArray(msg.blocks)) continue;
+    let lastTextIdx = -1;
+    let firstPostTextUuid = -1;
+    for (let i = 0; i < msg.blocks.length; i++) {
+      const b = msg.blocks[i];
+      if (b.type === 'text' && b.content?.trim()) lastTextIdx = i;
+      if (b.type === 'uuid-list' && lastTextIdx >= 0 && firstPostTextUuid < 0) firstPostTextUuid = i;
+    }
+    if (firstPostTextUuid < 0) continue;
+    const before = msg.blocks.slice(0, lastTextIdx);
+    const uuids = msg.blocks.filter(b => b.type === 'uuid-list');
+    const after = msg.blocks.slice(lastTextIdx).filter(b => b.type !== 'uuid-list');
+    msg.blocks = [...before, ...uuids, ...after];
   }
 
   dom.chatTitle.textContent = convo.title;
