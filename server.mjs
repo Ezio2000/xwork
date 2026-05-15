@@ -341,6 +341,7 @@ api.post('/chat', async (req, res) => {
       text: finalState.text,
       content: finalState.content,
       serverToolEvents: finalState.serverToolEvents,
+      builtinToolResults: finalState.builtinToolResults || [],
       __toolResults: finalState.messages,
     };
 

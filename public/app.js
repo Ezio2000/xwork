@@ -459,7 +459,7 @@ function contentToBlocks(content, sourcesMeta, searchCountMeta, toolResultsMap) 
         }))
         .filter(s => s.title || s.url);
       if (sources.length) {
-        blocks.push({ type: 'sources', sources, searchCount: 1 });
+        blocks.push({ type: 'source-cards', sources, searchCount: 1 });
       }
     } else if (part.type === 'tool_result' && typeof part.content === 'string') {
       flushText();
@@ -483,10 +483,10 @@ function contentToBlocks(content, sourcesMeta, searchCountMeta, toolResultsMap) 
   flushText();
 
   // If no tool_result in content but message has sources metadata, append at end
-  if (!blocks.some(b => b.type === 'sources')) {
+  if (!blocks.some(b => b.type === 'source-cards' || b.type === 'sources')) {
     const srcs = Array.isArray(sourcesMeta) ? sourcesMeta : [];
     if (srcs.length && blocks.length) {
-      blocks.push({ type: 'sources', sources: srcs, searchCount: searchCountMeta || 0 });
+      blocks.push({ type: 'source-cards', sources: srcs, searchCount: searchCountMeta || 0 });
     }
   }
 
@@ -651,7 +651,7 @@ function messageText(message) {
 function messageSources(message) {
   if (Array.isArray(message.blocks)) {
     return message.blocks
-      .filter(b => b.type === 'sources')
+      .filter(b => b.type === 'source-cards' || b.type === 'sources')
       .flatMap(b => b.sources || []);
   }
   return Array.isArray(message?.sources) ? message.sources : [];
@@ -659,24 +659,24 @@ function messageSources(message) {
 
 function messageSearchCount(message) {
   if (Array.isArray(message.blocks)) {
-    return message.blocks.reduce((sum, b) => sum + (b.type === 'sources' ? (b.searchCount || 0) : 0), 0);
+    return message.blocks.reduce((sum, b) => sum + (b.searchCount || 0), 0);
   }
   return message.searchCount || 0;
 }
 
+// Block renderer registry — add new block types here
+const blockRenderers = {
+  'text': (block) => renderContent(stripLeadingNewlines(stripSearchQueryText(block.content || ''))),
+  'source-cards': (block, collapsed) => renderSourceCards(block.sources || [], collapsed, block.searchCount || 0),
+  'sources': (block, collapsed) => renderSourceCards(block.sources || [], collapsed, block.searchCount || 0), // legacy
+  'uuid-list': (block) => renderUuidList(block.uuids || [], block.count || 0),
+};
+
 function renderBlocks(blocks, collapsed) {
   if (!blocks?.length) return '';
   return blocks.map(block => {
-    if (block.type === 'text') {
-      return renderContent(stripLeadingNewlines(stripSearchQueryText(block.content || '')));
-    }
-    if (block.type === 'sources') {
-      return renderSourceCards(block.sources || [], collapsed, block.searchCount || 0);
-    }
-    if (block.type === 'uuid-list') {
-      return renderUuidList(block.uuids || [], block.count || 0);
-    }
-    return '';
+    const renderer = blockRenderers[block.type];
+    return renderer ? renderer(block, collapsed) : '';
   }).join('');
 }
 
@@ -955,9 +955,8 @@ async function sendMessage(text) {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    // blocks: ordered stream of {type:'text',content} | {type:'sources',sources,searchCount}
+    // blocks: ordered stream of {type, ...data} — text, source-cards, uuid-list, etc.
     let blocks = [{ type: 'text', content: '' }];
-    let totalSearchCount = 0;
 
     function currentTextBlock() {
       for (let i = blocks.length - 1; i >= 0; i--) {
@@ -992,22 +991,15 @@ async function sendMessage(text) {
             contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
           } else if (evt.type === 'tool_result') {
-            let hasSources = false;
             for (const tool of evt.tools) {
-              if (tool.renderType === 'source-cards' && tool.data?.sources?.length) {
-                totalSearchCount++;
-                hasSources = true;
-                blocks.push({ type: 'sources', sources: tool.data.sources, searchCount: 1 });
-              }
-              if (tool.renderType === 'uuid-list' && tool.data?.uuids?.length) {
-                blocks.push({ type: 'uuid-list', uuids: tool.data.uuids, count: tool.data.count });
+              if (tool.renderType && tool.data) {
+                blocks.push({ type: tool.renderType, ...tool.data });
               }
             }
             const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
             if (errored) {
               currentTextBlock().content += `\n\n_Tool error: ${errored}_`;
             }
-            // Don't add placeholder status — [Using tool: ...] already shows progress
             blocks.push({ type: 'text', content: '' });
             contentEl.innerHTML = renderBlocks(blocks, false);
             scrollBottom();
@@ -1025,11 +1017,13 @@ async function sendMessage(text) {
       streamingEl.querySelectorAll('.sources-toggle').forEach(t => t.classList.add('collapsed'));
     }
 
-    // Dedup sources across blocks for backwards compat
+    // Dedup sources across blocks
     const allSources = blocks
-      .filter(b => b.type === 'sources')
+      .filter(b => b.type === 'source-cards' || b.type === 'sources')
       .flatMap(b => b.sources || [])
       .reduce((acc, s) => mergeSources(acc, [s]), []);
+
+    const totalSearchCount = blocks.reduce((sum, b) => sum + (b.searchCount || 0), 0);
 
     state.messages.push({ role: 'user', content: message });
     state.messages.push({ role: 'assistant', blocks, model: state.activeModel, sources: allSources, searchCount: totalSearchCount });

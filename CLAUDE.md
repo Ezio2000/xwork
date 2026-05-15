@@ -34,8 +34,8 @@ POST /api/v1/chat (SSE)
 | 文件 | 职责 |
 |---|---|
 | `server.mjs` | Express 路由、渠道 CRUD、对话管理、SSE 流式主控制器 |
-| `lib/api.mjs` | Anthropic Messages SSE 流客户端：解析 SSE 块、构建 system prompt、消息规范化、`assistantMessage()` 结果打包 |
-| `lib/query-loop.mjs` | 多轮工具调用生成器：while(true) 模式，最多 maxTurns 轮，每轮执行 API 调用 → 收集 toolCalls → 执行工具 → 回传 tool_result → 继续 |
+| `lib/api.mjs` | Anthropic Messages SSE 流客户端：解析 SSE 块、构建 system prompt、消息规范化、`buildBlocksFromResult()` 通用块构建（按 renderType 查表，无硬编码类型判断）、`assistantMessage()` 结果打包 |
+| `lib/query-loop.mjs` | 多轮工具调用生成器：while(true) 模式，最多 maxTurns 轮，每轮执行 API 调用 → 收集 toolCalls → 执行工具 → 收集 serverToolEvents + builtinToolResults → 回传 tool_result → 继续 |
 | `lib/storage.mjs` | 对话持久化：JSON 文件存储于 `data/conversations/` |
 | `lib/tools/runner.mjs` | 工具执行引擎：生命周期钩子 (validate → before → handler → after → onComplete) + parseResult + 超时保护 |
 | `lib/tools/registry.mjs` | 工具注册：读取 `data/tools.json` 配置，导出启用的工具定义给 API |
@@ -47,12 +47,18 @@ POST /api/v1/chat (SSE)
 所有工具定义在 `lib/tools/builtin/` 下，需在 `index.mjs` 中注册。
 
 两种适配器类型：
-- **`builtin`**：本地执行，提供完整生命周期钩子 (validate/before/handler/after/onError/onComplete) 和 parseResult 渲染扩展
-- **`anthropic_server`**：由 API 提供商（Anthropic）执行，通过 `parseStreamResult(block)` 解析 SSE 流中的结果块
+- **`builtin`**：本地执行，提供完整生命周期钩子 (validate/before/handler/after/onError/onComplete) 和 `parseResult(output)` 返回 `{ renderType, data }`
+- **`anthropic_server`**：由 API 提供商（Anthropic）执行，通过 `parseStreamResult(block)` 返回 `{ renderType, data }`
+
+两种适配器的 `{ renderType, data }` 通过统一管道流动：
+  - 实时 SSE 流：前端 `sendMessage()` 通用 push `{ type: renderType, ...data }` 到 blocks
+  - 保存对话：`buildBlocksFromResult()` 统一 `renderByCallId` 查表，无类型判断
+  - 渲染：前端 `blockRenderers` 注册表按 type 匹配渲染函数
+新增具备自定义渲染的 tool 只需定义 `parseResult`/`parseStreamResult` + 在 `blockRenderers` 注册一行。
 
 ### 前端
 
-`public/` 目录为纯静态文件（无框架）：`index.html` + `app.js` + `markdown-it` + `style.css`。前端通过 EventSource/fetch SSE 消费 `/api/v1/chat` 流，按 `blocks` 数组渲染文本块和来源卡片。
+`public/` 目录为纯静态文件（无框架）：`index.html` + `app.js` + `markdown-it` + `style.css`。前端通过 fetch SSE 消费 `/api/v1/chat` 流，按 `blocks` 数组渲染。`blockRenderers` 注册表按 type 匹配渲染函数（text/source-cards/uuid-list/...），`renderBlocks()` 不再硬编码类型分支。
 
 ### 配置
 
