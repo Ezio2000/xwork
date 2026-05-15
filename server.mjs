@@ -341,6 +341,7 @@ api.post('/chat', async (req, res) => {
       text: finalState.text,
       content: finalState.content,
       serverToolEvents: finalState.serverToolEvents,
+      __toolResults: finalState.messages,
     };
 
     const storeMessages = [...history.slice(0, originalMessageCount + 1)];

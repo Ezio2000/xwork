@@ -461,6 +461,14 @@ function contentToBlocks(content, sourcesMeta, searchCountMeta) {
       if (sources.length) {
         blocks.push({ type: 'sources', sources, searchCount: 1 });
       }
+    } else if (part.type === 'tool_result' && typeof part.content === 'string') {
+      flushText();
+      try {
+        const data = JSON.parse(part.content);
+        if (Array.isArray(data.uuids)) {
+          blocks.push({ type: 'uuid-list', uuids: data.uuids, count: data.count ?? data.uuids.length });
+        }
+      } catch {}
     }
     // skip thinking, server_tool_use, tool_use blocks
   }
@@ -487,6 +495,35 @@ async function selectConversation(id) {
     }
     return m;
   });
+
+  // Second pass: inject uuid-list from tool_result into preceding assistant messages
+  for (let i = 0; i < state.messages.length; i++) {
+    const msg = state.messages[i];
+    if (msg.role !== 'assistant') continue;
+    if (Array.isArray(msg.blocks) && msg.blocks.some(b => b.type === 'uuid-list')) continue;
+
+    const uuidBlocks = [];
+    for (let j = i + 1; j < state.messages.length; j++) {
+      const next = state.messages[j];
+      if (next.role !== 'user' || !Array.isArray(next.content)) continue;
+      for (const part of next.content) {
+        if (part.type === 'tool_result' && typeof part.content === 'string') {
+          try {
+            const data = JSON.parse(part.content);
+            if (Array.isArray(data.uuids)) {
+              uuidBlocks.push({ type: 'uuid-list', uuids: data.uuids, count: data.count ?? data.uuids.length });
+            }
+          } catch {}
+        }
+      }
+      if (uuidBlocks.length) break;
+    }
+    if (uuidBlocks.length) {
+      if (!Array.isArray(msg.blocks)) msg.blocks = [];
+      msg.blocks = [...msg.blocks, ...uuidBlocks, { type: 'text', content: '' }];
+    }
+  }
+
   dom.chatTitle.textContent = convo.title;
   renderMessages();
   renderConvoList();
@@ -605,9 +642,6 @@ function renderBlocks(blocks, collapsed) {
     if (block.type === 'uuid-list') {
       return renderUuidList(block.uuids || [], block.count || 0);
     }
-    if (block.type === 'calc-result') {
-      return renderCalcResult(block.expression, block.result, block.error);
-    }
     return '';
   }).join('');
 }
@@ -616,10 +650,8 @@ function stripLeadingNewlines(text) {
   return String(text || '').replace(/^\n+/, '');
 }
 
-function renderContent(text) {
+function renderMath(text) {
   let value = String(text || '');
-
-  // 1. Protect display math $$...$$
   const displayMath = [];
   value = value.replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => {
     try {
@@ -629,8 +661,6 @@ function renderContent(text) {
     }
     return `\x00DM${displayMath.length - 1}\x00`;
   });
-
-  // 2. Protect inline math $...$
   const inlineMath = [];
   value = value.replace(/\$(.+?)\$/g, (_, formula) => {
     try {
@@ -640,14 +670,14 @@ function renderContent(text) {
     }
     return `\x00IM${inlineMath.length - 1}\x00`;
   });
+  return { value, displayMath, inlineMath };
+}
 
-  // 3. Render markdown
+function renderContent(text) {
+  const { value, displayMath, inlineMath } = renderMath(text);
   let html = marked.parse(normalizeMarkdownForDisplay(value));
-
-  // 4. Restore math
   html = html.replace(/\x00DM(\d+)\x00/g, (_, i) => displayMath[+i]);
   html = html.replace(/\x00IM(\d+)\x00/g, (_, i) => inlineMath[+i]);
-
   return html;
 }
 
@@ -734,38 +764,27 @@ function renderUuidList(uuids, count) {
   if (!uuids?.length) return '';
   const label = count === 1 ? 'UUID' : `${count} UUIDs`;
   return `
-    <div class="uuid-list-container">
-      <div class="uuid-list-header">
-        <span class="uuid-list-label">${label}</span>
-        <button class="uuid-copy-all" onclick="copyUuids(event, this)" data-uuids="${escHtml(JSON.stringify(uuids))}">Copy all</button>
+    <div class="uuid-toggle collapsed">
+      <div class="uuid-toggle-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="uuid-toggle-label">${label}</span>
+        <span class="uuid-toggle-arrow">▾</span>
       </div>
-      <div class="uuid-list">
-        ${uuids.map((uuid, i) => `
-          <div class="uuid-row">
-            <span class="uuid-index">${i + 1}</span>
-            <code class="uuid-value">${escHtml(uuid)}</code>
-            <button class="uuid-copy-one" onclick="copyUuid(event, '${escHtml(uuid)}')" title="Copy">Copy</button>
+      <div class="uuid-toggle-body">
+        <div class="uuid-list-container">
+          <div class="uuid-list-header">
+            <button class="uuid-copy-all" onclick="copyUuids(event, this)" data-uuids="${escHtml(JSON.stringify(uuids))}">Copy all</button>
           </div>
-        `).join('')}
+          <div class="uuid-list">
+            ${uuids.map((uuid, i) => `
+              <div class="uuid-row">
+                <span class="uuid-index">${i + 1}</span>
+                <code class="uuid-value">${escHtml(uuid)}</code>
+                <button class="uuid-copy-one" onclick="copyUuid(event, '${escHtml(uuid)}')" title="Copy">Copy</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
       </div>
-    </div>
-  `;
-}
-
-function renderCalcResult(expression, result, error) {
-  if (error) {
-    return `
-      <div class="calc-result-container error">
-        <div class="calc-expr">${escHtml(expression)}</div>
-        <div class="calc-error">${escHtml(error)}</div>
-      </div>
-    `;
-  }
-  return `
-    <div class="calc-result-container">
-      <div class="calc-expr">${escHtml(expression)}</div>
-      <div class="calc-equals">=</div>
-      <div class="calc-value">${typeof result === 'number' ? result.toLocaleString('en-US', { maximumFractionDigits: 20 }) : escHtml(String(result))}</div>
     </div>
   `;
 }
@@ -948,9 +967,6 @@ async function sendMessage(text) {
               }
               if (tool.renderType === 'uuid-list' && tool.data?.uuids?.length) {
                 blocks.push({ type: 'uuid-list', uuids: tool.data.uuids, count: tool.data.count });
-              }
-              if (tool.renderType === 'calc-result' && tool.data) {
-                blocks.push({ type: 'calc-result', ...tool.data });
               }
             }
             const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
