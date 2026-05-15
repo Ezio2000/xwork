@@ -552,7 +552,7 @@ async function selectConversation(id) {
       if (b.type === 'uuid-list' && lastTextIdx >= 0 && firstPostTextUuid < 0) firstPostTextUuid = i;
     }
     if (firstPostTextUuid < 0) continue;
-    const before = msg.blocks.slice(0, lastTextIdx);
+    const before = msg.blocks.slice(0, lastTextIdx).filter(b => b.type !== 'uuid-list');
     const uuids = msg.blocks.filter(b => b.type === 'uuid-list');
     const after = msg.blocks.slice(lastTextIdx).filter(b => b.type !== 'uuid-list');
     msg.blocks = [...before, ...uuids, ...after];
