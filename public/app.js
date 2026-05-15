@@ -602,6 +602,12 @@ function renderBlocks(blocks, collapsed) {
     if (block.type === 'sources') {
       return renderSourceCards(block.sources || [], collapsed, block.searchCount || 0);
     }
+    if (block.type === 'uuid-list') {
+      return renderUuidList(block.uuids || [], block.count || 0);
+    }
+    if (block.type === 'calc-result') {
+      return renderCalcResult(block.expression, block.result, block.error);
+    }
     return '';
   }).join('');
 }
@@ -611,7 +617,38 @@ function stripLeadingNewlines(text) {
 }
 
 function renderContent(text) {
-  return marked.parse(normalizeMarkdownForDisplay(text));
+  let value = String(text || '');
+
+  // 1. Protect display math $$...$$
+  const displayMath = [];
+  value = value.replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => {
+    try {
+      displayMath.push(katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false }));
+    } catch {
+      displayMath.push(`<code>$${escHtml(formula)}$$</code>`);
+    }
+    return `\x00DM${displayMath.length - 1}\x00`;
+  });
+
+  // 2. Protect inline math $...$
+  const inlineMath = [];
+  value = value.replace(/\$(.+?)\$/g, (_, formula) => {
+    try {
+      inlineMath.push(katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false }));
+    } catch {
+      inlineMath.push(`<code>$${escHtml(formula)}$</code>`);
+    }
+    return `\x00IM${inlineMath.length - 1}\x00`;
+  });
+
+  // 3. Render markdown
+  let html = marked.parse(normalizeMarkdownForDisplay(value));
+
+  // 4. Restore math
+  html = html.replace(/\x00DM(\d+)\x00/g, (_, i) => displayMath[+i]);
+  html = html.replace(/\x00IM(\d+)\x00/g, (_, i) => inlineMath[+i]);
+
+  return html;
 }
 
 function normalizeMarkdownForDisplay(text) {
@@ -691,6 +728,66 @@ function renderSourceCards(sources, collapsed = false, searchCount = 0) {
 function renderSourcesInto(el, sources, searchCount = 0) {
   if (!el) return;
   el.innerHTML = renderSourceCards(sources, false, searchCount);
+}
+
+function renderUuidList(uuids, count) {
+  if (!uuids?.length) return '';
+  const label = count === 1 ? 'UUID' : `${count} UUIDs`;
+  return `
+    <div class="uuid-list-container">
+      <div class="uuid-list-header">
+        <span class="uuid-list-label">${label}</span>
+        <button class="uuid-copy-all" onclick="copyUuids(event, this)" data-uuids="${escHtml(JSON.stringify(uuids))}">Copy all</button>
+      </div>
+      <div class="uuid-list">
+        ${uuids.map((uuid, i) => `
+          <div class="uuid-row">
+            <span class="uuid-index">${i + 1}</span>
+            <code class="uuid-value">${escHtml(uuid)}</code>
+            <button class="uuid-copy-one" onclick="copyUuid(event, '${escHtml(uuid)}')" title="Copy">Copy</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderCalcResult(expression, result, error) {
+  if (error) {
+    return `
+      <div class="calc-result-container error">
+        <div class="calc-expr">${escHtml(expression)}</div>
+        <div class="calc-error">${escHtml(error)}</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="calc-result-container">
+      <div class="calc-expr">${escHtml(expression)}</div>
+      <div class="calc-equals">=</div>
+      <div class="calc-value">${typeof result === 'number' ? result.toLocaleString('en-US', { maximumFractionDigits: 20 }) : escHtml(String(result))}</div>
+    </div>
+  `;
+}
+
+function copyUuid(event, uuid) {
+  event.preventDefault();
+  navigator.clipboard.writeText(uuid).then(() => {
+    const btn = event.currentTarget;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+  }).catch(() => {});
+}
+
+function copyUuids(event, btn) {
+  event.preventDefault();
+  try {
+    const uuids = JSON.parse(btn.dataset.uuids);
+    navigator.clipboard.writeText(uuids.join('\n')).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy all'; }, 1200);
+    }).catch(() => {});
+  } catch {}
 }
 
 function scrollBottom() {
@@ -848,6 +945,12 @@ async function sendMessage(text) {
                 totalSearchCount++;
                 hasSources = true;
                 blocks.push({ type: 'sources', sources: tool.data.sources, searchCount: 1 });
+              }
+              if (tool.renderType === 'uuid-list' && tool.data?.uuids?.length) {
+                blocks.push({ type: 'uuid-list', uuids: tool.data.uuids, count: tool.data.count });
+              }
+              if (tool.renderType === 'calc-result' && tool.data) {
+                blocks.push({ type: 'calc-result', ...tool.data });
               }
             }
             const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
