@@ -56,12 +56,60 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
   if (evt.type === 'tool_result') {
     for (const tool of evt.tools) {
       if (tool.renderType && tool.data) {
+        if (tool.renderType === 'subagent-run' && tool.data.runId) {
+          const existing = blocks.find(block => block.type === 'subagent-run' && block.runId === tool.data.runId);
+          if (existing) {
+            Object.assign(existing, { ...tool.data, type: 'subagent-run' });
+            continue;
+          }
+        }
         blocks.push({ type: tool.renderType, ...tool.data });
       }
     }
     const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
     if (errored) currentTextBlock(blocks).content += `\n\n_Tool error: ${errored}_`;
     blocks.push({ type: 'text', content: '' });
+    contentEl.innerHTML = renderBlocks(blocks, false);
+    scrollBottom();
+    return;
+  }
+
+  if (evt.type === 'agent_event') {
+    const agentEventType = evt.eventType || evt.event || '';
+    if (agentEventType === 'root_start') return;
+    if (agentEventType === 'subagent_start') {
+      let block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      if (!block) {
+        block = {
+          type: 'subagent-run',
+          runId: evt.runId,
+          parentRunId: evt.parentRunId || null,
+          status: 'running',
+          label: evt.label || 'Subagent',
+          task: evt.task || '',
+          text: '',
+        };
+        blocks.push(block);
+      }
+    } else if (agentEventType === 'subagent_delta') {
+      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      if (block) block.text = (block.text || '') + (evt.text || '');
+    } else if (agentEventType === 'subagent_done') {
+      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      if (block) {
+        block.status = evt.status || 'completed';
+        block.text = evt.result?.text || block.text || '';
+        block.error = evt.error || '';
+      }
+    } else if (agentEventType === 'subagent_tool_result') {
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        const block = blocks[i];
+        if (block.type === 'subagent-run' && block.runId === evt.runId) {
+          block.status = evt.isError ? 'tool_error' : block.status || 'running';
+          break;
+        }
+      }
+    }
     contentEl.innerHTML = renderBlocks(blocks, false);
     scrollBottom();
     return;

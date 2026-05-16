@@ -526,6 +526,88 @@ body {
   border-color: var(--accent);
 }
 
+/* ===== Subagent Runs ===== */
+.subagent-toggle {
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.subagent-toggle-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-secondary);
+  transition: background 0.15s;
+}
+
+.subagent-toggle-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.subagent-toggle-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.subagent-status {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
+.subagent-status.completed { color: var(--accent); border-color: var(--accent); }
+.subagent-status.error,
+.subagent-status.aborted { color: var(--danger); border-color: var(--danger); }
+
+.subagent-toggle-arrow {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.subagent-toggle.collapsed .subagent-toggle-arrow {
+  transform: rotate(-90deg);
+}
+
+.subagent-toggle.collapsed .subagent-toggle-body {
+  display: none;
+}
+
+.subagent-toggle-body {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  background: var(--bg-primary);
+}
+
+.subagent-task {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.subagent-text {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
 /* ===== Thinking Popup ===== */
 #thinking-popup {
   position: fixed;
