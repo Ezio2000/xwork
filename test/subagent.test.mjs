@@ -146,8 +146,9 @@ describe('subagent runtime', () => {
       maxOutputChars: 500,
     });
 
-    assert.match(receivedMessages[0].content, /Brief from parent:\nOnly use this context/);
+    assert.doesNotMatch(receivedMessages[0].content, /Brief from parent:\nOnly use this context/);
     assert.match(receivedMessages[1].content, /Objective:\nAnswer one narrow question/);
+    assert.match(receivedMessages[1].content, /Relevant context:\nOnly use this context/);
     assert.match(receivedMessages[1].content, /Output contract:\nReturn 3 bullets/);
     assert.equal(result.text.length, 503);
     assert.equal(result.usage, null);
