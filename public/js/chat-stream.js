@@ -47,6 +47,26 @@ function appendSubagentText(block, text) {
   }
 }
 
+function rememberSubagentCollapseState(block, contentEl) {
+  if (!block?.runId || !contentEl) return;
+  const escapedRunId = window.CSS?.escape ? CSS.escape(block.runId) : String(block.runId).replace(/"/g, '\\"');
+  const selector = `.subagent-toggle[data-agent-run-id="${escapedRunId}"]`;
+  const current = contentEl.querySelector(selector);
+  if (!current) return;
+  block.collapsed = current.classList.contains('collapsed');
+}
+
+function rememberAllSubagentCollapseStates(blocks, contentEl) {
+  for (const block of blocks) {
+    if (block.type === 'subagent-run') rememberSubagentCollapseState(block, contentEl);
+  }
+}
+
+function isTerminalSubagentBlock(block) {
+  const status = String(block?.status || '').toLowerCase();
+  return block?.type === 'subagent-run' && status && status !== 'running' && status !== 'tool_error';
+}
+
 async function ensureConversation(message) {
   if (state.activeId) return;
 
@@ -74,6 +94,7 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
 
   if (evt.type === 'delta') {
     hideThinkingPopup();
+    rememberAllSubagentCollapseStates(blocks, contentEl);
     currentTextBlock(blocks).content += evt.text;
     contentEl.innerHTML = renderBlocks(blocks, false);
     scrollBottom();
@@ -81,22 +102,27 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
   }
 
   if (evt.type === 'tool_call') {
+    rememberAllSubagentCollapseStates(blocks, contentEl);
     contentEl.innerHTML = renderBlocks(blocks, false);
     scrollBottom();
     return;
   }
 
   if (evt.type === 'tool_result') {
+    rememberAllSubagentCollapseStates(blocks, contentEl);
     for (const tool of evt.tools) {
       if (tool.renderType && tool.data) {
         if (tool.renderType === 'subagent-run' && tool.data.runId) {
           const existing = blocks.find(block => block.type === 'subagent-run' && block.runId === tool.data.runId);
           if (existing) {
             Object.assign(existing, { ...tool.data, type: 'subagent-run' });
+            if (existing.collapsed === undefined && isTerminalSubagentBlock(existing)) existing.collapsed = true;
             continue;
           }
         }
-        blocks.push({ type: tool.renderType, ...tool.data });
+        const block = { type: tool.renderType, ...tool.data };
+        if (isTerminalSubagentBlock(block)) block.collapsed = true;
+        blocks.push(block);
       }
     }
     const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
@@ -149,14 +175,19 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
         block.parentRunId = evt.parentRunId || block.parentRunId || null;
         block.rootRunId = evt.rootRunId || block.rootRunId || null;
         pushSubagentEvent(block, evt);
+        block.collapsed = true;
       }
     } else if (agentEventType === 'subagent_tool_call' || agentEventType === 'subagent_server_tool') {
       const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
-      if (block) pushSubagentEvent(block, evt);
+      if (block) {
+        rememberSubagentCollapseState(block, contentEl);
+        pushSubagentEvent(block, evt);
+      }
     } else if (agentEventType === 'subagent_tool_result') {
       for (let i = blocks.length - 1; i >= 0; i--) {
         const block = blocks[i];
         if (block.type === 'subagent-run' && block.runId === evt.runId) {
+          rememberSubagentCollapseState(block, contentEl);
           block.status = evt.isError ? 'tool_error' : block.status || 'running';
           pushSubagentEvent(block, evt);
           break;

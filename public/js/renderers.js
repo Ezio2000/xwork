@@ -142,19 +142,28 @@ function renderUuidList(uuids, count) {
   `;
 }
 
+function isTerminalSubagentStatus(status) {
+  const value = String(status || '').toLowerCase();
+  return value && value !== 'running' && value !== 'tool_error';
+}
+
 function renderSubagentRun(block, collapsed) {
   const status = block.status || 'running';
   const label = block.label || block.task || 'Subagent';
   const blocks = subagentFrameBlocks(block);
+  const runCollapsed = typeof block.collapsed === 'boolean'
+    ? block.collapsed
+    : Boolean(collapsed && isTerminalSubagentStatus(status));
+  const nestedCollapsed = collapsed || runCollapsed;
   return `
-    <div class="subagent-toggle" data-agent-run-id="${escHtml(block.runId || '')}">
+    <div class="subagent-toggle${runCollapsed ? ' collapsed' : ''}" data-agent-run-id="${escHtml(block.runId || '')}">
       <div class="subagent-toggle-header" data-toggle-parent>
         <span class="subagent-toggle-label">${escHtml(label)}</span>
         <span class="subagent-status ${escHtml(status)}">${escHtml(status)}</span>
         <span class="subagent-toggle-arrow">▾</span>
       </div>
       <div class="subagent-toggle-body">
-        <div class="subagent-content">${renderBlocks(blocks, collapsed)}</div>
+        <div class="subagent-content">${renderBlocks(blocks, nestedCollapsed)}</div>
       </div>
     </div>
   `;
