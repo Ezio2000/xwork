@@ -78,7 +78,7 @@ export const builtinTools = [..., myTool];
 {
   adapter: 'anthropic_server',
   apiToolType: 'web_search_20250305',  // Anthropic 原生工具类型
-  maxUses: 5,                           // 每轮最大调用次数
+  maxUses: 8,                           // 每轮最大调用次数
   systemPrompt: () => '策略提示词...',    // 注入模型的额外提示
   parseStreamResult(block) {            // 解析 SSE 流结果
     return { renderType: 'source-cards', data: { sources, resultCount } };

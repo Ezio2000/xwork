@@ -141,7 +141,7 @@
     "dangerLevel": "low",
     "enabled": true,
     "timeoutMs": 0,
-    "maxUses": 5,
+    "maxUses": 8,
     "type": "web_search_20250305",
     "inputSchema": {
       "type": "object",
