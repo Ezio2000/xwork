@@ -8,12 +8,20 @@ import {
   setActiveState,
   updateChannel,
 } from '../lib/channels.mjs';
+import { SchemaValidationError } from '../lib/schema.mjs';
 
 function sendResult(res, result, fallbackStatus = 400) {
   if (result?.error) {
     return res.status(result.status || fallbackStatus).json({ error: result.error });
   }
   return res.json(result);
+}
+
+function sendError(res, err) {
+  if (err instanceof SchemaValidationError) {
+    return res.status(err.status).json({ error: err.message });
+  }
+  throw err;
 }
 
 export function channelRoutes() {
@@ -24,7 +32,11 @@ export function channelRoutes() {
   });
 
   router.post('/active', async (req, res) => {
-    sendResult(res, await setActiveState(req.body || {}));
+    try {
+      sendResult(res, await setActiveState(req.body || {}));
+    } catch (err) {
+      sendError(res, err);
+    }
   });
 
   router.get('/channels', async (_req, res) => {
@@ -32,15 +44,27 @@ export function channelRoutes() {
   });
 
   router.post('/channels', async (req, res) => {
-    sendResult(res, await createChannel(req.body || {}));
+    try {
+      sendResult(res, await createChannel(req.body || {}));
+    } catch (err) {
+      sendError(res, err);
+    }
   });
 
   router.put('/channels/:id', async (req, res) => {
-    sendResult(res, await updateChannel(req.params.id, req.body || {}));
+    try {
+      sendResult(res, await updateChannel(req.params.id, req.body || {}));
+    } catch (err) {
+      sendError(res, err);
+    }
   });
 
   router.delete('/channels/:id', async (req, res) => {
-    sendResult(res, await deleteChannel(req.params.id));
+    try {
+      sendResult(res, await deleteChannel(req.params.id));
+    } catch (err) {
+      sendError(res, err);
+    }
   });
 
   return router;

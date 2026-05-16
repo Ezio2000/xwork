@@ -413,6 +413,28 @@ describe('queryLoop', () => {
       assert.equal(apiCalled, false);
       assert.equal(returnValue.reason, 'aborted');
     });
+
+    it('should return aborted when the provider stream reports an abort', async () => {
+      const ac = new AbortController();
+      const streamChat = async (_config, _messages, _onDelta, _onThink, _onDone, onError) => {
+        ac.abort();
+        onError(new Error('The operation was aborted.'));
+        return {
+          text: '',
+          content: [],
+          stopReason: 'error',
+          usage: null,
+          toolCalls: [],
+          serverToolEvents: [],
+        };
+      };
+
+      const iterator = queryLoop({ config: baseConfig, history: baseHistory, signal: ac.signal, streamChat, runTool: fakeRunTool([]) });
+      await drain(iterator);
+
+      assert.equal(returnValue.reason, 'aborted');
+      assert.equal(returnValue.error, undefined);
+    });
   });
 
   // =========================================================================
