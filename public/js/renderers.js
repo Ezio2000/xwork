@@ -155,8 +155,9 @@ function renderSubagentRun(block, collapsed) {
     ? block.collapsed
     : Boolean(collapsed && isTerminalSubagentStatus(status));
   const nestedCollapsed = collapsed || runCollapsed;
+  const runningClass = status === 'running' ? ' running' : '';
   return `
-    <div class="subagent-toggle${runCollapsed ? ' collapsed' : ''}" data-agent-run-id="${escHtml(block.runId || '')}">
+    <div class="subagent-toggle${runningClass}${runCollapsed ? ' collapsed' : ''}" data-agent-run-id="${escHtml(block.runId || '')}">
       <div class="subagent-toggle-header" data-toggle-parent>
         <span class="subagent-toggle-label">${escHtml(label)}</span>
         <span class="subagent-status ${escHtml(status)}">${escHtml(status)}</span>
@@ -178,6 +179,7 @@ function subagentFrameBlocks(block) {
 
   if (meta) out.push({ type: 'text', content: `_${meta}_` });
   if (block.task) out.push({ type: 'text', content: blockquote(block.task) });
+  if (block.thinking && block.status === 'running') out.push({ type: 'subagent-thinking' });
   const content = Array.isArray(block.blocks) && block.blocks.length
     ? block.blocks
     : subagentContentBlocks(block);
@@ -242,6 +244,7 @@ export function subagentEventToBlocks(event) {
   if (type === 'subagent_tool_result') {
     const rendered = renderBlockFromResult(event.renderType, event.data) || renderBlockFromOutput(event.output);
     if (rendered) return [rendered];
+    if (!event.isError) return [];
     const output = event.isError ? (event.output || event.error || 'Tool error') : (event.output ?? `${Number(event.durationMs || 0)}ms`);
     return [{ type: 'text', content: codeBlock(`Tool result · ${event.name || 'tool'}`, output) }];
   }
@@ -268,10 +271,11 @@ export function subagentEventToBlocks(event) {
 
 const blockRenderers = {
   'text': (block) => renderContent(stripLeadingNewlines(stripSearchQueryText(block.content || ''))),
-  'source-cards': (block, collapsed) => renderSourceCards(block.sources || [], collapsed, block.searchCount || 0),
-  'sources': (block, collapsed) => renderSourceCards(block.sources || [], collapsed, block.searchCount || 0),
+  'source-cards': (block, collapsed) => renderSourceCards(block.sources || [], block.collapsed ?? collapsed, block.searchCount || 0),
+  'sources': (block, collapsed) => renderSourceCards(block.sources || [], block.collapsed ?? collapsed, block.searchCount || 0),
   'uuid-list': (block) => renderUuidList(block.uuids || [], block.count || 0),
   'subagent-run': (block, collapsed) => renderSubagentRun(block, collapsed),
+  'subagent-thinking': () => '<div class="subagent-thinking-line">thinking...</div>',
 };
 
 export function renderBlocks(blocks, collapsed) {
@@ -343,7 +347,7 @@ export function contentToBlocks(content, sourcesMeta, searchCountMeta, toolResul
           snippet: item.snippet || item.description || item.text || '',
         }))
         .filter(source => source.title || source.url);
-      if (sources.length) blocks.push({ type: 'source-cards', sources, searchCount: 1 });
+      if (sources.length) blocks.push({ type: 'source-cards', sources, searchCount: 1, collapsed: true });
     } else if (part.type === 'tool_result' && typeof part.content === 'string') {
       flushText();
       try {
@@ -366,7 +370,7 @@ export function contentToBlocks(content, sourcesMeta, searchCountMeta, toolResul
   if (!blocks.some(block => block.type === 'source-cards' || block.type === 'sources')) {
     const sources = Array.isArray(sourcesMeta) ? sourcesMeta : [];
     if (sources.length && blocks.length) {
-      blocks.push({ type: 'source-cards', sources, searchCount: searchCountMeta || 0 });
+      blocks.push({ type: 'source-cards', sources, searchCount: searchCountMeta || 0, collapsed: true });
     }
   }
 

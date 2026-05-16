@@ -596,6 +596,32 @@ body {
   background: var(--bg-primary);
 }
 
+.subagent-toggle.running .subagent-content {
+  height: calc(5 * 22px);
+  overflow: hidden;
+  line-height: 22px;
+}
+
+.subagent-toggle.running .subagent-content * {
+  line-height: 22px;
+}
+
+.subagent-thinking-line {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 22px;
+}
+
+.subagent-toggle.running .subagent-content p,
+.subagent-toggle.running .subagent-content ul,
+.subagent-toggle.running .subagent-content ol,
+.subagent-toggle.running .subagent-content pre,
+.subagent-toggle.running .subagent-content blockquote {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 /* ===== Thinking Popup ===== */
 #thinking-popup {
   position: fixed;

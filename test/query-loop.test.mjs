@@ -232,6 +232,56 @@ describe('queryLoop', () => {
       assert.equal(events[3].type, 'tool_result');
       assert.equal(returnValue.reason, 'completed');
     });
+
+    it('should run consecutive delegate_task calls concurrently', async () => {
+      const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+      let callCount = 0;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return (fakeStreamChatThatReturns({
+            text: '分配两个子任务。',
+            content: [
+              { type: 'text', text: '分配两个子任务。' },
+              { type: 'tool_use', id: 'delegate_1', name: 'delegate_task', input: { objective: 'A' } },
+              { type: 'tool_use', id: 'delegate_2', name: 'delegate_task', input: { objective: 'B' } },
+            ],
+            toolCalls: [
+              { id: 'delegate_1', name: 'delegate_task', input: { objective: 'A' } },
+              { id: 'delegate_2', name: 'delegate_task', input: { objective: 'B' } },
+            ],
+          }))(...args);
+        }
+        return (fakeStreamChatThatReturns({
+          text: 'Done',
+          content: [{ type: 'text', text: 'Done' }],
+          toolCalls: [],
+        }))(...args);
+      };
+
+      const marks = [];
+      const runTool = async (call) => {
+        marks.push(`${call.id}:start`);
+        await wait(call.id === 'delegate_1' ? 30 : 5);
+        marks.push(`${call.id}:end`);
+        return {
+          id: call.id,
+          name: call.name,
+          isError: false,
+          output: { runId: call.id, status: 'completed', text: call.input.objective },
+          durationMs: call.id === 'delegate_1' ? 30 : 5,
+        };
+      };
+
+      const iterator = queryLoop({ config: baseConfig, history: baseHistory, streamChat, runTool });
+      await drain(iterator);
+
+      assert.equal(events.length, 4);
+      assert.deepEqual(events.map(event => event.type), ['tool_call', 'tool_call', 'tool_result', 'tool_result']);
+      assert.deepEqual(events.slice(2).map(event => event.id), ['delegate_1', 'delegate_2']);
+      assert.ok(marks.indexOf('delegate_2:start') < marks.indexOf('delegate_1:end'));
+      assert.equal(returnValue.reason, 'completed');
+    });
   });
 
   // =========================================================================

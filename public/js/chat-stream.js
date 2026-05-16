@@ -29,6 +29,7 @@ function pushSubagentEvent(block, evt) {
 
 function appendSubagentText(block, text) {
   if (!text) return;
+  block.thinking = false;
   block.text = (block.text || '') + text;
   block.timeline = Array.isArray(block.timeline) ? block.timeline : [];
   const last = block.timeline[block.timeline.length - 1];
@@ -56,15 +57,96 @@ function rememberSubagentCollapseState(block, contentEl) {
   block.collapsed = current.classList.contains('collapsed');
 }
 
+function rememberSourceCollapseStates(blocks, contentEl) {
+  let index = 0;
+  const toggles = contentEl.querySelectorAll('.sources-toggle');
+  for (const block of blocks) {
+    if (block.type !== 'source-cards' && block.type !== 'sources') continue;
+    const current = toggles[index];
+    if (current) block.collapsed = current.classList.contains('collapsed');
+    index++;
+  }
+}
+
 function rememberAllSubagentCollapseStates(blocks, contentEl) {
   for (const block of blocks) {
     if (block.type === 'subagent-run') rememberSubagentCollapseState(block, contentEl);
   }
 }
 
+function rememberAllCollapseStates(blocks, contentEl) {
+  rememberAllSubagentCollapseStates(blocks, contentEl);
+  rememberSourceCollapseStates(blocks, contentEl);
+}
+
 function isTerminalSubagentBlock(block) {
   const status = String(block?.status || '').toLowerCase();
   return block?.type === 'subagent-run' && status && status !== 'running' && status !== 'tool_error';
+}
+
+function scrollRunningSubagentsToBottom(contentEl) {
+  contentEl.querySelectorAll('.subagent-toggle.running .subagent-content').forEach(el => {
+    el.scrollTop = el.scrollHeight;
+  });
+}
+
+const STREAM_RENDER_INTERVAL_MS = 80;
+
+function createStreamRenderScheduler(blocks, contentEl) {
+  let timerId = 0;
+  let frameId = 0;
+  let lastRenderedAt = 0;
+  let cancelled = false;
+
+  function clearScheduled() {
+    if (timerId) {
+      clearTimeout(timerId);
+      timerId = 0;
+    }
+    if (frameId) {
+      cancelAnimationFrame(frameId);
+      frameId = 0;
+    }
+  }
+
+  function renderNow({ rememberCollapseState = true } = {}) {
+    timerId = 0;
+    frameId = 0;
+    lastRenderedAt = Date.now();
+    if (rememberCollapseState) rememberAllCollapseStates(blocks, contentEl);
+    contentEl.innerHTML = renderBlocks(blocks, false);
+    scrollRunningSubagentsToBottom(contentEl);
+    scrollBottom();
+  }
+
+  function requestRenderFrame() {
+    frameId = requestAnimationFrame(renderNow);
+  }
+
+  return {
+    schedule() {
+      if (cancelled) return;
+      if (timerId || frameId) return;
+      const waitMs = Math.max(0, STREAM_RENDER_INTERVAL_MS - (Date.now() - lastRenderedAt));
+      if (waitMs > 0) {
+        timerId = setTimeout(() => {
+          timerId = 0;
+          requestRenderFrame();
+        }, waitMs);
+      } else {
+        requestRenderFrame();
+      }
+    },
+    flush(options) {
+      if (cancelled) return;
+      clearScheduled();
+      renderNow(options);
+    },
+    cancel() {
+      cancelled = true;
+      clearScheduled();
+    },
+  };
 }
 
 async function ensureConversation(message) {
@@ -86,7 +168,7 @@ async function ensureConversation(message) {
   renderConvoList();
 }
 
-function appendStreamEvent(evt, { blocks, contentEl }) {
+function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
   if (evt.type === 'thinking') {
     showThinkingPopup(evt.text);
     return;
@@ -94,22 +176,17 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
 
   if (evt.type === 'delta') {
     hideThinkingPopup();
-    rememberAllSubagentCollapseStates(blocks, contentEl);
     currentTextBlock(blocks).content += evt.text;
-    contentEl.innerHTML = renderBlocks(blocks, false);
-    scrollBottom();
+    renderer.schedule();
     return;
   }
 
   if (evt.type === 'tool_call') {
-    rememberAllSubagentCollapseStates(blocks, contentEl);
-    contentEl.innerHTML = renderBlocks(blocks, false);
-    scrollBottom();
+    renderer.schedule();
     return;
   }
 
   if (evt.type === 'tool_result') {
-    rememberAllSubagentCollapseStates(blocks, contentEl);
     for (const tool of evt.tools) {
       if (tool.renderType && tool.data) {
         if (tool.renderType === 'subagent-run' && tool.data.runId) {
@@ -122,14 +199,14 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
         }
         const block = { type: tool.renderType, ...tool.data };
         if (isTerminalSubagentBlock(block)) block.collapsed = true;
+        if (block.type === 'source-cards' || block.type === 'sources') block.collapsed = true;
         blocks.push(block);
       }
     }
     const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
     if (errored) currentTextBlock(blocks).content += `\n\n_Tool error: ${errored}_`;
     blocks.push({ type: 'text', content: '' });
-    contentEl.innerHTML = renderBlocks(blocks, false);
-    scrollBottom();
+    renderer.schedule();
     return;
   }
 
@@ -137,7 +214,9 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
     const agentEventType = evt.eventType || evt.event || '';
     if (agentEventType === 'root_start') return;
     if (agentEventType === 'subagent_thinking') {
-      showThinkingPopup(evt.text);
+      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      if (block) block.thinking = true;
+      renderer.schedule();
       return;
     }
     if (agentEventType === 'subagent_start') {
@@ -168,6 +247,7 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
       hideThinkingPopup();
       const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (block) {
+        block.thinking = false;
         block.status = evt.status || 'completed';
         block.text = evt.result?.text || block.text || '';
         block.error = evt.error || '';
@@ -177,29 +257,31 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
         pushSubagentEvent(block, evt);
         block.collapsed = true;
       }
+      renderer.flush({ rememberCollapseState: false });
+      return;
     } else if (agentEventType === 'subagent_tool_call' || agentEventType === 'subagent_server_tool') {
       const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (block) {
-        rememberSubagentCollapseState(block, contentEl);
+        block.thinking = false;
         pushSubagentEvent(block, evt);
       }
     } else if (agentEventType === 'subagent_tool_result') {
       for (let i = blocks.length - 1; i >= 0; i--) {
         const block = blocks[i];
         if (block.type === 'subagent-run' && block.runId === evt.runId) {
-          rememberSubagentCollapseState(block, contentEl);
+          block.thinking = false;
           block.status = evt.isError ? 'tool_error' : block.status || 'running';
           pushSubagentEvent(block, evt);
           break;
         }
       }
     }
-    contentEl.innerHTML = renderBlocks(blocks, false);
-    scrollBottom();
+    renderer.schedule();
     return;
   }
 
   if (evt.type === 'error') {
+    renderer.cancel();
     contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(evt.message)}</span>`;
   }
 }
@@ -209,6 +291,7 @@ async function readChatStream(res, view) {
   const decoder = new TextDecoder();
   let buffer = '';
   const blocks = [{ type: 'text', content: '' }];
+  const renderer = createStreamRenderScheduler(blocks, view.contentEl);
 
   while (true) {
     const { done, value } = await reader.read();
@@ -222,11 +305,12 @@ async function readChatStream(res, view) {
       const jsonStr = line.slice(6);
       if (jsonStr === '[DONE]') continue;
       try {
-        appendStreamEvent(JSON.parse(jsonStr), { blocks, contentEl: view.contentEl });
+        appendStreamEvent(JSON.parse(jsonStr), { blocks, contentEl: view.contentEl, renderer });
       } catch {}
     }
   }
 
+  renderer.flush();
   return blocks;
 }
 
