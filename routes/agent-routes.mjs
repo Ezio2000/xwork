@@ -20,7 +20,10 @@ export function agentRoutes() {
         ? undefined
         : validateOptionalSafeId(req.query.parentRunId, 'parentRunId') ?? null;
       const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
-      res.json(await listAgentRuns({ limit, conversationId, parentRunId }));
+      const source = req.query.source === undefined ? undefined : String(req.query.source);
+      const environment = req.query.environment === undefined ? undefined : String(req.query.environment);
+      const includeTest = req.query.includeTest === '1' || req.query.includeTest === 'true';
+      res.json(await listAgentRuns({ limit, conversationId, parentRunId, source, environment, includeTest }));
     } catch (err) {
       sendError(res, err);
     }

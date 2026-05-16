@@ -10,7 +10,7 @@ describe('tool runner abort support', () => {
 
     const result = await runTool(
       { id: 'toolu_abort', name: 'calculator', input: { expression: '1 + 1' } },
-      { conversationId: 'test', signal: ac.signal },
+      { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false, signal: ac.signal },
     );
 
     assert.equal(result.isError, true);

@@ -532,6 +532,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  background: var(--bg-primary);
 }
 
 .subagent-toggle-header {
@@ -593,19 +594,6 @@ body {
   border-top: 1px solid var(--border);
   padding: 10px 12px;
   background: var(--bg-primary);
-}
-
-.subagent-task {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.45;
-  margin-bottom: 8px;
-}
-
-.subagent-text {
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 1.55;
 }
 
 /* ===== Thinking Popup ===== */

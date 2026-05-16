@@ -50,7 +50,10 @@ export function toolRoutes() {
 
   router.get('/tool-runs', async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
-    res.json(await listToolRuns(limit));
+    const source = req.query.source === undefined ? undefined : String(req.query.source);
+    const environment = req.query.environment === undefined ? undefined : String(req.query.environment);
+    const includeTest = req.query.includeTest === '1' || req.query.includeTest === 'true';
+    res.json(await listToolRuns({ limit, source, environment, includeTest }));
   });
 
   return router;

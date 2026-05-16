@@ -142,23 +142,119 @@ function renderUuidList(uuids, count) {
   `;
 }
 
-function renderSubagentRun(block) {
+function renderSubagentRun(block, collapsed) {
   const status = block.status || 'running';
   const label = block.label || block.task || 'Subagent';
-  const text = block.text || block.error || '';
+  const blocks = subagentFrameBlocks(block);
   return `
-    <div class="subagent-toggle${status === 'running' ? '' : ' collapsed'}" data-agent-run-id="${escHtml(block.runId || '')}">
+    <div class="subagent-toggle" data-agent-run-id="${escHtml(block.runId || '')}">
       <div class="subagent-toggle-header" data-toggle-parent>
         <span class="subagent-toggle-label">${escHtml(label)}</span>
         <span class="subagent-status ${escHtml(status)}">${escHtml(status)}</span>
         <span class="subagent-toggle-arrow">▾</span>
       </div>
       <div class="subagent-toggle-body">
-        ${block.task ? `<div class="subagent-task">${escHtml(block.task)}</div>` : ''}
-        <div class="subagent-text">${text ? renderContent(text) : '<p>Running...</p>'}</div>
+        <div class="subagent-content">${renderBlocks(blocks, collapsed)}</div>
       </div>
     </div>
   `;
+}
+
+function subagentFrameBlocks(block) {
+  const out = [];
+  const meta = [
+    block.durationMs !== undefined && block.durationMs !== null ? `${Number(block.durationMs || 0)}ms` : '',
+    block.runId ? `run ${String(block.runId).slice(0, 8)}` : '',
+  ].filter(Boolean).join(' · ');
+
+  if (meta) out.push({ type: 'text', content: `_${meta}_` });
+  if (block.task) out.push({ type: 'text', content: blockquote(block.task) });
+  const content = Array.isArray(block.blocks) && block.blocks.length
+    ? block.blocks
+    : subagentContentBlocks(block);
+  out.push(...content);
+
+  return out.length ? out : [{ type: 'text', content: 'Running...' }];
+}
+
+function subagentContentBlocks(block) {
+  const out = [];
+  if (Array.isArray(block.timeline) && block.timeline.length) {
+    for (const item of block.timeline) {
+      if (item?.kind === 'text' && item.text) {
+        out.push({ type: 'text', content: item.text });
+      } else if (item?.kind === 'event') {
+        out.push(...subagentEventToBlocks(item.event));
+      }
+    }
+  } else {
+    if (block.text || block.error) out.push({ type: 'text', content: block.text || block.error || '' });
+    for (const event of Array.isArray(block.events) ? block.events : []) {
+      out.push(...subagentEventToBlocks(event));
+    }
+  }
+
+  return out;
+}
+
+function blockquote(text) {
+  return String(text || '')
+    .split('\n')
+    .map(line => `> ${line}`)
+    .join('\n');
+}
+
+function codeBlock(label, value) {
+  const content = typeof value === 'string' ? value : JSON.stringify(value ?? {}, null, 2);
+  const escapedFence = content.replace(/```/g, '`\\`\\`');
+  return `**${label}**\n\n\`\`\`json\n${escapedFence}\n\`\`\``;
+}
+
+function renderBlockFromResult(renderType, data) {
+  if (!renderType || !data) return null;
+  return { type: renderType, ...data };
+}
+
+function renderBlockFromOutput(output) {
+  if (!output || typeof output !== 'object') return null;
+  if (Array.isArray(output.sources) && output.sources.length) {
+    return { type: 'source-cards', sources: output.sources, searchCount: output.searchCount || 0 };
+  }
+  if (Array.isArray(output.uuids)) {
+    return { type: 'uuid-list', uuids: output.uuids, count: output.count ?? output.uuids.length };
+  }
+  return null;
+}
+
+export function subagentEventToBlocks(event) {
+  const type = event.eventType || event.type || event.event || '';
+  if (type === 'subagent_delta' || type === 'subagent_thinking' || type === 'subagent_start' || type === 'subagent_tool_call') return [];
+
+  if (type === 'subagent_tool_result') {
+    const rendered = renderBlockFromResult(event.renderType, event.data) || renderBlockFromOutput(event.output);
+    if (rendered) return [rendered];
+    const output = event.isError ? (event.output || event.error || 'Tool error') : (event.output ?? `${Number(event.durationMs || 0)}ms`);
+    return [{ type: 'text', content: codeBlock(`Tool result · ${event.name || 'tool'}`, output) }];
+  }
+
+  if (type === 'subagent_server_tool') {
+    const serverEvent = event.event || {};
+    const name = serverEvent.name || event.name || 'server tool';
+    if (serverEvent.phase === 'call') {
+      return [];
+    }
+    if (serverEvent.phase === 'result') {
+      const rendered = renderBlockFromResult(serverEvent.renderType, serverEvent.data) || renderBlockFromOutput(serverEvent.data);
+      if (rendered) return [rendered];
+      return [{ type: 'text', content: codeBlock(`Server tool result · ${name}`, serverEvent.data || serverEvent.errorCode || {}) }];
+    }
+  }
+
+  if (type === 'subagent_done' && event.error) {
+    return [{ type: 'text', content: `**Subagent error**\n\n${event.error}` }];
+  }
+
+  return [];
 }
 
 const blockRenderers = {
@@ -166,7 +262,7 @@ const blockRenderers = {
   'source-cards': (block, collapsed) => renderSourceCards(block.sources || [], collapsed, block.searchCount || 0),
   'sources': (block, collapsed) => renderSourceCards(block.sources || [], collapsed, block.searchCount || 0),
   'uuid-list': (block) => renderUuidList(block.uuids || [], block.count || 0),
-  'subagent-run': (block) => renderSubagentRun(block),
+  'subagent-run': (block, collapsed) => renderSubagentRun(block, collapsed),
 };
 
 export function renderBlocks(blocks, collapsed) {

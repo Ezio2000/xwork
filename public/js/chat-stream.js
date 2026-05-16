@@ -1,6 +1,6 @@
 import { dom } from './dom.js';
 import { state } from './state.js';
-import { escHtml, mergeSources, renderBlocks } from './renderers.js';
+import { escHtml, mergeSources, renderBlocks, subagentEventToBlocks } from './renderers.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
 import { addAssistantPlaceholder, addUserMessage, renderConvoList, scrollBottom } from './views.js';
 import { api } from './api-client.js';
@@ -12,6 +12,39 @@ function currentTextBlock(blocks) {
   const block = { type: 'text', content: '' };
   blocks.push(block);
   return block;
+}
+
+function pushSubagentEvent(block, evt) {
+  const eventType = evt.eventType || evt.type || evt.event || '';
+  if (eventType === 'subagent_delta' || eventType === 'subagent_thinking') return;
+  block.events = Array.isArray(block.events) ? block.events : [];
+  block.events.push({ ...evt });
+  if (block.events.length > 80) block.events = block.events.slice(-80);
+  block.timeline = Array.isArray(block.timeline) ? block.timeline : [];
+  block.timeline.push({ kind: 'event', event: { ...evt } });
+  if (block.timeline.length > 160) block.timeline = block.timeline.slice(-160);
+  block.blocks = Array.isArray(block.blocks) ? block.blocks : [];
+  block.blocks.push(...subagentEventToBlocks(evt));
+}
+
+function appendSubagentText(block, text) {
+  if (!text) return;
+  block.text = (block.text || '') + text;
+  block.timeline = Array.isArray(block.timeline) ? block.timeline : [];
+  const last = block.timeline[block.timeline.length - 1];
+  if (last?.kind === 'text') {
+    last.text += text;
+  } else {
+    block.timeline.push({ kind: 'text', text });
+  }
+  if (block.timeline.length > 160) block.timeline = block.timeline.slice(-160);
+  block.blocks = Array.isArray(block.blocks) ? block.blocks : [];
+  const lastBlock = block.blocks[block.blocks.length - 1];
+  if (lastBlock?.type === 'text') {
+    lastBlock.content += text;
+  } else {
+    block.blocks.push({ type: 'text', content: text });
+  }
 }
 
 async function ensureConversation(message) {
@@ -77,6 +110,10 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
   if (evt.type === 'agent_event') {
     const agentEventType = evt.eventType || evt.event || '';
     if (agentEventType === 'root_start') return;
+    if (agentEventType === 'subagent_thinking') {
+      showThinkingPopup(evt.text);
+      return;
+    }
     if (agentEventType === 'subagent_start') {
       let block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (!block) {
@@ -88,24 +125,40 @@ function appendStreamEvent(evt, { blocks, contentEl }) {
           label: evt.label || 'Subagent',
           task: evt.task || '',
           text: '',
+          events: [],
+          timeline: [],
+          blocks: [],
         };
         blocks.push(block);
       }
+      pushSubagentEvent(block, evt);
     } else if (agentEventType === 'subagent_delta') {
+      hideThinkingPopup();
       const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
-      if (block) block.text = (block.text || '') + (evt.text || '');
+      if (block) {
+        appendSubagentText(block, evt.text || '');
+      }
     } else if (agentEventType === 'subagent_done') {
+      hideThinkingPopup();
       const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (block) {
         block.status = evt.status || 'completed';
         block.text = evt.result?.text || block.text || '';
         block.error = evt.error || '';
+        block.durationMs = evt.durationMs ?? block.durationMs;
+        block.parentRunId = evt.parentRunId || block.parentRunId || null;
+        block.rootRunId = evt.rootRunId || block.rootRunId || null;
+        pushSubagentEvent(block, evt);
       }
+    } else if (agentEventType === 'subagent_tool_call' || agentEventType === 'subagent_server_tool') {
+      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      if (block) pushSubagentEvent(block, evt);
     } else if (agentEventType === 'subagent_tool_result') {
       for (let i = blocks.length - 1; i >= 0; i--) {
         const block = blocks[i];
         if (block.type === 'subagent-run' && block.runId === evt.runId) {
           block.status = evt.isError ? 'tool_error' : block.status || 'running';
+          pushSubagentEvent(block, evt);
           break;
         }
       }
