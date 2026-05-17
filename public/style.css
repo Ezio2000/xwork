@@ -1555,11 +1555,10 @@ body {
 #channel-pricing-list,
 #pricing-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .channel-pricing-row,
-.pricing-card,
 .pricing-editor {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -1572,9 +1571,7 @@ body {
   padding: 12px;
 }
 
-.channel-pricing-main,
-.pricing-card-main,
-.pricing-card-footer {
+.channel-pricing-main {
   align-items: center;
   display: flex;
   gap: 12px;
@@ -1592,7 +1589,7 @@ body {
 
 .channel-pricing-values,
 .pricing-meta,
-.pricing-card-footer {
+.pricing-updated {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.35;
@@ -1616,11 +1613,10 @@ body {
   color: var(--danger);
 }
 
-.channel-pricing-edit,
-.pricing-values {
+.channel-pricing-edit {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
 }
 
 .channel-pricing-edit input {
@@ -1641,24 +1637,167 @@ body {
 
 #pricing-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.pricing-main-panel,
+.pricing-editor {
+  min-width: 0;
+}
+
+.pricing-main-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.pricing-page-copy {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
   gap: 16px;
 }
 
-.pricing-card {
-  display: grid;
+.pricing-page-controls {
+  align-items: center;
+  display: flex;
   gap: 10px;
-  padding: 14px;
 }
 
-.pricing-values span {
-  background: var(--bg-tertiary);
-  border-radius: 4px;
+.pricing-currency-control {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.pricing-currency-control span {
   color: var(--text-muted);
   font-size: 11px;
-  padding: 6px 8px;
+  font-weight: 600;
+}
+
+.pricing-currency-control select {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 8px;
+}
+
+.pricing-page-copy h3 {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.pricing-page-copy p {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 3px;
+}
+
+#pricing-count-label {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 8px;
+}
+
+.pricing-table {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.pricing-table-head,
+.pricing-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) repeat(5, minmax(92px, 0.75fr)) 104px;
+  gap: 10px;
+  align-items: center;
+}
+
+.pricing-table-head {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 10px 14px;
+  text-transform: uppercase;
+}
+
+.pricing-row {
+  border-bottom: 1px solid var(--border);
+  min-height: 62px;
+  padding: 9px 14px;
+  transition: background 0.15s;
+}
+
+.pricing-row:hover {
+  background: var(--bg-secondary);
+}
+
+.pricing-row:last-child {
+  border-bottom: none;
+}
+
+.pricing-identity {
+  min-width: 0;
+}
+
+.pricing-identity .pricing-meta {
+  margin-top: 2px;
+}
+
+.price-cell {
+  min-width: 0;
+}
+
+.price-cell span {
+  color: var(--text-muted);
+  display: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.price-cell strong {
+  color: var(--text-primary);
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pricing-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.pricing-updated {
+  white-space: nowrap;
 }
 
 .pricing-editor {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 16px;
 }
 
@@ -1674,7 +1813,7 @@ body {
 .pricing-editor-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .pricing-editor-grid label {
@@ -1862,14 +2001,25 @@ body {
   .input-wrapper { max-width: 100%; }
   .modal-panel { width: 95vw; }
   #tools-content { grid-template-columns: 1fr; }
+  #pricing-content { grid-template-columns: 1fr; }
+  .pricing-page-copy,
+  .pricing-page-controls { align-items: flex-start; flex-direction: column; }
   #usage-summary,
   #usage-groups { grid-template-columns: 1fr; }
   .channel-pricing-edit,
-  .pricing-values,
   .pricing-editor-grid { grid-template-columns: 1fr; }
-  .channel-pricing-main,
-  .pricing-card-main,
-  .pricing-card-footer { align-items: flex-start; flex-direction: column; }
+  .channel-pricing-main { align-items: flex-start; flex-direction: column; }
+  .pricing-table-head { display: none; }
+  .pricing-table { background: transparent; border: none; gap: 10px; overflow: visible; }
+  .pricing-row {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .price-cell span { display: block; }
+  .pricing-actions { justify-content: flex-start; }
   .usage-section-header { align-items: flex-start; flex-direction: column; }
   #usage-generated-at { white-space: normal; }
   .usage-group-row { grid-template-columns: minmax(0, 1fr) auto; }

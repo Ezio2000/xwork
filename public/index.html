@@ -164,65 +164,85 @@
       </div>
     </div>
     <div id="pricing-content">
-      <div id="pricing-list"></div>
-      <div id="pricing-editor" class="pricing-editor hidden">
-        <h3 id="pricing-editor-title">New Base Price</h3>
-        <input type="hidden" id="edit-pricing-id">
-        <div class="pricing-editor-grid">
-          <label>
-            <span>Provider</span>
-            <input type="text" id="edit-pricing-provider" placeholder="deepseek">
-          </label>
-          <label>
-            <span>Base URL</span>
-            <input type="text" id="edit-pricing-base-url" placeholder="https://api.deepseek.com/anthropic">
-          </label>
-          <label>
-            <span>Model</span>
-            <input type="text" id="edit-pricing-model" placeholder="deepseek-v4-flash">
-          </label>
-          <label>
-            <span>Currency</span>
-            <input type="text" id="edit-pricing-currency" placeholder="USD">
-          </label>
-          <label>
-            <span>Input / 1M</span>
-            <input type="number" id="edit-pricing-input" min="0" step="0.000001">
-          </label>
-          <label>
-            <span>Cache Read / 1M</span>
-            <input type="number" id="edit-pricing-cache-read" min="0" step="0.000001">
-          </label>
-          <label>
-            <span>Cache Create / 1M</span>
-            <input type="number" id="edit-pricing-cache-create" min="0" step="0.000001">
-          </label>
-          <label>
-            <span>Output / 1M</span>
-            <input type="number" id="edit-pricing-output" min="0" step="0.000001">
-          </label>
-          <label>
-            <span>Web Search / req</span>
-            <input type="number" id="edit-pricing-web-search" min="0" step="0.000001" placeholder="optional">
-          </label>
-          <label>
-            <span>Updated At</span>
-            <input type="text" id="edit-pricing-updated-at" placeholder="2026-05-17">
-          </label>
-          <label class="wide">
-            <span>Source URL</span>
-            <input type="text" id="edit-pricing-source-url" placeholder="https://...">
-          </label>
-          <label class="wide">
-            <span>Notes</span>
-            <textarea id="edit-pricing-notes" rows="2"></textarea>
-          </label>
+      <section class="pricing-main-panel">
+        <div class="pricing-page-copy">
+          <div>
+            <h3>Base Prices</h3>
+            <p>Reference prices used when a channel does not define an override.</p>
+          </div>
+          <div class="pricing-page-controls">
+            <label class="pricing-currency-control">
+              <span>Currency</span>
+              <select id="pricing-display-currency">
+                <option value="USD">USD</option>
+                <option value="CNY">CNY</option>
+                <option value="EUR">EUR</option>
+                <option value="HKD">HKD</option>
+              </select>
+            </label>
+            <span id="pricing-count-label"></span>
+          </div>
         </div>
-        <div class="editor-actions">
-          <button id="btn-cancel-pricing" class="btn-text">Cancel</button>
-          <button id="btn-save-pricing" class="btn-primary">Save</button>
+        <div id="pricing-list"></div>
+        <div id="pricing-editor" class="pricing-editor hidden">
+          <h3 id="pricing-editor-title">New Base Price</h3>
+          <input type="hidden" id="edit-pricing-id">
+          <div class="pricing-editor-grid">
+            <label>
+              <span>Provider</span>
+              <input type="text" id="edit-pricing-provider" placeholder="deepseek">
+            </label>
+            <label>
+              <span>Model</span>
+              <input type="text" id="edit-pricing-model" placeholder="deepseek-v4-flash">
+            </label>
+            <label>
+              <span>Currency</span>
+              <input type="text" id="edit-pricing-currency" placeholder="USD">
+            </label>
+            <label>
+              <span>Input / 1M</span>
+              <input type="number" id="edit-pricing-input" min="0" step="0.000001">
+            </label>
+            <label>
+              <span>Cache Read / 1M</span>
+              <input type="number" id="edit-pricing-cache-read" min="0" step="0.000001">
+            </label>
+            <label>
+              <span>Cache Create / 1M</span>
+              <input type="number" id="edit-pricing-cache-create" min="0" step="0.000001">
+            </label>
+            <label>
+              <span>Output / 1M</span>
+              <input type="number" id="edit-pricing-output" min="0" step="0.000001">
+            </label>
+            <label>
+              <span>Web Search / req</span>
+              <input type="number" id="edit-pricing-web-search" min="0" step="0.000001" placeholder="optional">
+            </label>
+            <label>
+              <span>API Call / req</span>
+              <input type="number" id="edit-pricing-request" min="0" step="0.000001" placeholder="0">
+            </label>
+            <label>
+              <span>Updated At</span>
+              <input type="text" id="edit-pricing-updated-at" placeholder="2026-05-17">
+            </label>
+            <label class="wide">
+              <span>Source URL</span>
+              <input type="text" id="edit-pricing-source-url" placeholder="https://...">
+            </label>
+            <label class="wide">
+              <span>Notes</span>
+              <textarea id="edit-pricing-notes" rows="2"></textarea>
+            </label>
+          </div>
+          <div class="editor-actions">
+            <button id="btn-cancel-pricing" class="btn-text">Cancel</button>
+            <button id="btn-save-pricing" class="btn-primary">Save</button>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   </main>
 </div>

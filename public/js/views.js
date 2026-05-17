@@ -105,10 +105,11 @@ function inferProvider(channel = {}) {
 }
 
 function findBasePricing(channel, model) {
-  const baseUrl = normalizeBaseUrl(channel?.baseUrl);
   const provider = inferProvider(channel);
-  return state.basePricing.find(item => item.model === model && normalizeBaseUrl(item.baseUrl) === baseUrl)
-    || state.basePricing.find(item => item.model === model && String(item.provider || '').toLowerCase() === provider)
+  return state.basePricing.find(item => (
+    item.model === model
+    && String(item.provider || '').toLowerCase() === provider
+  ))
     || null;
 }
 
@@ -120,17 +121,32 @@ export function effectivePricingForChannelModel(channel, model) {
   return { pricing: null, source: 'Missing' };
 }
 
-function fmtPrice(value, currency = 'USD') {
-  if (value === null || value === undefined || value === '') return '-';
+const USD_EXCHANGE_RATES = {
+  USD: 1,
+  CNY: 7.2,
+  EUR: 0.92,
+  HKD: 7.8,
+};
+
+function convertCurrency(value, fromCurrency = 'USD', toCurrency = 'USD') {
   const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const fromRate = USD_EXCHANGE_RATES[String(fromCurrency || 'USD').toUpperCase()];
+  const toRate = USD_EXCHANGE_RATES[String(toCurrency || 'USD').toUpperCase()];
+  if (!fromRate || !toRate) return n;
+  return (n / fromRate) * toRate;
+}
+
+function fmtPrice(value, currency = 'USD', displayCurrency = state.pricingCurrency || 'USD') {
+  if (value === null || value === undefined || value === '') return '-';
+  const n = convertCurrency(value, currency, displayCurrency);
   if (!Number.isFinite(n)) return '-';
-  return `${currency} ${n.toLocaleString('en-US', { maximumFractionDigits: 6 })}`;
+  return n.toLocaleString('en-US', { maximumFractionDigits: 6 });
 }
 
 function pricingPayloadFromDom(prefix = 'editPricing') {
   return {
     provider: dom[`${prefix}Provider`]?.value?.trim(),
-    baseUrl: dom[`${prefix}BaseUrl`]?.value?.trim(),
     model: dom[`${prefix}Model`]?.value?.trim(),
     currency: (dom[`${prefix}Currency`]?.value?.trim() || 'USD').toUpperCase(),
     unit: 'per_1m_tokens',
@@ -139,6 +155,7 @@ function pricingPayloadFromDom(prefix = 'editPricing') {
     cacheCreationInputTokenPrice: numberOrNull(dom[`${prefix}CacheCreate`]?.value),
     outputTokenPrice: numberOrNull(dom[`${prefix}Output`]?.value),
     webSearchRequestPrice: numberOrNull(dom[`${prefix}WebSearch`]?.value),
+    requestPrice: numberOrNull(dom[`${prefix}Request`]?.value),
     sourceUrl: dom[`${prefix}SourceUrl`]?.value?.trim() || '',
     updatedAt: dom[`${prefix}UpdatedAt`]?.value?.trim() || new Date().toISOString(),
     notes: dom[`${prefix}Notes`]?.value?.trim() || '',
@@ -165,6 +182,7 @@ export function collectChannelPricingOverrides(channel) {
       cacheCreationInputTokenPrice: null,
       outputTokenPrice: null,
       webSearchRequestPrice: null,
+      requestPrice: null,
       sourceUrl: currentOverride?.sourceUrl || '',
       updatedAt: currentOverride?.updatedAt || new Date().toISOString(),
       notes: currentOverride?.notes || '',
@@ -183,6 +201,7 @@ export function collectChannelPricingOverrides(channel) {
       values.cacheCreationInputTokenPrice,
       values.outputTokenPrice,
       values.webSearchRequestPrice,
+      values.requestPrice,
     ].some(value => value !== null);
     if (hasAnyPrice) models[model] = values;
   }
@@ -192,11 +211,11 @@ export function collectChannelPricingOverrides(channel) {
 function pricingValues(pricing = {}) {
   const currency = pricing.currency || 'USD';
   return [
-    `in ${fmtPrice(pricing.inputTokenPrice, currency)}`,
-    `cached ${fmtPrice(pricing.cacheReadInputTokenPrice, currency)}`,
+    `input ${fmtPrice(pricing.inputTokenPrice, currency)}`,
+    `output ${fmtPrice(pricing.outputTokenPrice, currency)}`,
+    `cache ${fmtPrice(pricing.cacheReadInputTokenPrice, currency)}`,
     `create ${fmtPrice(pricing.cacheCreationInputTokenPrice, currency)}`,
-    `out ${fmtPrice(pricing.outputTokenPrice, currency)}`,
-    `web ${fmtPrice(pricing.webSearchRequestPrice, currency)}`,
+    `call ${fmtPrice(pricing.requestPrice ?? 0, currency)}`,
   ].join(' · ');
 }
 
@@ -242,6 +261,7 @@ function renderChannelPricingRows(channel) {
           <input data-price-field="cacheCreationInputTokenPrice" type="number" min="0" step="0.000001" placeholder="Create / 1M" value="${editPricing.cacheCreationInputTokenPrice ?? ''}">
           <input data-price-field="outputTokenPrice" type="number" min="0" step="0.000001" placeholder="Output / 1M" value="${editPricing.outputTokenPrice ?? ''}">
           <input data-price-field="webSearchRequestPrice" type="number" min="0" step="0.000001" placeholder="Web / req" value="${editPricing.webSearchRequestPrice ?? ''}">
+          <input data-price-field="requestPrice" type="number" min="0" step="0.000001" placeholder="Call / req" value="${editPricing.requestPrice ?? ''}">
           <input data-price-field="currency" type="text" placeholder="USD" value="${escHtml(currency)}">
         </div>
         <div class="channel-pricing-actions">
@@ -287,46 +307,55 @@ export function hideChannelEditor() {
 }
 
 export function renderBasePricing() {
+  if (dom.pricingDisplayCurrency) dom.pricingDisplayCurrency.value = state.pricingCurrency || 'USD';
   if (!state.basePricing.length) {
+    dom.pricingCountLabel.textContent = '0 models';
     dom.pricingList.innerHTML = '<div class="empty-panel">No base pricing configured.</div>';
     return;
   }
+  dom.pricingCountLabel.textContent = `${state.basePricing.length} model${state.basePricing.length === 1 ? '' : 's'}`;
 
-  dom.pricingList.innerHTML = state.basePricing.map(entry => {
+  const rows = state.basePricing.map(entry => {
     const currency = entry.currency || 'USD';
     return `
-      <div class="pricing-card" data-pricing-id="${escHtml(entry.id)}">
-        <div class="pricing-card-main">
-          <div>
-            <div class="pricing-model">${escHtml(entry.model)}</div>
-            <div class="pricing-meta">${escHtml(entry.provider || 'unknown')} · ${escHtml(entry.baseUrl || 'any base URL')}</div>
-          </div>
-          <span class="pricing-source">Base Default</span>
+      <div class="pricing-row" data-pricing-id="${escHtml(entry.id)}">
+        <div class="pricing-identity">
+          <div class="pricing-model">${escHtml(entry.model)}</div>
+          <div class="pricing-meta">${escHtml(entry.provider || 'unknown')}</div>
         </div>
-        <div class="pricing-values">
-          <span>Input ${escHtml(fmtPrice(entry.inputTokenPrice, currency))}</span>
-          <span>Cache ${escHtml(fmtPrice(entry.cacheReadInputTokenPrice, currency))}</span>
-          <span>Create ${escHtml(fmtPrice(entry.cacheCreationInputTokenPrice, currency))}</span>
-          <span>Output ${escHtml(fmtPrice(entry.outputTokenPrice, currency))}</span>
-          <span>Web ${escHtml(fmtPrice(entry.webSearchRequestPrice, currency))}</span>
-        </div>
-        <div class="pricing-card-footer">
-          <span>${escHtml(entry.updatedAt || '-')}</span>
-          <div>
-            <button class="btn-text small" data-action="edit-pricing">Edit</button>
-            <button class="btn-text small danger" data-action="delete-pricing">Del</button>
-          </div>
+        <div class="price-cell"><span>Input</span><strong>${escHtml(fmtPrice(entry.inputTokenPrice, currency))}</strong></div>
+        <div class="price-cell"><span>Output</span><strong>${escHtml(fmtPrice(entry.outputTokenPrice, currency))}</strong></div>
+        <div class="price-cell"><span>Cache</span><strong>${escHtml(fmtPrice(entry.cacheReadInputTokenPrice, currency))}</strong></div>
+        <div class="price-cell"><span>Create</span><strong>${escHtml(fmtPrice(entry.cacheCreationInputTokenPrice, currency))}</strong></div>
+        <div class="price-cell"><span>Call</span><strong>${escHtml(fmtPrice(entry.requestPrice ?? 0, currency))}</strong></div>
+        <div class="pricing-actions">
+          <button class="btn-text small" data-action="edit-pricing">Edit</button>
+          <button class="btn-text small danger" data-action="delete-pricing">Delete</button>
         </div>
       </div>
     `;
   }).join('');
+
+  dom.pricingList.innerHTML = `
+    <div class="pricing-table">
+      <div class="pricing-table-head">
+        <span>Model</span>
+        <span>Input</span>
+        <span>Output</span>
+        <span>Cache</span>
+        <span>Create</span>
+        <span>Call</span>
+        <span></span>
+      </div>
+      ${rows}
+    </div>
+  `;
 }
 
 export function showPricingEditor(entry) {
   dom.pricingEditorTitle.textContent = entry ? 'Edit Base Price' : 'New Base Price';
   dom.editPricingId.value = entry?.id || '';
   dom.editPricingProvider.value = entry?.provider || '';
-  dom.editPricingBaseUrl.value = entry?.baseUrl || '';
   dom.editPricingModel.value = entry?.model || '';
   dom.editPricingCurrency.value = entry?.currency || 'USD';
   dom.editPricingInput.value = entry?.inputTokenPrice ?? '';
@@ -334,6 +363,7 @@ export function showPricingEditor(entry) {
   dom.editPricingCacheCreate.value = entry?.cacheCreationInputTokenPrice ?? '';
   dom.editPricingOutput.value = entry?.outputTokenPrice ?? '';
   dom.editPricingWebSearch.value = entry?.webSearchRequestPrice ?? '';
+  dom.editPricingRequest.value = entry?.requestPrice ?? '';
   dom.editPricingSourceUrl.value = entry?.sourceUrl || '';
   dom.editPricingUpdatedAt.value = entry?.updatedAt || new Date().toISOString().slice(0, 10);
   dom.editPricingNotes.value = entry?.notes || '';

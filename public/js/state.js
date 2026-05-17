@@ -10,4 +10,5 @@ export const state = {
   toolRuns: [],
   usage: null,
   basePricing: [],
+  pricingCurrency: 'USD',
 };

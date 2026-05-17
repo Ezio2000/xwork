@@ -262,6 +262,7 @@ describe('architecture safety contracts', () => {
               cacheCreationInputTokenPrice: 1,
               outputTokenPrice: 2,
               webSearchRequestPrice: 0.01,
+              requestPrice: 0.25,
               sourceUrl: '',
               updatedAt: '2026-05-17',
             },
@@ -288,6 +289,7 @@ describe('architecture safety contracts', () => {
         cacheCreationInputTokenPrice: 0.5,
         outputTokenPrice: 1,
         webSearchRequestPrice: null,
+        requestPrice: 0.05,
         sourceUrl: '',
         updatedAt: '2026-05-17',
       },
@@ -329,11 +331,14 @@ describe('architecture safety contracts', () => {
 
     assert.equal(report.runs[0].cost.pricingSource, 'channel_override');
     assert.equal(report.runs[0].cost.pricingStatus, 'estimated');
-    assert.equal(report.runs[0].cost.totalCost, 2.12);
+    assert.equal(report.runs[0].cost.requestCost, 0.25);
+    assert.equal(report.runs[0].cost.totalCost, 2.37);
     assert.equal(report.runs[1].cost.pricingSource, 'base_default');
     assert.equal(report.runs[1].cost.pricingStatus, 'estimated');
-    assert.equal(report.runs[1].cost.totalCost, 1.5);
-    assert.equal(report.summary.cost.totalCost, 3.62);
+    assert.equal(report.runs[1].cost.requestCost, 0.05);
+    assert.equal(report.runs[1].cost.totalCost, 1.55);
+    assert.equal(report.summary.cost.requestCost, 0.3);
+    assert.equal(report.summary.cost.totalCost, 3.92);
     assert.equal(report.summary.cost.pricingSources.channel_override, 1);
     assert.equal(report.summary.cost.pricingSources.base_default, 1);
   });
@@ -364,6 +369,7 @@ describe('architecture safety contracts', () => {
     }, effective);
 
     assert.equal(cost.pricingStatus, 'partial');
+    assert.equal(cost.requestCost, 0);
     assert.equal(cost.totalCost, 1);
     assert.deepEqual(cost.missingFields, ['webSearchRequestPrice']);
     assert.deepEqual(cost.unpricedUsage, ['webSearchRequests']);

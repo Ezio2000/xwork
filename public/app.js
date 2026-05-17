@@ -393,12 +393,17 @@ function bindEvents() {
   dom.btnBackChatPricing.addEventListener('click', showChatPage);
   dom.btnRefreshPricing.addEventListener('click', loadBasePricing);
   dom.btnAddPricing.addEventListener('click', () => showPricingEditor(null));
+  dom.pricingDisplayCurrency.addEventListener('change', () => {
+    state.pricingCurrency = dom.pricingDisplayCurrency.value || 'USD';
+    renderBasePricing();
+    renderChannelList();
+  });
   dom.btnCancelPricing.addEventListener('click', hidePricingEditor);
   dom.btnSavePricing.addEventListener('click', saveBasePricing);
   dom.pricingList.addEventListener('click', (event) => {
-    const card = event.target.closest('.pricing-card');
-    if (!card) return;
-    const id = card.dataset.pricingId;
+    const row = event.target.closest('.pricing-row');
+    if (!row) return;
+    const id = row.dataset.pricingId;
     const action = event.target.closest('button')?.dataset.action;
     if (action === 'edit-pricing') {
       const entry = state.basePricing.find(item => item.id === id);
