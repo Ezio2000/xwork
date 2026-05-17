@@ -834,7 +834,8 @@ export function isVisibleMessage(message) {
 
 export function renderMessages() {
   const visibleMessages = state.messages.filter(isVisibleMessage);
-  if (visibleMessages.length === 0) {
+  const stream = state.activeId ? state.streamingByConversationId.get(state.activeId) : null;
+  if (visibleMessages.length === 0 && !stream) {
     dom.messages.innerHTML = `
       <div class="empty-state">
         <div class="brand">xwork</div>
@@ -843,7 +844,12 @@ export function renderMessages() {
     return;
   }
 
-  dom.messages.innerHTML = visibleMessages.map(message => {
+  const pendingMessages = [...visibleMessages];
+  if (stream && pendingMessages.length <= stream.originalMessageCount) {
+    pendingMessages.push({ role: 'user', content: stream.message });
+  }
+
+  const html = pendingMessages.map(message => {
     if (message.role === 'assistant' && Array.isArray(message.blocks)) {
       return `<div class="message assistant">
         <div class="role-label">ASSISTANT</div>
@@ -856,6 +862,13 @@ export function renderMessages() {
       ${message.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(message), true, message.searchCount || 0)}</div>` : ''}
     </div>`;
   }).join('');
+  dom.messages.innerHTML = stream
+    ? `${html}
+      <div class="message assistant streaming" data-chat-run-id="${escHtml(stream.runId || '')}">
+        <div class="role-label">ASSISTANT</div>
+        <div class="content"></div>
+      </div>`
+    : html;
 }
 
 export function addUserMessage(text) {
@@ -868,9 +881,10 @@ export function addUserMessage(text) {
   scrollBottom();
 }
 
-export function addAssistantPlaceholder() {
+export function addAssistantPlaceholder(stream = null) {
   const div = document.createElement('div');
   div.className = 'message assistant streaming';
+  if (stream?.runId) div.dataset.chatRunId = stream.runId;
   div.innerHTML = `<div class="role-label">ASSISTANT</div><div class="content"></div>`;
   dom.messages.appendChild(div);
   scrollBottom();

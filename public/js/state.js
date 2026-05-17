@@ -2,7 +2,7 @@ export const state = {
   conversations: [],
   activeId: null,
   messages: [],
-  streaming: false,
+  streamingByConversationId: new Map(),
   channels: [],
   activeChannelId: null,
   activeModel: null,

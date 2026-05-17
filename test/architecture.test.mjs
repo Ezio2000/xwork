@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { streamChat } from '../lib/api.mjs';
 import { buildAuditTrace } from '../lib/audit-trace.mjs';
 import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
+import { CHAT_SERVICE_TEST_HOOKS, getChatRunSnapshot, handleChatRequest, handleChatRunStream } from '../lib/chat-service.mjs';
 import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
 import { SchemaValidationError, validateChatRequest, validateToolConfigPatch } from '../lib/schema.mjs';
 import { withConversationQueue } from '../lib/storage.mjs';
@@ -45,6 +46,108 @@ describe('architecture safety contracts', () => {
       () => validateChatRequest({ message: '   ' }),
       SchemaValidationError,
     );
+  });
+
+  it('accepts an optional safe client chat run id', () => {
+    assert.equal(validateChatRequest({ runId: 'run_123', message: 'hi' }).runId, 'run_123');
+    assert.throws(
+      () => validateChatRequest({ runId: '../bad', message: 'hi' }),
+      SchemaValidationError,
+    );
+  });
+
+  it('keeps a background chat run alive after the SSE client closes', async () => {
+    const originalStreamChat = CHAT_SERVICE_TEST_HOOKS.streamChat;
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    let sawAbortedSignal = false;
+
+    CHAT_SERVICE_TEST_HOOKS.streamChat = async (_config, _messages, onDelta, _onThinking, onDone, _onError, _onServerTool, { signal } = {}) => {
+      await wait(20);
+      sawAbortedSignal = signal?.aborted === true;
+      onDelta('done');
+      onDone('done', 'end_turn', null);
+      return {
+        text: 'done',
+        content: [{ type: 'text', text: 'done' }],
+        stopReason: 'end_turn',
+        usage: null,
+        toolCalls: [],
+        serverToolEvents: [],
+      };
+    };
+
+    const req = {
+      body: {
+        runId: 'run_bg_disconnect',
+        message: 'hi',
+      },
+    };
+    const writes = [];
+    const closeHandlers = [];
+    const res = {
+      destroyed: false,
+      writableEnded: false,
+      writeHead(status, headers) {
+        this.status = status;
+        this.headers = headers;
+      },
+      write(chunk) {
+        writes.push(chunk);
+        return true;
+      },
+      end() {
+        this.writableEnded = true;
+      },
+      on(event, handler) {
+        if (event === 'close') closeHandlers.push(handler);
+      },
+    };
+
+    try {
+      await handleChatRequest(req, res);
+      assert.equal(res.status, 200);
+      res.destroyed = true;
+      for (const handler of closeHandlers) handler();
+
+      await wait(80);
+      const snapshot = getChatRunSnapshot('run_bg_disconnect');
+      assert.equal(snapshot.status, 'completed');
+      assert.equal(sawAbortedSignal, false);
+      assert.ok(writes.some(chunk => String(chunk).includes('chat_run_start')));
+    } finally {
+      CHAT_SERVICE_TEST_HOOKS.streamChat = originalStreamChat;
+    }
+  });
+
+  it('replays chat run events from the requested sequence', async () => {
+    const writes = [];
+    const res = {
+      destroyed: false,
+      writableEnded: false,
+      writeHead(status, headers) {
+        this.status = status;
+        this.headers = headers;
+      },
+      write(chunk) {
+        writes.push(String(chunk));
+        return true;
+      },
+      end() {
+        this.writableEnded = true;
+      },
+      on() {},
+    };
+
+    handleChatRunStream({
+      params: { id: 'run_bg_disconnect' },
+      query: { afterSeq: '1' },
+    }, res);
+
+    assert.equal(res.status, 200);
+    assert.ok(res.writableEnded);
+    assert.ok(writes.some(chunk => chunk.includes('"type":"delta"')));
+    assert.ok(writes.some(chunk => chunk.includes('"type":"done"')));
+    assert.ok(!writes.some(chunk => chunk.includes('"type":"chat_run_start"')));
   });
 
   it('validates tool config patches', () => {

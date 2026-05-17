@@ -1,7 +1,7 @@
 import { api } from './js/api-client.js';
 import { dom } from './js/dom.js';
 import { installRendererEventHandlers } from './js/renderers.js';
-import { sendMessage } from './js/chat-stream.js';
+import { renderActiveStreamingMessage, sendMessage } from './js/chat-stream.js';
 import { state } from './js/state.js';
 import {
   hideChannelEditor,
@@ -191,6 +191,7 @@ async function selectConversation(id) {
   state.messages = hydrateAssistantMessages(convo.messages);
   dom.chatTitle.textContent = convo.title;
   renderMessages();
+  renderActiveStreamingMessage();
   renderConvoList();
   scrollBottom();
 }

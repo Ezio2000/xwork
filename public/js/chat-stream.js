@@ -2,8 +2,10 @@ import { dom } from './dom.js';
 import { state } from './state.js';
 import { escHtml, mergeSources, renderBlocks, subagentEventToBlocks } from './renderers.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
-import { addAssistantPlaceholder, addUserMessage, renderConvoList, scrollBottom } from './views.js';
+import { addAssistantPlaceholder, addUserMessage, renderConvoList, renderMessages, scrollBottom } from './views.js';
 import { api } from './api-client.js';
+
+const STREAM_RENDER_INTERVAL_MS = 80;
 
 function currentTextBlock(blocks) {
   for (let i = blocks.length - 1; i >= 0; i--) {
@@ -90,9 +92,20 @@ function scrollRunningSubagentsToBottom(contentEl) {
   });
 }
 
-const STREAM_RENDER_INTERVAL_MS = 80;
+function getStreamingContentEl(stream) {
+  if (!stream || state.activeId !== stream.conversationId) return null;
+  return dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"] .content`);
+}
 
-function createStreamRenderScheduler(blocks, contentEl) {
+function getActiveStream() {
+  return state.activeId ? state.streamingByConversationId.get(state.activeId) : null;
+}
+
+function setSendDisabled() {
+  dom.btnSend.disabled = Boolean(getActiveStream());
+}
+
+function createStreamRenderScheduler(stream) {
   let timerId = 0;
   let frameId = 0;
   let lastRenderedAt = 0;
@@ -113,8 +126,10 @@ function createStreamRenderScheduler(blocks, contentEl) {
     timerId = 0;
     frameId = 0;
     lastRenderedAt = Date.now();
-    if (rememberCollapseState) rememberAllCollapseStates(blocks, contentEl);
-    contentEl.innerHTML = renderBlocks(blocks, false);
+    const contentEl = getStreamingContentEl(stream);
+    if (!contentEl) return;
+    if (rememberCollapseState) rememberAllCollapseStates(stream.blocks, contentEl);
+    contentEl.innerHTML = renderBlocks(stream.blocks, false);
     scrollRunningSubagentsToBottom(contentEl);
     scrollBottom();
   }
@@ -150,7 +165,7 @@ function createStreamRenderScheduler(blocks, contentEl) {
 }
 
 async function ensureConversation(message) {
-  if (state.activeId) return;
+  if (state.activeId) return state.activeId;
 
   const convo = await api('POST', '/api/v1/conversations', {
     title: message.slice(0, 50) + (message.length > 50 ? '…' : ''),
@@ -166,23 +181,31 @@ async function ensureConversation(message) {
   });
   dom.chatTitle.textContent = convo.title;
   renderConvoList();
+  return convo.id;
 }
 
-function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
+function appendStreamEvent(evt, stream) {
+  stream.lastSeq = Math.max(stream.lastSeq || 0, Number(evt.seq || 0));
+
+  if (evt.type === 'chat_run_start') {
+    if (evt.chatRunId) stream.runId = evt.chatRunId;
+    return;
+  }
+
   if (evt.type === 'thinking') {
-    showThinkingPopup(evt.text);
+    if (state.activeId === stream.conversationId) showThinkingPopup(evt.text);
     return;
   }
 
   if (evt.type === 'delta') {
-    hideThinkingPopup();
-    currentTextBlock(blocks).content += evt.text;
-    renderer.schedule();
+    if (state.activeId === stream.conversationId) hideThinkingPopup();
+    currentTextBlock(stream.blocks).content += evt.text;
+    stream.renderer.schedule();
     return;
   }
 
   if (evt.type === 'tool_call') {
-    renderer.schedule();
+    stream.renderer.schedule();
     return;
   }
 
@@ -190,7 +213,7 @@ function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
     for (const tool of evt.tools) {
       if (tool.renderType && tool.data) {
         if (tool.renderType === 'subagent-run' && tool.data.runId) {
-          const existing = blocks.find(block => block.type === 'subagent-run' && block.runId === tool.data.runId);
+          const existing = stream.blocks.find(block => block.type === 'subagent-run' && block.runId === tool.data.runId);
           if (existing) {
             Object.assign(existing, { ...tool.data, type: 'subagent-run' });
             if (existing.collapsed === undefined && isTerminalSubagentBlock(existing)) existing.collapsed = true;
@@ -200,13 +223,13 @@ function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
         const block = { type: tool.renderType, ...tool.data };
         if (isTerminalSubagentBlock(block)) block.collapsed = true;
         if (block.type === 'source-cards' || block.type === 'sources') block.collapsed = true;
-        blocks.push(block);
+        stream.blocks.push(block);
       }
     }
     const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
-    if (errored) currentTextBlock(blocks).content += `\n\n_Tool error: ${errored}_`;
-    blocks.push({ type: 'text', content: '' });
-    renderer.schedule();
+    if (errored) currentTextBlock(stream.blocks).content += `\n\n_Tool error: ${errored}_`;
+    stream.blocks.push({ type: 'text', content: '' });
+    stream.renderer.schedule();
     return;
   }
 
@@ -214,13 +237,13 @@ function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
     const agentEventType = evt.eventType || evt.event || '';
     if (agentEventType === 'root_start') return;
     if (agentEventType === 'subagent_thinking') {
-      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (block) block.thinking = true;
-      renderer.schedule();
+      stream.renderer.schedule();
       return;
     }
     if (agentEventType === 'subagent_start') {
-      let block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      let block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (!block) {
         block = {
           type: 'subagent-run',
@@ -234,18 +257,18 @@ function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
           timeline: [],
           blocks: [],
         };
-        blocks.push(block);
+        stream.blocks.push(block);
       }
       pushSubagentEvent(block, evt);
     } else if (agentEventType === 'subagent_delta') {
-      hideThinkingPopup();
-      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      if (state.activeId === stream.conversationId) hideThinkingPopup();
+      const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (block) {
         appendSubagentText(block, evt.text || '');
       }
     } else if (agentEventType === 'subagent_done') {
-      hideThinkingPopup();
-      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      if (state.activeId === stream.conversationId) hideThinkingPopup();
+      const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (block) {
         block.thinking = false;
         block.status = evt.status || 'completed';
@@ -257,17 +280,17 @@ function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
         pushSubagentEvent(block, evt);
         block.collapsed = true;
       }
-      renderer.flush({ rememberCollapseState: false });
+      stream.renderer.flush({ rememberCollapseState: false });
       return;
     } else if (agentEventType === 'subagent_tool_call' || agentEventType === 'subagent_server_tool') {
-      const block = blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
+      const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
       if (block) {
         block.thinking = false;
         pushSubagentEvent(block, evt);
       }
     } else if (agentEventType === 'subagent_tool_result') {
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        const block = blocks[i];
+      for (let i = stream.blocks.length - 1; i >= 0; i--) {
+        const block = stream.blocks[i];
         if (block.type === 'subagent-run' && block.runId === evt.runId) {
           block.thinking = false;
           block.status = evt.isError ? 'tool_error' : block.status || 'running';
@@ -276,22 +299,23 @@ function appendStreamEvent(evt, { blocks, contentEl, renderer }) {
         }
       }
     }
-    renderer.schedule();
+    stream.renderer.schedule();
     return;
   }
 
   if (evt.type === 'error') {
-    renderer.cancel();
-    contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(evt.message)}</span>`;
+    stream.status = 'error';
+    stream.error = evt.message || 'Unknown error';
+    stream.renderer.cancel();
+    const contentEl = getStreamingContentEl(stream);
+    if (contentEl) contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(stream.error)}</span>`;
   }
 }
 
-async function readChatStream(res, view) {
+async function readChatStream(res, stream) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  const blocks = [{ type: 'text', content: '' }];
-  const renderer = createStreamRenderScheduler(blocks, view.contentEl);
 
   while (true) {
     const { done, value } = await reader.read();
@@ -305,77 +329,73 @@ async function readChatStream(res, view) {
       const jsonStr = line.slice(6);
       if (jsonStr === '[DONE]') continue;
       try {
-        appendStreamEvent(JSON.parse(jsonStr), { blocks, contentEl: view.contentEl, renderer });
+        const evt = JSON.parse(jsonStr);
+        appendStreamEvent(evt, stream);
+        if (evt.type === 'done' || evt.type === 'error') {
+          stream.terminalEvent = evt;
+        }
       } catch {}
     }
   }
 
-  renderer.flush();
-  return blocks;
+  stream.renderer.flush();
+  return stream.blocks;
 }
 
-function finalizeStreamingMessage(blocks, message) {
-  hideThinkingPopup();
-  const streamingEl = dom.messages.querySelector('.streaming');
+function finalizeStreamingMessage(stream) {
+  if (state.activeId === stream.conversationId) hideThinkingPopup();
+  stream.renderer.flush({ rememberCollapseState: false });
+  const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
   if (streamingEl) {
     streamingEl.classList.remove('streaming');
     streamingEl.querySelectorAll('.sources-toggle').forEach(toggle => toggle.classList.add('collapsed'));
   }
 
-  const allSources = blocks
+  const allSources = stream.blocks
     .filter(block => block.type === 'source-cards' || block.type === 'sources')
     .flatMap(block => block.sources || [])
     .reduce((acc, source) => mergeSources(acc, [source]), []);
-  const totalSearchCount = blocks.reduce((sum, block) => sum + (block.searchCount || 0), 0);
+  const totalSearchCount = stream.blocks.reduce((sum, block) => sum + (block.searchCount || 0), 0);
 
-  state.messages.push({ role: 'user', content: message });
-  state.messages.push({
-    role: 'assistant',
-    blocks,
-    model: state.activeModel,
-    sources: allSources,
-    searchCount: totalSearchCount,
-  });
+  if (state.activeId === stream.conversationId) {
+    if (state.messages.length <= stream.originalMessageCount) {
+      state.messages.push({ role: 'user', content: stream.message });
+    }
+    state.messages.push({
+      role: 'assistant',
+      blocks: stream.blocks,
+      model: stream.model,
+      sources: allSources,
+      searchCount: totalSearchCount,
+    });
+    renderMessages();
+  }
 
-  const conv = state.conversations.find(item => item.id === state.activeId);
-  if (conv && (state.messages.length <= 2 || conv.title === 'New Chat')) {
-    conv.title = message.slice(0, 50) + (message.length > 50 ? '…' : '');
-    dom.chatTitle.textContent = conv.title;
+  const conv = state.conversations.find(item => item.id === stream.conversationId);
+  if (conv && (stream.originalMessageCount <= 0 || conv.title === 'New Chat')) {
+    conv.title = stream.message.slice(0, 50) + (stream.message.length > 50 ? '…' : '');
+    if (state.activeId === stream.conversationId) dom.chatTitle.textContent = conv.title;
     renderConvoList();
   }
+
+  state.streamingByConversationId.delete(stream.conversationId);
+  setSendDisabled();
 }
 
-export async function sendMessage(text) {
-  if (!text.trim() || state.streaming) return;
-  if (!state.activeChannelId) {
-    alert('Please configure a channel in Settings first.');
-    return;
-  }
+function markStreamErrored(stream, err) {
+  stream.status = 'error';
+  stream.error = err.message || String(err);
+  const contentEl = getStreamingContentEl(stream);
+  if (contentEl) contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(stream.error)}</span>`;
+  const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
+  if (streamingEl) streamingEl.classList.remove('streaming');
+  state.streamingByConversationId.delete(stream.conversationId);
+  setSendDisabled();
+}
 
-  const message = text.trim();
-  dom.msgInput.value = '';
-  dom.msgInput.style.height = 'auto';
-  dom.btnSend.disabled = true;
-  state.streaming = true;
-
-  addUserMessage(message);
-
-  let assistantView;
+async function attachStream(stream, resPromise) {
   try {
-    await ensureConversation(message);
-    assistantView = addAssistantPlaceholder();
-
-    const res = await fetch('/api/v1/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversationId: state.activeId,
-        message,
-        channelId: dom.channelSelect.value,
-        model: dom.modelSelect.value,
-      }),
-    });
-
+    const res = await resPromise;
     if (!res.ok) {
       const err = await res.text();
       let errMsg = `Error ${res.status}`;
@@ -384,17 +404,96 @@ export async function sendMessage(text) {
       } catch {}
       throw new Error(errMsg);
     }
-
-    const blocks = await readChatStream(res, assistantView);
-    finalizeStreamingMessage(blocks, message);
+    await readChatStream(res, stream);
+    if (!stream.terminalEvent && stream.status === 'running') {
+      const url = `/api/v1/chat-runs/${encodeURIComponent(stream.runId)}/stream?afterSeq=${encodeURIComponent(stream.lastSeq || 0)}`;
+      attachStream(stream, fetch(url));
+      return;
+    }
+    if (stream.terminalEvent?.type === 'error') {
+      markStreamErrored(stream, new Error(stream.terminalEvent.message || 'Unknown error'));
+    } else {
+      finalizeStreamingMessage(stream);
+    }
   } catch (err) {
-    const contentEl = assistantView?.contentEl || dom.messages.querySelector('.streaming .content');
-    if (contentEl) contentEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(err.message)}</span>`;
-    const streamingEl = dom.messages.querySelector('.streaming');
-    if (streamingEl) streamingEl.classList.remove('streaming');
+    markStreamErrored(stream, err);
+  }
+}
+
+function createStream({ conversationId, runId, message, originalMessageCount, model }) {
+  const stream = {
+    conversationId,
+    runId,
+    message,
+    originalMessageCount,
+    model,
+    status: 'running',
+    blocks: [{ type: 'text', content: '' }],
+    lastSeq: 0,
+    terminalEvent: null,
+    renderer: null,
+  };
+  stream.renderer = createStreamRenderScheduler(stream);
+  state.streamingByConversationId.set(conversationId, stream);
+  return stream;
+}
+
+export function renderActiveStreamingMessage() {
+  const stream = getActiveStream();
+  if (!stream) {
+    setSendDisabled();
+    return false;
   }
 
-  state.streaming = false;
-  dom.btnSend.disabled = false;
-  dom.msgInput.focus();
+  const hasPlaceholder = Boolean(dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`));
+  if (!hasPlaceholder) addAssistantPlaceholder(stream);
+  stream.renderer.flush({ rememberCollapseState: false });
+  setSendDisabled();
+  return true;
+}
+
+export async function sendMessage(text) {
+  if (!text.trim()) return;
+  if (!state.activeChannelId) {
+    alert('Please configure a channel in Settings first.');
+    return;
+  }
+  if (getActiveStream()) return;
+
+  const message = text.trim();
+  dom.msgInput.value = '';
+  dom.msgInput.style.height = 'auto';
+  dom.btnSend.disabled = true;
+
+  try {
+    const conversationId = await ensureConversation(message);
+    const originalMessageCount = state.messages.length;
+    state.messages.push({ role: 'user', content: message });
+    addUserMessage(message);
+
+    const runId = crypto.randomUUID();
+    const stream = createStream({
+      conversationId,
+      runId,
+      message,
+      originalMessageCount,
+      model: dom.modelSelect.value,
+    });
+    addAssistantPlaceholder(stream);
+
+    attachStream(stream, fetch('/api/v1/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        runId,
+        conversationId,
+        message,
+        channelId: dom.channelSelect.value,
+        model: dom.modelSelect.value,
+      }),
+    }));
+  } catch (err) {
+    alert(err.message || String(err));
+    setSendDisabled();
+  }
 }
