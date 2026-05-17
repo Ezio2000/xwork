@@ -1,13 +1,29 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getAgentRun } from '../lib/agents/runs.mjs';
+import { appendAgentRunEvent, completeAgentRun, createAgentRun, getAgentRun } from '../lib/agents/runs.mjs';
 import { runSubagent } from '../lib/agents/subagent-runtime.mjs';
 import { buildSystemPrompt } from '../lib/anthropic/message-normalizer.mjs';
 import { delegateTaskTool } from '../lib/tools/builtin/delegate-task.mjs';
 import { webSearchTool } from '../lib/tools/builtin/web-search.mjs';
 
 describe('subagent runtime', () => {
+  it('does not block agent creation on run-store persistence', async () => {
+    const run = await createAgentRun({
+      role: 'subagent',
+      task: 'Fast create',
+      source: 'test',
+      environment: 'test',
+    });
+
+    await appendAgentRunEvent(run.runId, { type: 'probe' });
+    const completed = await completeAgentRun(run.runId, { status: 'completed', result: { ok: true } });
+
+    assert.equal(run.status, 'running');
+    assert.equal(completed.status, 'completed');
+    assert.ok(completed.events.some(event => event.type === 'probe'));
+  });
+
   it('creates an agent run, streams events, and completes with text', async () => {
     const events = [];
     let receivedMessages;
