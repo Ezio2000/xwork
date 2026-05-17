@@ -8,6 +8,7 @@ import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
 import { SchemaValidationError, validateChatRequest, validateToolConfigPatch } from '../lib/schema.mjs';
 import { withConversationQueue } from '../lib/storage.mjs';
 import { summarizeRunsForUsage } from '../lib/usage-report.mjs';
+import { calculateUsageCost, findEffectiveModelPricing } from '../lib/model-pricing.mjs';
 
 describe('architecture safety contracts', () => {
   it('serializes work for the same conversation id', async () => {
@@ -243,5 +244,128 @@ describe('architecture safety contracts', () => {
     assert.deepEqual(report.tasks[0].runs.map(run => run.runId), ['root1', 'sub1']);
     assert.deepEqual(report.groups.byRole.map(group => group.key), ['root', 'subagent']);
     assert.equal(report.groups.byModel[0].requestCount, 2);
+  });
+
+  it('applies base and channel model pricing to usage reports', () => {
+    const channels = [
+      {
+        id: 'ch1',
+        name: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com/anthropic',
+        pricing: {
+          models: {
+            'model-a': {
+              currency: 'USD',
+              unit: 'per_1m_tokens',
+              inputTokenPrice: 1,
+              cacheReadInputTokenPrice: 0.1,
+              cacheCreationInputTokenPrice: 1,
+              outputTokenPrice: 2,
+              webSearchRequestPrice: 0.01,
+              sourceUrl: '',
+              updatedAt: '2026-05-17',
+            },
+          },
+        },
+      },
+      {
+        id: 'ch2',
+        name: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com/anthropic',
+        pricing: { models: {} },
+      },
+    ];
+    const basePricing = [
+      {
+        id: 'base-model-b',
+        provider: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/anthropic',
+        model: 'model-b',
+        currency: 'USD',
+        unit: 'per_1m_tokens',
+        inputTokenPrice: 0.5,
+        cacheReadInputTokenPrice: 0.05,
+        cacheCreationInputTokenPrice: 0.5,
+        outputTokenPrice: 1,
+        webSearchRequestPrice: null,
+        sourceUrl: '',
+        updatedAt: '2026-05-17',
+      },
+    ];
+
+    const report = summarizeRunsForUsage([
+      {
+        runId: 'run1',
+        role: 'root',
+        status: 'completed',
+        channelId: 'ch1',
+        model: 'model-a',
+        result: {
+          usage: {
+            input_tokens: 1_000_000,
+            cache_read_input_tokens: 1_000_000,
+            cache_creation_input_tokens: 0,
+            output_tokens: 500_000,
+            server_tool_use: { web_search_requests: 2 },
+          },
+        },
+        events: [],
+      },
+      {
+        runId: 'run2',
+        role: 'root',
+        status: 'completed',
+        channelId: 'ch2',
+        model: 'model-b',
+        result: {
+          usage: {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+          },
+        },
+        events: [],
+      },
+    ], { channels, basePricing });
+
+    assert.equal(report.runs[0].cost.pricingSource, 'channel_override');
+    assert.equal(report.runs[0].cost.pricingStatus, 'estimated');
+    assert.equal(report.runs[0].cost.totalCost, 2.12);
+    assert.equal(report.runs[1].cost.pricingSource, 'base_default');
+    assert.equal(report.runs[1].cost.pricingStatus, 'estimated');
+    assert.equal(report.runs[1].cost.totalCost, 1.5);
+    assert.equal(report.summary.cost.totalCost, 3.62);
+    assert.equal(report.summary.cost.pricingSources.channel_override, 1);
+    assert.equal(report.summary.cost.pricingSources.base_default, 1);
+  });
+
+  it('reports partial pricing when priced token usage has no rate', () => {
+    const effective = findEffectiveModelPricing({
+      channel: { id: 'ch1', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/anthropic', pricing: { models: {} } },
+      model: 'model-a',
+      basePricing: [{
+        id: 'model-a',
+        provider: 'deepseek',
+        baseUrl: '',
+        model: 'model-a',
+        currency: 'USD',
+        unit: 'per_1m_tokens',
+        inputTokenPrice: 1,
+        cacheReadInputTokenPrice: 0.1,
+        cacheCreationInputTokenPrice: 1,
+        outputTokenPrice: 2,
+        webSearchRequestPrice: null,
+        sourceUrl: '',
+        updatedAt: '2026-05-17',
+      }],
+    });
+    const cost = calculateUsageCost({
+      input_tokens: 1_000_000,
+      server_tool_use: { web_search_requests: 1 },
+    }, effective);
+
+    assert.equal(cost.pricingStatus, 'partial');
+    assert.equal(cost.totalCost, 1);
+    assert.deepEqual(cost.missingFields, ['webSearchRequestPrice']);
+    assert.deepEqual(cost.unpricedUsage, ['webSearchRequests']);
   });
 });

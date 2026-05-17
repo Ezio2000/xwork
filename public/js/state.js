@@ -9,4 +9,5 @@ export const state = {
   tools: [],
   toolRuns: [],
   usage: null,
+  basePricing: [],
 };

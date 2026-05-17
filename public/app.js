@@ -15,16 +15,23 @@ import {
   renderToolList,
   renderToolRuns,
   renderUsageReport,
+  renderBasePricing,
   scrollBottom,
   showChannelEditor,
   showChannelsPage,
   showChatPage,
+  showPricingEditor,
+  hidePricingEditor,
+  showPricingPageFrame,
   showSettings,
   showToolRunDetail,
   showToolsPageFrame,
   showUsagePageFrame,
   showUsageRunDetail,
   hideUsageRunDetail,
+  collectChannelPricingOverrides,
+  effectivePricingForChannelModel,
+  pricingPayloadFromEditor,
 } from './js/views.js';
 
 async function loadActive() {
@@ -33,6 +40,11 @@ async function loadActive() {
   state.activeChannelId = data.activeChannelId;
   state.activeModel = data.activeModel;
   renderSelectors();
+}
+
+async function loadBasePricing() {
+  state.basePricing = await api('GET', '/api/v1/model-pricing');
+  renderBasePricing();
 }
 
 async function setActiveChannel(channelId) {
@@ -50,12 +62,14 @@ async function setActiveModel(model) {
 
 async function saveChannel() {
   const id = dom.editChannelId.value;
+  const current = state.channels.find(channel => channel.id === id);
   const payload = {
     name: dom.editName.value.trim(),
     baseUrl: dom.editBaseUrl.value.trim(),
     apiKey: dom.editApiKey.value.trim(),
     models: dom.editModels.value.split(',').map(item => item.trim()).filter(Boolean),
     maxTokens: parseInt(dom.editMaxTokens.value) || 8192,
+    pricing: id ? collectChannelPricingOverrides(current) : { models: {} },
   };
 
   if (!payload.name || !payload.baseUrl) {
@@ -121,6 +135,42 @@ async function loadUsage() {
 async function showUsagePage() {
   showUsagePageFrame();
   await loadUsage();
+}
+
+async function showPricingPage() {
+  showPricingPageFrame();
+  await loadBasePricing();
+}
+
+async function saveBasePricing() {
+  const id = dom.editPricingId.value;
+  const payload = pricingPayloadFromEditor();
+  if (!payload.id && !id) {
+    alert('Model is required');
+    return;
+  }
+  if (!payload.provider || !payload.model) {
+    alert('Provider and model are required');
+    return;
+  }
+  if (id) {
+    const updated = await api('PUT', `/api/v1/model-pricing/${id}`, payload);
+    const idx = state.basePricing.findIndex(item => item.id === id);
+    if (idx !== -1) state.basePricing[idx] = updated;
+  } else {
+    const created = await api('POST', '/api/v1/model-pricing', payload);
+    state.basePricing.push(created);
+  }
+  renderBasePricing();
+  renderChannelList();
+  hidePricingEditor();
+}
+
+async function deleteBasePricing(id) {
+  if (!confirm('Delete this base price? Channel overrides will not be deleted.')) return;
+  await api('DELETE', `/api/v1/model-pricing/${id}`);
+  state.basePricing = state.basePricing.filter(item => item.id !== id);
+  renderBasePricing();
 }
 
 async function toggleTool(id, enabled) {
@@ -223,6 +273,10 @@ function bindEvents() {
     hideSettings();
     showUsagePage();
   });
+  dom.settingPricing.addEventListener('click', () => {
+    hideSettings();
+    showPricingPage();
+  });
 
   dom.btnBackChat.addEventListener('click', showChatPage);
   dom.btnAddChannelPage.addEventListener('click', () => showChannelEditor(null));
@@ -243,6 +297,36 @@ function bindEvents() {
   });
   dom.btnCancelEdit.addEventListener('click', hideChannelEditor);
   dom.btnSaveChannel.addEventListener('click', saveChannel);
+  dom.channelPricingList.addEventListener('click', (event) => {
+    const row = event.target.closest('.channel-pricing-row');
+    if (!row) return;
+    const action = event.target.closest('button')?.dataset.action;
+    if (!action) return;
+    const id = dom.editChannelId.value;
+    const channel = state.channels.find(item => item.id === id);
+    const model = row.dataset.model;
+    if (!channel || !model) return;
+
+    if (action === 'use-base') {
+      const effective = effectivePricingForChannelModel({ ...channel, pricing: { models: {} } }, model);
+      if (!effective.pricing) return;
+      for (const input of row.querySelectorAll('[data-price-field]')) {
+        const field = input.dataset.priceField;
+        input.value = field === 'currency' ? (effective.pricing.currency || 'USD') : (effective.pricing[field] ?? '');
+      }
+      row.querySelector('.pricing-source').textContent = 'Channel Override';
+      row.querySelector('.pricing-source').classList.remove('missing');
+    }
+
+    if (action === 'clear-override') {
+      for (const input of row.querySelectorAll('[data-price-field]')) input.value = '';
+      const currencyInput = row.querySelector('[data-price-field="currency"]');
+      if (currencyInput) currencyInput.value = 'USD';
+      const effective = effectivePricingForChannelModel({ ...channel, pricing: { models: {} } }, model);
+      row.querySelector('.pricing-source').textContent = effective.pricing ? 'Base Default' : 'Missing';
+      row.querySelector('.pricing-source').classList.toggle('missing', !effective.pricing);
+    }
+  });
   dom.btnToggleKey.addEventListener('click', () => {
     const input = dom.editApiKey;
     if (input.type === 'password') {
@@ -306,6 +390,25 @@ function bindEvents() {
   dom.btnCloseUsageDetail.addEventListener('click', hideUsageRunDetail);
   dom.usageRunDetail.querySelector('.detail-backdrop').addEventListener('click', hideUsageRunDetail);
 
+  dom.btnBackChatPricing.addEventListener('click', showChatPage);
+  dom.btnRefreshPricing.addEventListener('click', loadBasePricing);
+  dom.btnAddPricing.addEventListener('click', () => showPricingEditor(null));
+  dom.btnCancelPricing.addEventListener('click', hidePricingEditor);
+  dom.btnSavePricing.addEventListener('click', saveBasePricing);
+  dom.pricingList.addEventListener('click', (event) => {
+    const card = event.target.closest('.pricing-card');
+    if (!card) return;
+    const id = card.dataset.pricingId;
+    const action = event.target.closest('button')?.dataset.action;
+    if (action === 'edit-pricing') {
+      const entry = state.basePricing.find(item => item.id === id);
+      if (entry) showPricingEditor(entry);
+    }
+    if (action === 'delete-pricing') {
+      deleteBasePricing(id).catch(err => alert(err.message));
+    }
+  });
+
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
       event.preventDefault();
@@ -317,6 +420,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  await loadBasePricing();
   await loadActive();
   await loadConversations();
   if (state.conversations.length > 0) {

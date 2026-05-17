@@ -28,6 +28,7 @@ export function showChannelsPage() {
   dom.chatMain.classList.add('hidden');
   dom.toolsPage.classList.add('hidden');
   dom.usagePage.classList.add('hidden');
+  dom.pricingPage.classList.add('hidden');
   dom.channelsPage.classList.remove('hidden');
   renderChannelList();
   dom.channelEditor.classList.add('hidden');
@@ -39,6 +40,7 @@ export function showToolsPageFrame() {
   dom.channelsPage.classList.add('hidden');
   dom.toolsPage.classList.remove('hidden');
   dom.usagePage.classList.add('hidden');
+  dom.pricingPage.classList.add('hidden');
 }
 
 export function showUsagePageFrame() {
@@ -47,6 +49,17 @@ export function showUsagePageFrame() {
   dom.channelsPage.classList.add('hidden');
   dom.toolsPage.classList.add('hidden');
   dom.usagePage.classList.remove('hidden');
+  dom.pricingPage.classList.add('hidden');
+}
+
+export function showPricingPageFrame() {
+  hideToolRunDetail();
+  hideUsageRunDetail();
+  dom.chatMain.classList.add('hidden');
+  dom.channelsPage.classList.add('hidden');
+  dom.toolsPage.classList.add('hidden');
+  dom.usagePage.classList.add('hidden');
+  dom.pricingPage.classList.remove('hidden');
 }
 
 export function showChatPage() {
@@ -55,6 +68,7 @@ export function showChatPage() {
   dom.channelsPage.classList.add('hidden');
   dom.toolsPage.classList.add('hidden');
   dom.usagePage.classList.add('hidden');
+  dom.pricingPage.classList.add('hidden');
   dom.chatMain.classList.remove('hidden');
 }
 
@@ -64,6 +78,126 @@ export function showSettings() {
 
 export function hideSettings() {
   dom.settingsModal.classList.add('hidden');
+}
+
+function normalizeBaseUrl(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  try {
+    return new URL(text).toString().replace(/\/+$/, '');
+  } catch {
+    return text.replace(/\/+$/, '');
+  }
+}
+
+function inferProvider(channel = {}) {
+  const baseUrl = normalizeBaseUrl(channel.baseUrl).toLowerCase();
+  if (baseUrl.includes('deepseek.com')) return 'deepseek';
+  if (baseUrl.includes('anthropic.com')) return 'anthropic';
+  if (baseUrl.includes('openai.com')) return 'openai';
+  if (baseUrl.includes('googleapis.com')) return 'google';
+  const name = String(channel.name || '').toLowerCase();
+  if (name.includes('deepseek')) return 'deepseek';
+  if (name.includes('anthropic') || name.includes('claude')) return 'anthropic';
+  if (name.includes('openai')) return 'openai';
+  if (name.includes('google') || name.includes('gemini')) return 'google';
+  return '';
+}
+
+function findBasePricing(channel, model) {
+  const baseUrl = normalizeBaseUrl(channel?.baseUrl);
+  const provider = inferProvider(channel);
+  return state.basePricing.find(item => item.model === model && normalizeBaseUrl(item.baseUrl) === baseUrl)
+    || state.basePricing.find(item => item.model === model && String(item.provider || '').toLowerCase() === provider)
+    || null;
+}
+
+export function effectivePricingForChannelModel(channel, model) {
+  const override = channel?.pricing?.models?.[model];
+  if (override) return { pricing: override, source: 'Channel Override' };
+  const base = findBasePricing(channel, model);
+  if (base) return { pricing: base, source: 'Base Default' };
+  return { pricing: null, source: 'Missing' };
+}
+
+function fmtPrice(value, currency = 'USD') {
+  if (value === null || value === undefined || value === '') return '-';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${currency} ${n.toLocaleString('en-US', { maximumFractionDigits: 6 })}`;
+}
+
+function pricingPayloadFromDom(prefix = 'editPricing') {
+  return {
+    provider: dom[`${prefix}Provider`]?.value?.trim(),
+    baseUrl: dom[`${prefix}BaseUrl`]?.value?.trim(),
+    model: dom[`${prefix}Model`]?.value?.trim(),
+    currency: (dom[`${prefix}Currency`]?.value?.trim() || 'USD').toUpperCase(),
+    unit: 'per_1m_tokens',
+    inputTokenPrice: numberOrNull(dom[`${prefix}Input`]?.value),
+    cacheReadInputTokenPrice: numberOrNull(dom[`${prefix}CacheRead`]?.value),
+    cacheCreationInputTokenPrice: numberOrNull(dom[`${prefix}CacheCreate`]?.value),
+    outputTokenPrice: numberOrNull(dom[`${prefix}Output`]?.value),
+    webSearchRequestPrice: numberOrNull(dom[`${prefix}WebSearch`]?.value),
+    sourceUrl: dom[`${prefix}SourceUrl`]?.value?.trim() || '',
+    updatedAt: dom[`${prefix}UpdatedAt`]?.value?.trim() || new Date().toISOString(),
+    notes: dom[`${prefix}Notes`]?.value?.trim() || '',
+  };
+}
+
+export function numberOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function collectChannelPricingOverrides(channel) {
+  const models = {};
+  for (const row of dom.channelPricingList.querySelectorAll('.channel-pricing-row')) {
+    const model = row.dataset.model;
+    if (!model) continue;
+    const currentOverride = channel?.pricing?.models?.[model];
+    const values = {
+      currency: 'USD',
+      unit: 'per_1m_tokens',
+      inputTokenPrice: null,
+      cacheReadInputTokenPrice: null,
+      cacheCreationInputTokenPrice: null,
+      outputTokenPrice: null,
+      webSearchRequestPrice: null,
+      sourceUrl: currentOverride?.sourceUrl || '',
+      updatedAt: currentOverride?.updatedAt || new Date().toISOString(),
+      notes: currentOverride?.notes || '',
+    };
+    for (const input of row.querySelectorAll('[data-price-field]')) {
+      const field = input.dataset.priceField;
+      if (field === 'currency') {
+        values.currency = (input.value.trim() || 'USD').toUpperCase();
+      } else {
+        values[field] = numberOrNull(input.value);
+      }
+    }
+    const hasAnyPrice = [
+      values.inputTokenPrice,
+      values.cacheReadInputTokenPrice,
+      values.cacheCreationInputTokenPrice,
+      values.outputTokenPrice,
+      values.webSearchRequestPrice,
+    ].some(value => value !== null);
+    if (hasAnyPrice) models[model] = values;
+  }
+  return { models };
+}
+
+function pricingValues(pricing = {}) {
+  const currency = pricing.currency || 'USD';
+  return [
+    `in ${fmtPrice(pricing.inputTokenPrice, currency)}`,
+    `cached ${fmtPrice(pricing.cacheReadInputTokenPrice, currency)}`,
+    `create ${fmtPrice(pricing.cacheCreationInputTokenPrice, currency)}`,
+    `out ${fmtPrice(pricing.outputTokenPrice, currency)}`,
+    `web ${fmtPrice(pricing.webSearchRequestPrice, currency)}`,
+  ].join(' · ');
 }
 
 export function renderChannelList() {
@@ -82,6 +216,43 @@ export function renderChannelList() {
   `).join('');
 }
 
+function renderChannelPricingRows(channel) {
+  const models = channel?.models || [];
+  if (!models.length) {
+    return '<div class="empty-panel">No models configured for this channel.</div>';
+  }
+  return models.map(model => {
+    const effective = effectivePricingForChannelModel(channel, model);
+    const override = channel?.pricing?.models?.[model] || null;
+    const pricing = effective.pricing || {};
+    const editPricing = override || {};
+    const currency = editPricing.currency || pricing.currency || 'USD';
+    return `
+      <div class="channel-pricing-row" data-model="${escHtml(model)}">
+        <div class="channel-pricing-main">
+          <div>
+            <div class="channel-pricing-model">${escHtml(model)}</div>
+            <div class="channel-pricing-values">${escHtml(effective.pricing ? pricingValues(pricing) : 'No pricing configured')}</div>
+          </div>
+          <span class="pricing-source ${effective.source === 'Missing' ? 'missing' : ''}">${escHtml(effective.source)}</span>
+        </div>
+        <div class="channel-pricing-edit">
+          <input data-price-field="inputTokenPrice" type="number" min="0" step="0.000001" placeholder="Input / 1M" value="${editPricing.inputTokenPrice ?? ''}">
+          <input data-price-field="cacheReadInputTokenPrice" type="number" min="0" step="0.000001" placeholder="Cache / 1M" value="${editPricing.cacheReadInputTokenPrice ?? ''}">
+          <input data-price-field="cacheCreationInputTokenPrice" type="number" min="0" step="0.000001" placeholder="Create / 1M" value="${editPricing.cacheCreationInputTokenPrice ?? ''}">
+          <input data-price-field="outputTokenPrice" type="number" min="0" step="0.000001" placeholder="Output / 1M" value="${editPricing.outputTokenPrice ?? ''}">
+          <input data-price-field="webSearchRequestPrice" type="number" min="0" step="0.000001" placeholder="Web / req" value="${editPricing.webSearchRequestPrice ?? ''}">
+          <input data-price-field="currency" type="text" placeholder="USD" value="${escHtml(currency)}">
+        </div>
+        <div class="channel-pricing-actions">
+          <button type="button" class="btn-text small" data-action="use-base" ${findBasePricing(channel, model) ? '' : 'disabled'}>Use Base</button>
+          <button type="button" class="btn-text small danger" data-action="clear-override">Clear Override</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 export function showChannelEditor(channel) {
   if (channel) {
     dom.editorTitle.textContent = 'Edit Channel';
@@ -93,6 +264,8 @@ export function showChannelEditor(channel) {
     dom.btnToggleKey.textContent = 'Show';
     dom.editModels.value = (channel.models || []).join(', ');
     dom.editMaxTokens.value = channel.maxTokens || 8192;
+    dom.channelPricingSection.classList.remove('hidden');
+    dom.channelPricingList.innerHTML = renderChannelPricingRows(channel);
   } else {
     dom.editorTitle.textContent = 'New Channel';
     dom.editChannelId.value = '';
@@ -103,12 +276,81 @@ export function showChannelEditor(channel) {
     dom.btnToggleKey.textContent = 'Show';
     dom.editModels.value = '';
     dom.editMaxTokens.value = 8192;
+    dom.channelPricingSection.classList.add('hidden');
+    dom.channelPricingList.innerHTML = '';
   }
   dom.channelEditor.classList.remove('hidden');
 }
 
 export function hideChannelEditor() {
   dom.channelEditor.classList.add('hidden');
+}
+
+export function renderBasePricing() {
+  if (!state.basePricing.length) {
+    dom.pricingList.innerHTML = '<div class="empty-panel">No base pricing configured.</div>';
+    return;
+  }
+
+  dom.pricingList.innerHTML = state.basePricing.map(entry => {
+    const currency = entry.currency || 'USD';
+    return `
+      <div class="pricing-card" data-pricing-id="${escHtml(entry.id)}">
+        <div class="pricing-card-main">
+          <div>
+            <div class="pricing-model">${escHtml(entry.model)}</div>
+            <div class="pricing-meta">${escHtml(entry.provider || 'unknown')} · ${escHtml(entry.baseUrl || 'any base URL')}</div>
+          </div>
+          <span class="pricing-source">Base Default</span>
+        </div>
+        <div class="pricing-values">
+          <span>Input ${escHtml(fmtPrice(entry.inputTokenPrice, currency))}</span>
+          <span>Cache ${escHtml(fmtPrice(entry.cacheReadInputTokenPrice, currency))}</span>
+          <span>Create ${escHtml(fmtPrice(entry.cacheCreationInputTokenPrice, currency))}</span>
+          <span>Output ${escHtml(fmtPrice(entry.outputTokenPrice, currency))}</span>
+          <span>Web ${escHtml(fmtPrice(entry.webSearchRequestPrice, currency))}</span>
+        </div>
+        <div class="pricing-card-footer">
+          <span>${escHtml(entry.updatedAt || '-')}</span>
+          <div>
+            <button class="btn-text small" data-action="edit-pricing">Edit</button>
+            <button class="btn-text small danger" data-action="delete-pricing">Del</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+export function showPricingEditor(entry) {
+  dom.pricingEditorTitle.textContent = entry ? 'Edit Base Price' : 'New Base Price';
+  dom.editPricingId.value = entry?.id || '';
+  dom.editPricingProvider.value = entry?.provider || '';
+  dom.editPricingBaseUrl.value = entry?.baseUrl || '';
+  dom.editPricingModel.value = entry?.model || '';
+  dom.editPricingCurrency.value = entry?.currency || 'USD';
+  dom.editPricingInput.value = entry?.inputTokenPrice ?? '';
+  dom.editPricingCacheRead.value = entry?.cacheReadInputTokenPrice ?? '';
+  dom.editPricingCacheCreate.value = entry?.cacheCreationInputTokenPrice ?? '';
+  dom.editPricingOutput.value = entry?.outputTokenPrice ?? '';
+  dom.editPricingWebSearch.value = entry?.webSearchRequestPrice ?? '';
+  dom.editPricingSourceUrl.value = entry?.sourceUrl || '';
+  dom.editPricingUpdatedAt.value = entry?.updatedAt || new Date().toISOString().slice(0, 10);
+  dom.editPricingNotes.value = entry?.notes || '';
+  dom.pricingEditor.classList.remove('hidden');
+}
+
+export function hidePricingEditor() {
+  dom.pricingEditor.classList.add('hidden');
+}
+
+export function pricingPayloadFromEditor() {
+  const payload = pricingPayloadFromDom();
+  if (!dom.editPricingId.value) {
+    const rawId = [payload.provider, payload.model].filter(Boolean).join('-');
+    payload.id = rawId ? rawId.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120) : '';
+  }
+  return payload;
 }
 
 export function renderToolList() {
@@ -278,6 +520,15 @@ function metricCard(label, value, hint = '') {
   `;
 }
 
+function fmtCost(cost = {}) {
+  if (cost.totalCost === null || cost.totalCost === undefined) return 'Missing';
+  const currency = cost.currency || 'USD';
+  return `${currency} ${Number(cost.totalCost || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 6,
+  })}`;
+}
+
 function usageBar(ratio) {
   const pct = Math.max(0, Math.min(100, Number(ratio || 0) * 100));
   const hue = Math.round((pct / 100) * 120);
@@ -295,6 +546,7 @@ function metricBadges(metrics = {}, extras = {}) {
     `${fmtNumber(metrics.uncachedInputTokens)} uncached`,
     `${fmtNumber(metrics.outputTokens)} out`,
     `${fmtNumber(metrics.webSearchRequests)} web`,
+    extras.cost ? `cost ${fmtCost(extras.cost)}` : '',
     extras.toolCalls !== undefined ? `${fmtNumber(extras.toolCalls)} tools` : '',
     extras.subagents ? `${fmtNumber(extras.subagents)} subagents` : '',
   ].filter(Boolean).map(item => `<span>${escHtml(item)}</span>`).join('');
@@ -313,7 +565,7 @@ function renderUsageRunLine(run) {
       <div class="usage-run-meta">
         <span>${escHtml(run.model || 'unknown')}</span>
         <span>${fmtDuration(run.durationMs)}</span>
-        ${metricBadges(run.metrics, { toolCalls: run.toolCounts?.totalToolCalls })}
+        ${metricBadges(run.metrics, { toolCalls: run.toolCounts?.totalToolCalls, cost: run.cost })}
       </div>
       ${usageBar(run.metrics?.cacheHitRatio)}
     </div>
@@ -342,6 +594,7 @@ function renderUsageTask(task, index) {
           ${metricBadges(metrics, {
             toolCalls: task.toolCounts?.totalToolCalls,
             subagents: task.subagentCount,
+            cost: task.cost,
           })}
         </div>
         ${usageBar(metrics.cacheHitRatio)}
@@ -365,6 +618,7 @@ function renderUsageGroup(title, rows = []) {
           <div class="usage-group-row">
             <span class="usage-group-key">${escHtml(row.key)}</span>
             <span>${fmtNumber(row.requestCount)} req</span>
+            <span>${fmtCost(row.cost)}</span>
             <span>${fmtPercent(row.weightedCacheHitRatio)}</span>
             <span>${fmtDuration(row.averageDurationMs)}</span>
           </div>
@@ -390,6 +644,7 @@ export function renderUsageReport() {
     metricCard('Cache Hit', fmtPercent(s.weightedCacheHitRatio), `${fmtNumber(s.cacheReadInputTokens)} cached tokens`),
     metricCard('Input', fmtNumber(s.totalInputTokens), `${fmtNumber(s.uncachedInputTokens)} uncached`),
     metricCard('Output', fmtNumber(s.outputTokens), 'generated tokens'),
+    metricCard('Cost', fmtCost(s.cost), `${fmtNumber(s.cost?.unpricedRunCount)} partial/missing`),
     metricCard('Latency', fmtDuration(s.averageDurationMs), 'average duration'),
     metricCard('Web Search', fmtNumber(s.webSearchRequests), 'requests'),
   ].join('');
@@ -420,8 +675,15 @@ export function showUsageRunDetail(run) {
         <div class="detail-meta-item"><div class="dm-label">Role</div><div class="dm-value">${escHtml(run.role)}</div></div>
         <div class="detail-meta-item"><div class="dm-label">Status</div><div class="dm-value">${escHtml(run.status)}</div></div>
         <div class="detail-meta-item"><div class="dm-label">Cache Hit</div><div class="dm-value">${fmtPercent(run.metrics?.cacheHitRatio)}</div></div>
+        <div class="detail-meta-item"><div class="dm-label">Cost</div><div class="dm-value">${escHtml(fmtCost(run.cost))}</div></div>
         <div class="detail-meta-item"><div class="dm-label">Duration</div><div class="dm-value">${fmtDuration(run.durationMs)}</div></div>
       </div>
+    </div>
+  `);
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-label">Cost</div>
+      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.cost || {}, null, 2))}</pre></div>
     </div>
   `);
   parts.push(`
