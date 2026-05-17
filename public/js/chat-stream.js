@@ -357,6 +357,7 @@ function finalizeStreamingMessage(stream) {
     .reduce((acc, source) => mergeSources(acc, [source]), []);
   const totalSearchCount = stream.blocks.reduce((sum, block) => sum + (block.searchCount || 0), 0);
 
+  state.streamingByConversationId.delete(stream.conversationId);
   if (state.activeId === stream.conversationId) {
     if (state.messages.length <= stream.originalMessageCount) {
       state.messages.push({ role: 'user', content: stream.message });
@@ -378,7 +379,6 @@ function finalizeStreamingMessage(stream) {
     renderConvoList();
   }
 
-  state.streamingByConversationId.delete(stream.conversationId);
   setSendDisabled();
 }
 
