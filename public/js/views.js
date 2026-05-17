@@ -24,22 +24,37 @@ export function renderSelectors() {
 }
 
 export function showChannelsPage() {
+  hideUsageRunDetail();
   dom.chatMain.classList.add('hidden');
   dom.toolsPage.classList.add('hidden');
+  dom.usagePage.classList.add('hidden');
   dom.channelsPage.classList.remove('hidden');
   renderChannelList();
   dom.channelEditor.classList.add('hidden');
 }
 
 export function showToolsPageFrame() {
+  hideUsageRunDetail();
   dom.chatMain.classList.add('hidden');
   dom.channelsPage.classList.add('hidden');
   dom.toolsPage.classList.remove('hidden');
+  dom.usagePage.classList.add('hidden');
+}
+
+export function showUsagePageFrame() {
+  hideToolRunDetail();
+  dom.chatMain.classList.add('hidden');
+  dom.channelsPage.classList.add('hidden');
+  dom.toolsPage.classList.add('hidden');
+  dom.usagePage.classList.remove('hidden');
 }
 
 export function showChatPage() {
+  hideToolRunDetail();
+  hideUsageRunDetail();
   dom.channelsPage.classList.add('hidden');
   dom.toolsPage.classList.add('hidden');
+  dom.usagePage.classList.add('hidden');
   dom.chatMain.classList.remove('hidden');
 }
 
@@ -233,6 +248,221 @@ export function showToolRunDetail(run) {
 
 export function hideToolRunDetail() {
   dom.toolRunDetail.classList.add('hidden');
+}
+
+function fmtNumber(value) {
+  return Number(value || 0).toLocaleString('en-US');
+}
+
+function fmtPercent(value) {
+  return value === null || value === undefined ? '-' : `${Math.round(Number(value) * 1000) / 10}%`;
+}
+
+function fmtDuration(value) {
+  if (value === null || value === undefined) return '-';
+  const n = Number(value || 0);
+  return n >= 1000 ? `${Math.round(n / 100) / 10}s` : `${Math.round(n)}ms`;
+}
+
+function fmtDate(value) {
+  return formatDateTime(value) || '-';
+}
+
+function metricCard(label, value, hint = '') {
+  return `
+    <div class="usage-metric">
+      <div class="usage-metric-label">${escHtml(label)}</div>
+      <div class="usage-metric-value">${escHtml(value)}</div>
+      ${hint ? `<div class="usage-metric-hint">${escHtml(hint)}</div>` : ''}
+    </div>
+  `;
+}
+
+function usageBar(ratio) {
+  const pct = Math.max(0, Math.min(100, Number(ratio || 0) * 100));
+  const hue = Math.round((pct / 100) * 120);
+  return `
+    <div class="usage-cache-bar">
+      <span style="width:${pct}%;background-color:hsl(${hue} 65% 42%)"></span>
+    </div>
+  `;
+}
+
+function metricBadges(metrics = {}, extras = {}) {
+  return [
+    `${fmtNumber(metrics.totalInputTokens)} in`,
+    `${fmtNumber(metrics.cacheReadInputTokens)} cached`,
+    `${fmtNumber(metrics.uncachedInputTokens)} uncached`,
+    `${fmtNumber(metrics.outputTokens)} out`,
+    `${fmtNumber(metrics.webSearchRequests)} web`,
+    extras.toolCalls !== undefined ? `${fmtNumber(extras.toolCalls)} tools` : '',
+    extras.subagents ? `${fmtNumber(extras.subagents)} subagents` : '',
+  ].filter(Boolean).map(item => `<span>${escHtml(item)}</span>`).join('');
+}
+
+function renderUsageRunLine(run) {
+  return `
+    <div class="usage-run-line" data-run-id="${escHtml(run.runId)}">
+      <div class="usage-run-line-main">
+        <div class="usage-run-title">
+          <span class="usage-role ${escHtml(run.role)}">${escHtml(run.role)}</span>
+          <span>${escHtml(run.label || run.task || run.runId)}</span>
+        </div>
+        <div class="usage-run-cache">${fmtPercent(run.metrics?.cacheHitRatio)}</div>
+      </div>
+      <div class="usage-run-meta">
+        <span>${escHtml(run.model || 'unknown')}</span>
+        <span>${fmtDuration(run.durationMs)}</span>
+        ${metricBadges(run.metrics, { toolCalls: run.toolCounts?.totalToolCalls })}
+      </div>
+      ${usageBar(run.metrics?.cacheHitRatio)}
+    </div>
+  `;
+}
+
+function renderUsageTask(task, index) {
+  const metrics = task.metrics || {};
+  const expanded = Boolean(task.expanded);
+  return `
+    <div class="usage-task${expanded ? ' expanded' : ''}" data-task-index="${index}">
+      <div class="usage-task-summary" data-action="toggle-usage-task">
+        <div class="usage-run-main">
+          <div class="usage-run-title">
+            <span class="usage-task-arrow">${expanded ? '▾' : '▸'}</span>
+            <span class="usage-role root">task</span>
+            <span>${escHtml(task.label || task.task || task.rootRunId)}</span>
+          </div>
+          <div class="usage-run-cache">${fmtPercent(metrics.cacheHitRatio)}</div>
+        </div>
+        <div class="usage-run-meta">
+          <span>${escHtml(task.model || 'unknown')}</span>
+          <span>${fmtDate(task.startedAt)}</span>
+          <span>${fmtDuration(task.durationMs)}</span>
+          <span>${fmtNumber(task.runCount)} runs</span>
+          ${metricBadges(metrics, {
+            toolCalls: task.toolCounts?.totalToolCalls,
+            subagents: task.subagentCount,
+          })}
+        </div>
+        ${usageBar(metrics.cacheHitRatio)}
+      </div>
+      ${expanded ? `
+        <div class="usage-task-detail">
+          ${(task.runs || []).map(renderUsageRunLine).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderUsageGroup(title, rows = []) {
+  if (!rows.length) return '';
+  return `
+    <div class="usage-group-card">
+      <h3>${escHtml(title)}</h3>
+      <div class="usage-group-table">
+        ${rows.map(row => `
+          <div class="usage-group-row">
+            <span class="usage-group-key">${escHtml(row.key)}</span>
+            <span>${fmtNumber(row.requestCount)} req</span>
+            <span>${fmtPercent(row.weightedCacheHitRatio)}</span>
+            <span>${fmtDuration(row.averageDurationMs)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+export function renderUsageReport() {
+  const report = state.usage;
+  if (!report) {
+    dom.usageSummary.innerHTML = '<div class="empty-panel">No usage data loaded.</div>';
+    dom.usageGroups.innerHTML = '';
+    dom.usageRunList.innerHTML = '';
+    dom.usageGeneratedAt.textContent = '';
+    return;
+  }
+
+  const s = report.summary || {};
+  dom.usageSummary.innerHTML = [
+    metricCard('Tasks', fmtNumber((report.tasks || []).length), `${fmtNumber(s.requestCount)} runs`),
+    metricCard('Cache Hit', fmtPercent(s.weightedCacheHitRatio), `${fmtNumber(s.cacheReadInputTokens)} cached tokens`),
+    metricCard('Input', fmtNumber(s.totalInputTokens), `${fmtNumber(s.uncachedInputTokens)} uncached`),
+    metricCard('Output', fmtNumber(s.outputTokens), 'generated tokens'),
+    metricCard('Latency', fmtDuration(s.averageDurationMs), 'average duration'),
+    metricCard('Web Search', fmtNumber(s.webSearchRequests), 'requests'),
+  ].join('');
+
+  dom.usageGroups.innerHTML = [
+    renderUsageGroup('By Role', report.groups?.byRole || []),
+    renderUsageGroup('By Model', report.groups?.byModel || []),
+    renderUsageGroup('By Status', report.groups?.byStatus || []),
+  ].join('');
+
+  dom.usageGeneratedAt.textContent = `Generated ${fmtDate(report.generatedAt)}`;
+  const tasks = report.tasks || [];
+  if (!tasks.length) {
+    dom.usageRunList.innerHTML = '<div class="empty-panel">No agent tasks found.</div>';
+    return;
+  }
+
+  dom.usageRunList.innerHTML = tasks.map(renderUsageTask).join('');
+}
+
+export function showUsageRunDetail(run) {
+  if (!run) return;
+  dom.usageDetailTitle.textContent = run.label || run.task || run.runId;
+  const parts = [];
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item"><div class="dm-label">Role</div><div class="dm-value">${escHtml(run.role)}</div></div>
+        <div class="detail-meta-item"><div class="dm-label">Status</div><div class="dm-value">${escHtml(run.status)}</div></div>
+        <div class="detail-meta-item"><div class="dm-label">Cache Hit</div><div class="dm-value">${fmtPercent(run.metrics?.cacheHitRatio)}</div></div>
+        <div class="detail-meta-item"><div class="dm-label">Duration</div><div class="dm-value">${fmtDuration(run.durationMs)}</div></div>
+      </div>
+    </div>
+  `);
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-label">Token Metrics</div>
+      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.metrics || {}, null, 2))}</pre></div>
+    </div>
+  `);
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-label">Tool Counts</div>
+      <div class="detail-value"><pre>${escHtml(JSON.stringify({ ...(run.toolCounts || {}), subagentCount: run.subagentCount }, null, 2))}</pre></div>
+    </div>
+  `);
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-label">Raw Usage</div>
+      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.usage || {}, null, 2))}</pre></div>
+    </div>
+  `);
+  parts.push(`
+    <div class="detail-section">
+      <div class="detail-label">Run</div>
+      <div class="detail-value"><pre>${escHtml(JSON.stringify({
+        runId: run.runId,
+        rootRunId: run.rootRunId,
+        parentRunId: run.parentRunId,
+        conversationId: run.conversationId,
+        model: run.model,
+        startedAt: run.startedAt,
+        completedAt: run.completedAt,
+        task: run.task,
+      }, null, 2))}</pre></div>
+    </div>
+  `);
+  dom.usageDetailBody.innerHTML = parts.join('');
+  dom.usageRunDetail.classList.remove('hidden');
+}
+
+export function hideUsageRunDetail() {
+  dom.usageRunDetail.classList.add('hidden');
 }
 
 export function renderConvoList() {

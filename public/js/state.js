@@ -8,4 +8,5 @@ export const state = {
   activeModel: null,
   tools: [],
   toolRuns: [],
+  usage: null,
 };

@@ -7,6 +7,7 @@ import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
 import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
 import { SchemaValidationError, validateChatRequest, validateToolConfigPatch } from '../lib/schema.mjs';
 import { withConversationQueue } from '../lib/storage.mjs';
+import { summarizeRunsForUsage } from '../lib/usage-report.mjs';
 
 describe('architecture safety contracts', () => {
   it('serializes work for the same conversation id', async () => {
@@ -170,5 +171,77 @@ describe('architecture safety contracts', () => {
     assert.equal(blocks[0].events.length, 2);
     assert.equal(blocks[0].events[0].type, 'subagent_tool_call');
     assert.deepEqual(blocks[0].timeline.map(item => item.kind), ['text', 'event', 'event', 'text']);
+  });
+
+  it('summarizes token usage and cache efficiency for the usage dashboard', () => {
+    const report = summarizeRunsForUsage([
+      {
+        runId: 'root1',
+        role: 'root',
+        status: 'completed',
+        label: 'Root task',
+        model: 'model-a',
+        startedAt: '2026-05-16T00:00:00.000Z',
+        durationMs: 1000,
+        result: {
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 300,
+            cache_creation_input_tokens: 100,
+            output_tokens: 50,
+            server_tool_use: { web_search_requests: 2 },
+          },
+        },
+        events: [
+          { type: 'tool_call' },
+          { type: 'server_tool_call' },
+          { type: 'server_tool_result' },
+        ],
+      },
+      {
+        runId: 'sub1',
+        parentRunId: 'root1',
+        rootRunId: 'root1',
+        role: 'subagent',
+        status: 'completed',
+        label: 'Worker',
+        model: 'model-a',
+        durationMs: 500,
+        result: {
+          usage: {
+            input_tokens: 80,
+            cache_read_input_tokens: 20,
+            cache_creation_input_tokens: 0,
+            output_tokens: 30,
+          },
+        },
+        events: [
+          { type: 'subagent_tool_call' },
+          { type: 'subagent_tool_result' },
+        ],
+      },
+    ]);
+
+    assert.equal(report.summary.requestCount, 2);
+    assert.equal(report.summary.totalInputTokens, 600);
+    assert.equal(report.summary.cacheReadInputTokens, 320);
+    assert.equal(report.summary.uncachedInputTokens, 280);
+    assert.equal(report.summary.outputTokens, 80);
+    assert.equal(report.summary.webSearchRequests, 2);
+    assert.equal(report.summary.toolCalls, 3);
+    assert.equal(report.summary.weightedCacheHitRatio, 320 / 600);
+    assert.equal(report.summary.averageDurationMs, 750);
+    assert.equal(report.runs[0].subagentCount, 1);
+    assert.equal(report.runs[0].metrics.cacheHitRatio, 300 / 500);
+    assert.equal(report.tasks.length, 1);
+    assert.equal(report.tasks[0].runCount, 2);
+    assert.equal(report.tasks[0].subagentCount, 1);
+    assert.equal(report.tasks[0].metrics.totalInputTokens, 600);
+    assert.equal(report.tasks[0].metrics.cacheReadInputTokens, 320);
+    assert.equal(report.tasks[0].metrics.outputTokens, 80);
+    assert.equal(report.tasks[0].metrics.cacheHitRatio, 320 / 600);
+    assert.deepEqual(report.tasks[0].runs.map(run => run.runId), ['root1', 'sub1']);
+    assert.deepEqual(report.groups.byRole.map(group => group.key), ['root', 'subagent']);
+    assert.equal(report.groups.byModel[0].requestCount, 2);
   });
 });

@@ -14,6 +14,7 @@ import {
   renderSelectors,
   renderToolList,
   renderToolRuns,
+  renderUsageReport,
   scrollBottom,
   showChannelEditor,
   showChannelsPage,
@@ -21,6 +22,9 @@ import {
   showSettings,
   showToolRunDetail,
   showToolsPageFrame,
+  showUsagePageFrame,
+  showUsageRunDetail,
+  hideUsageRunDetail,
 } from './js/views.js';
 
 async function loadActive() {
@@ -107,6 +111,16 @@ async function showToolsPage() {
   showToolsPageFrame();
   await loadTools();
   await loadToolRuns();
+}
+
+async function loadUsage() {
+  state.usage = await api('GET', '/api/v1/usage?limit=100');
+  renderUsageReport();
+}
+
+async function showUsagePage() {
+  showUsagePageFrame();
+  await loadUsage();
 }
 
 async function toggleTool(id, enabled) {
@@ -205,6 +219,10 @@ function bindEvents() {
     hideSettings();
     showToolsPage();
   });
+  dom.settingUsage.addEventListener('click', () => {
+    hideSettings();
+    showUsagePage();
+  });
 
   dom.btnBackChat.addEventListener('click', showChatPage);
   dom.btnAddChannelPage.addEventListener('click', () => showChannelEditor(null));
@@ -258,6 +276,35 @@ function bindEvents() {
   });
   dom.btnCloseDetail.addEventListener('click', hideToolRunDetail);
   dom.toolRunDetail.querySelector('.detail-backdrop').addEventListener('click', hideToolRunDetail);
+
+  dom.btnBackChatUsage.addEventListener('click', showChatPage);
+  dom.btnRefreshUsage.addEventListener('click', loadUsage);
+  dom.usageRunList.addEventListener('click', (event) => {
+    const runItem = event.target.closest('.usage-run-line');
+    if (runItem) {
+      const run = state.usage?.runs?.find(item => item.runId === runItem.dataset.runId);
+      if (run) showUsageRunDetail(run);
+      return;
+    }
+
+    const taskItem = event.target.closest('.usage-task-summary');
+    if (!taskItem) return;
+    const task = taskItem.closest('.usage-task');
+    const usageTask = state.usage?.tasks?.[Number(task?.dataset.taskIndex)];
+    if (!usageTask) return;
+    usageTask.expanded = !usageTask.expanded;
+    renderUsageReport();
+  });
+  dom.usageRunList.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const item = event.target.closest('.usage-run-line');
+    if (!item) return;
+    event.preventDefault();
+    const run = state.usage?.runs?.find(candidate => candidate.runId === item.dataset.runId);
+    if (run) showUsageRunDetail(run);
+  });
+  dom.btnCloseUsageDetail.addEventListener('click', hideUsageRunDetail);
+  dom.usageRunDetail.querySelector('.detail-backdrop').addEventListener('click', hideUsageRunDetail);
 
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
