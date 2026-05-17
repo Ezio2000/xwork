@@ -282,6 +282,63 @@ describe('queryLoop', () => {
       assert.ok(marks.indexOf('delegate_2:start') < marks.indexOf('delegate_1:end'));
       assert.equal(returnValue.reason, 'completed');
     });
+
+    it('should not cap concurrent consecutive delegate_task calls', async () => {
+      const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const delegateCalls = Array.from({ length: 6 }, (_, index) => ({
+        id: `delegate_${index + 1}`,
+        name: 'delegate_task',
+        input: { objective: `task ${index + 1}` },
+      }));
+      let callCount = 0;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return (fakeStreamChatThatReturns({
+            text: '分配六个子任务。',
+            content: [
+              { type: 'text', text: '分配六个子任务。' },
+              ...delegateCalls.map(call => ({
+                type: 'tool_use',
+                id: call.id,
+                name: call.name,
+                input: call.input,
+              })),
+            ],
+            toolCalls: delegateCalls,
+          }))(...args);
+        }
+        return (fakeStreamChatThatReturns({
+          text: 'Done',
+          content: [{ type: 'text', text: 'Done' }],
+          toolCalls: [],
+        }))(...args);
+      };
+
+      const marks = [];
+      const runTool = async (call) => {
+        marks.push(`${call.id}:start`);
+        await wait(call.id === 'delegate_1' ? 30 : 5);
+        marks.push(`${call.id}:end`);
+        return {
+          id: call.id,
+          name: call.name,
+          isError: false,
+          output: { runId: call.id, status: 'completed', text: call.input.objective },
+          durationMs: call.id === 'delegate_1' ? 30 : 5,
+        };
+      };
+
+      const iterator = queryLoop({ config: baseConfig, history: baseHistory, streamChat, runTool });
+      await drain(iterator);
+
+      assert.equal(events.length, 12);
+      assert.deepEqual(events.slice(6).map(event => event.id), delegateCalls.map(call => call.id));
+      for (const call of delegateCalls.slice(1)) {
+        assert.ok(marks.indexOf(`${call.id}:start`) < marks.indexOf('delegate_1:end'));
+      }
+      assert.equal(returnValue.reason, 'completed');
+    });
   });
 
   // =========================================================================

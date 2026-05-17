@@ -156,11 +156,12 @@ function renderSubagentRun(block, collapsed) {
     : Boolean(collapsed && isTerminalSubagentStatus(status));
   const nestedCollapsed = collapsed || runCollapsed;
   const runningClass = status === 'running' ? ' running' : '';
+  const statusLabel = block.thinking && status === 'running' ? 'thinking...' : status;
   return `
     <div class="subagent-toggle${runningClass}${runCollapsed ? ' collapsed' : ''}" data-agent-run-id="${escHtml(block.runId || '')}">
       <div class="subagent-toggle-header" data-toggle-parent>
         <span class="subagent-toggle-label">${escHtml(label)}</span>
-        <span class="subagent-status ${escHtml(status)}">${escHtml(status)}</span>
+        <span class="subagent-status ${escHtml(status)}">${escHtml(statusLabel)}</span>
         <span class="subagent-toggle-arrow">▾</span>
       </div>
       <div class="subagent-toggle-body">
@@ -179,7 +180,6 @@ function subagentFrameBlocks(block) {
 
   if (meta) out.push({ type: 'text', content: `_${meta}_` });
   if (block.task) out.push({ type: 'text', content: blockquote(block.task) });
-  if (block.thinking && block.status === 'running') out.push({ type: 'subagent-thinking' });
   const content = Array.isArray(block.blocks) && block.blocks.length
     ? block.blocks
     : subagentContentBlocks(block);
@@ -275,7 +275,6 @@ const blockRenderers = {
   'sources': (block, collapsed) => renderSourceCards(block.sources || [], block.collapsed ?? collapsed, block.searchCount || 0),
   'uuid-list': (block) => renderUuidList(block.uuids || [], block.count || 0),
   'subagent-run': (block, collapsed) => renderSubagentRun(block, collapsed),
-  'subagent-thinking': () => '<div class="subagent-thinking-line">thinking...</div>',
 };
 
 export function renderBlocks(blocks, collapsed) {

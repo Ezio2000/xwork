@@ -606,13 +606,6 @@ body {
   line-height: 22px;
 }
 
-.subagent-thinking-line {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-style: italic;
-  line-height: 22px;
-}
-
 .subagent-toggle.running .subagent-content p,
 .subagent-toggle.running .subagent-content ul,
 .subagent-toggle.running .subagent-content ol,
