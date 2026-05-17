@@ -1,6 +1,15 @@
 import { dom } from './dom.js';
 import { state } from './state.js';
-import { contentToBlocks, escHtml, formatDateTime, messageSources, messageText, renderBlocks, renderContent, renderSourceCards } from './renderers.js';
+import { contentToBlocks, messageSources, messageText } from './message-blocks.js';
+import {
+  effectivePricingForChannelModel as effectivePricingFromBase,
+  findBasePricing as findBasePricingFromBase,
+  fmtPrice,
+  numberOrNull,
+  pricingValues,
+} from './pricing-view-model.js';
+import { escHtml, formatDateTime, renderBlocks, renderContent, renderSourceCards } from './renderers.js';
+import { buildUsageReportView, buildUsageRunDetailView } from './usage-view.js';
 
 export function scrollBottom() {
   requestAnimationFrame(() => {
@@ -80,68 +89,12 @@ export function hideSettings() {
   dom.settingsModal.classList.add('hidden');
 }
 
-function normalizeBaseUrl(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  try {
-    return new URL(text).toString().replace(/\/+$/, '');
-  } catch {
-    return text.replace(/\/+$/, '');
-  }
-}
-
-function inferProvider(channel = {}) {
-  const baseUrl = normalizeBaseUrl(channel.baseUrl).toLowerCase();
-  if (baseUrl.includes('deepseek.com')) return 'deepseek';
-  if (baseUrl.includes('anthropic.com')) return 'anthropic';
-  if (baseUrl.includes('openai.com')) return 'openai';
-  if (baseUrl.includes('googleapis.com')) return 'google';
-  const name = String(channel.name || '').toLowerCase();
-  if (name.includes('deepseek')) return 'deepseek';
-  if (name.includes('anthropic') || name.includes('claude')) return 'anthropic';
-  if (name.includes('openai')) return 'openai';
-  if (name.includes('google') || name.includes('gemini')) return 'google';
-  return '';
-}
-
 function findBasePricing(channel, model) {
-  const provider = inferProvider(channel);
-  return state.basePricing.find(item => (
-    item.model === model
-    && String(item.provider || '').toLowerCase() === provider
-  ))
-    || null;
+  return findBasePricingFromBase(state.basePricing, channel, model);
 }
 
 export function effectivePricingForChannelModel(channel, model) {
-  const override = channel?.pricing?.models?.[model];
-  if (override) return { pricing: override, source: 'Channel Override' };
-  const base = findBasePricing(channel, model);
-  if (base) return { pricing: base, source: 'Base Default' };
-  return { pricing: null, source: 'Missing' };
-}
-
-const USD_EXCHANGE_RATES = {
-  USD: 1,
-  CNY: 7.2,
-  EUR: 0.92,
-  HKD: 7.8,
-};
-
-function convertCurrency(value, fromCurrency = 'USD', toCurrency = 'USD') {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  const fromRate = USD_EXCHANGE_RATES[String(fromCurrency || 'USD').toUpperCase()];
-  const toRate = USD_EXCHANGE_RATES[String(toCurrency || 'USD').toUpperCase()];
-  if (!fromRate || !toRate) return n;
-  return (n / fromRate) * toRate;
-}
-
-function fmtPrice(value, currency = 'USD', displayCurrency = state.pricingCurrency || 'USD') {
-  if (value === null || value === undefined || value === '') return '-';
-  const n = convertCurrency(value, currency, displayCurrency);
-  if (!Number.isFinite(n)) return '-';
-  return n.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  return effectivePricingFromBase(state.basePricing, channel, model);
 }
 
 function pricingPayloadFromDom(prefix = 'editPricing') {
@@ -160,12 +113,6 @@ function pricingPayloadFromDom(prefix = 'editPricing') {
     updatedAt: dom[`${prefix}UpdatedAt`]?.value?.trim() || new Date().toISOString(),
     notes: dom[`${prefix}Notes`]?.value?.trim() || '',
   };
-}
-
-export function numberOrNull(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 export function collectChannelPricingOverrides(channel) {
@@ -208,17 +155,6 @@ export function collectChannelPricingOverrides(channel) {
   return { models };
 }
 
-function pricingValues(pricing = {}) {
-  const currency = pricing.currency || 'USD';
-  return [
-    `input ${fmtPrice(pricing.inputTokenPrice, currency)}`,
-    `output ${fmtPrice(pricing.outputTokenPrice, currency)}`,
-    `cache ${fmtPrice(pricing.cacheReadInputTokenPrice, currency)}`,
-    `create ${fmtPrice(pricing.cacheCreationInputTokenPrice, currency)}`,
-    `call ${fmtPrice(pricing.requestPrice ?? 0, currency)}`,
-  ].join(' · ');
-}
-
 export function renderChannelList() {
   dom.channelList.innerHTML = state.channels.map(channel => `
     <div class="channel-card${channel.id === state.activeChannelId ? ' active' : ''}" data-channel-id="${channel.id}">
@@ -251,9 +187,9 @@ function renderChannelPricingRows(channel) {
         <div class="channel-pricing-main">
           <div>
             <div class="channel-pricing-model">${escHtml(model)}</div>
-            <div class="channel-pricing-values">${escHtml(effective.pricing ? pricingValues(pricing) : 'No pricing configured')}</div>
+            <div class="channel-pricing-values">${escHtml(effective.pricing ? pricingValues(pricing, state.pricingCurrency || 'USD') : 'No pricing configured')}</div>
           </div>
-          <span class="pricing-source ${effective.source === 'Missing' ? 'missing' : ''}">${escHtml(effective.source)}</span>
+          <span class="pricing-source ${effective.source === 'missing' ? 'missing' : ''}">${escHtml(effective.label)}</span>
         </div>
         <div class="channel-pricing-edit">
           <input data-price-field="inputTokenPrice" type="number" min="0" step="0.000001" placeholder="Input / 1M" value="${editPricing.inputTokenPrice ?? ''}">
@@ -323,11 +259,11 @@ export function renderBasePricing() {
           <div class="pricing-model">${escHtml(entry.model)}</div>
           <div class="pricing-meta">${escHtml(entry.provider || 'unknown')}</div>
         </div>
-        <div class="price-cell"><span>Input</span><strong>${escHtml(fmtPrice(entry.inputTokenPrice, currency))}</strong></div>
-        <div class="price-cell"><span>Output</span><strong>${escHtml(fmtPrice(entry.outputTokenPrice, currency))}</strong></div>
-        <div class="price-cell"><span>Cache</span><strong>${escHtml(fmtPrice(entry.cacheReadInputTokenPrice, currency))}</strong></div>
-        <div class="price-cell"><span>Create</span><strong>${escHtml(fmtPrice(entry.cacheCreationInputTokenPrice, currency))}</strong></div>
-        <div class="price-cell"><span>Call</span><strong>${escHtml(fmtPrice(entry.requestPrice ?? 0, currency))}</strong></div>
+        <div class="price-cell"><span>Input</span><strong>${escHtml(fmtPrice(entry.inputTokenPrice, currency, state.pricingCurrency || 'USD'))}</strong></div>
+        <div class="price-cell"><span>Output</span><strong>${escHtml(fmtPrice(entry.outputTokenPrice, currency, state.pricingCurrency || 'USD'))}</strong></div>
+        <div class="price-cell"><span>Cache</span><strong>${escHtml(fmtPrice(entry.cacheReadInputTokenPrice, currency, state.pricingCurrency || 'USD'))}</strong></div>
+        <div class="price-cell"><span>Create</span><strong>${escHtml(fmtPrice(entry.cacheCreationInputTokenPrice, currency, state.pricingCurrency || 'USD'))}</strong></div>
+        <div class="price-cell"><span>Call</span><strong>${escHtml(fmtPrice(entry.requestPrice ?? 0, currency, state.pricingCurrency || 'USD'))}</strong></div>
         <div class="pricing-actions">
           <button class="btn-text small" data-action="edit-pricing">Edit</button>
           <button class="btn-text small danger" data-action="delete-pricing">Delete</button>
@@ -522,234 +458,19 @@ export function hideToolRunDetail() {
   dom.toolRunDetail.classList.add('hidden');
 }
 
-function fmtNumber(value) {
-  return Number(value || 0).toLocaleString('en-US');
-}
-
-function fmtPercent(value) {
-  return value === null || value === undefined ? '-' : `${Math.round(Number(value) * 1000) / 10}%`;
-}
-
-function fmtDuration(value) {
-  if (value === null || value === undefined) return '-';
-  const n = Number(value || 0);
-  return n >= 1000 ? `${Math.round(n / 100) / 10}s` : `${Math.round(n)}ms`;
-}
-
-function fmtDate(value) {
-  return formatDateTime(value) || '-';
-}
-
-function metricCard(label, value, hint = '') {
-  return `
-    <div class="usage-metric">
-      <div class="usage-metric-label">${escHtml(label)}</div>
-      <div class="usage-metric-value">${escHtml(value)}</div>
-      ${hint ? `<div class="usage-metric-hint">${escHtml(hint)}</div>` : ''}
-    </div>
-  `;
-}
-
-function fmtCost(cost = {}) {
-  if (cost.totalCost === null || cost.totalCost === undefined) return 'Missing';
-  const currency = cost.currency || 'USD';
-  return `${currency} ${Number(cost.totalCost || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 6,
-  })}`;
-}
-
-function usageBar(ratio) {
-  const pct = Math.max(0, Math.min(100, Number(ratio || 0) * 100));
-  const hue = Math.round((pct / 100) * 120);
-  return `
-    <div class="usage-cache-bar">
-      <span style="width:${pct}%;background-color:hsl(${hue} 65% 42%)"></span>
-    </div>
-  `;
-}
-
-function metricBadges(metrics = {}, extras = {}) {
-  return [
-    `${fmtNumber(metrics.totalInputTokens)} in`,
-    `${fmtNumber(metrics.cacheReadInputTokens)} cached`,
-    `${fmtNumber(metrics.uncachedInputTokens)} uncached`,
-    `${fmtNumber(metrics.outputTokens)} out`,
-    `${fmtNumber(metrics.webSearchRequests)} web`,
-    extras.cost ? `cost ${fmtCost(extras.cost)}` : '',
-    extras.toolCalls !== undefined ? `${fmtNumber(extras.toolCalls)} tools` : '',
-    extras.subagents ? `${fmtNumber(extras.subagents)} subagents` : '',
-  ].filter(Boolean).map(item => `<span>${escHtml(item)}</span>`).join('');
-}
-
-function renderUsageRunLine(run) {
-  return `
-    <div class="usage-run-line" data-run-id="${escHtml(run.runId)}">
-      <div class="usage-run-line-main">
-        <div class="usage-run-title">
-          <span class="usage-role ${escHtml(run.role)}">${escHtml(run.role)}</span>
-          <span>${escHtml(run.label || run.task || run.runId)}</span>
-        </div>
-        <div class="usage-run-cache">${fmtPercent(run.metrics?.cacheHitRatio)}</div>
-      </div>
-      <div class="usage-run-meta">
-        <span>${escHtml(run.model || 'unknown')}</span>
-        <span>${fmtDuration(run.durationMs)}</span>
-        ${metricBadges(run.metrics, { toolCalls: run.toolCounts?.totalToolCalls, cost: run.cost })}
-      </div>
-      ${usageBar(run.metrics?.cacheHitRatio)}
-    </div>
-  `;
-}
-
-function renderUsageTask(task, index) {
-  const metrics = task.metrics || {};
-  const expanded = Boolean(task.expanded);
-  return `
-    <div class="usage-task${expanded ? ' expanded' : ''}" data-task-index="${index}">
-      <div class="usage-task-summary" data-action="toggle-usage-task">
-        <div class="usage-run-main">
-          <div class="usage-run-title">
-            <span class="usage-task-arrow">${expanded ? '▾' : '▸'}</span>
-            <span class="usage-role root">task</span>
-            <span>${escHtml(task.label || task.task || task.rootRunId)}</span>
-          </div>
-          <div class="usage-run-cache">${fmtPercent(metrics.cacheHitRatio)}</div>
-        </div>
-        <div class="usage-run-meta">
-          <span>${escHtml(task.model || 'unknown')}</span>
-          <span>${fmtDate(task.startedAt)}</span>
-          <span>${fmtDuration(task.durationMs)}</span>
-          <span>${fmtNumber(task.runCount)} runs</span>
-          ${metricBadges(metrics, {
-            toolCalls: task.toolCounts?.totalToolCalls,
-            subagents: task.subagentCount,
-            cost: task.cost,
-          })}
-        </div>
-        ${usageBar(metrics.cacheHitRatio)}
-      </div>
-      ${expanded ? `
-        <div class="usage-task-detail">
-          ${(task.runs || []).map(renderUsageRunLine).join('')}
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderUsageGroup(title, rows = []) {
-  if (!rows.length) return '';
-  return `
-    <div class="usage-group-card">
-      <h3>${escHtml(title)}</h3>
-      <div class="usage-group-table">
-        ${rows.map(row => `
-          <div class="usage-group-row">
-            <span class="usage-group-key">${escHtml(row.key)}</span>
-            <span>${fmtNumber(row.requestCount)} req</span>
-            <span>${fmtCost(row.cost)}</span>
-            <span>${fmtPercent(row.weightedCacheHitRatio)}</span>
-            <span>${fmtDuration(row.averageDurationMs)}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-}
-
 export function renderUsageReport() {
-  const report = state.usage;
-  if (!report) {
-    dom.usageSummary.innerHTML = '<div class="empty-panel">No usage data loaded.</div>';
-    dom.usageGroups.innerHTML = '';
-    dom.usageRunList.innerHTML = '';
-    dom.usageGeneratedAt.textContent = '';
-    return;
-  }
-
-  const s = report.summary || {};
-  dom.usageSummary.innerHTML = [
-    metricCard('Tasks', fmtNumber((report.tasks || []).length), `${fmtNumber(s.requestCount)} runs`),
-    metricCard('Cache Hit', fmtPercent(s.weightedCacheHitRatio), `${fmtNumber(s.cacheReadInputTokens)} cached tokens`),
-    metricCard('Input', fmtNumber(s.totalInputTokens), `${fmtNumber(s.uncachedInputTokens)} uncached`),
-    metricCard('Output', fmtNumber(s.outputTokens), 'generated tokens'),
-    metricCard('Cost', fmtCost(s.cost), `${fmtNumber(s.cost?.unpricedRunCount)} partial/missing`),
-    metricCard('Latency', fmtDuration(s.averageDurationMs), 'average duration'),
-    metricCard('Web Search', fmtNumber(s.webSearchRequests), 'requests'),
-  ].join('');
-
-  dom.usageGroups.innerHTML = [
-    renderUsageGroup('By Role', report.groups?.byRole || []),
-    renderUsageGroup('By Model', report.groups?.byModel || []),
-    renderUsageGroup('By Status', report.groups?.byStatus || []),
-  ].join('');
-
-  dom.usageGeneratedAt.textContent = `Generated ${fmtDate(report.generatedAt)}`;
-  const tasks = report.tasks || [];
-  if (!tasks.length) {
-    dom.usageRunList.innerHTML = '<div class="empty-panel">No agent tasks found.</div>';
-    return;
-  }
-
-  dom.usageRunList.innerHTML = tasks.map(renderUsageTask).join('');
+  const view = buildUsageReportView(state.usage);
+  dom.usageSummary.innerHTML = view.summaryHtml;
+  dom.usageGroups.innerHTML = view.groupsHtml;
+  dom.usageRunList.innerHTML = view.runListHtml;
+  dom.usageGeneratedAt.textContent = view.generatedAtText;
 }
 
 export function showUsageRunDetail(run) {
-  if (!run) return;
-  dom.usageDetailTitle.textContent = run.label || run.task || run.runId;
-  const parts = [];
-  parts.push(`
-    <div class="detail-section">
-      <div class="detail-meta-grid">
-        <div class="detail-meta-item"><div class="dm-label">Role</div><div class="dm-value">${escHtml(run.role)}</div></div>
-        <div class="detail-meta-item"><div class="dm-label">Status</div><div class="dm-value">${escHtml(run.status)}</div></div>
-        <div class="detail-meta-item"><div class="dm-label">Cache Hit</div><div class="dm-value">${fmtPercent(run.metrics?.cacheHitRatio)}</div></div>
-        <div class="detail-meta-item"><div class="dm-label">Cost</div><div class="dm-value">${escHtml(fmtCost(run.cost))}</div></div>
-        <div class="detail-meta-item"><div class="dm-label">Duration</div><div class="dm-value">${fmtDuration(run.durationMs)}</div></div>
-      </div>
-    </div>
-  `);
-  parts.push(`
-    <div class="detail-section">
-      <div class="detail-label">Cost</div>
-      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.cost || {}, null, 2))}</pre></div>
-    </div>
-  `);
-  parts.push(`
-    <div class="detail-section">
-      <div class="detail-label">Token Metrics</div>
-      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.metrics || {}, null, 2))}</pre></div>
-    </div>
-  `);
-  parts.push(`
-    <div class="detail-section">
-      <div class="detail-label">Tool Counts</div>
-      <div class="detail-value"><pre>${escHtml(JSON.stringify({ ...(run.toolCounts || {}), subagentCount: run.subagentCount }, null, 2))}</pre></div>
-    </div>
-  `);
-  parts.push(`
-    <div class="detail-section">
-      <div class="detail-label">Raw Usage</div>
-      <div class="detail-value"><pre>${escHtml(JSON.stringify(run.usage || {}, null, 2))}</pre></div>
-    </div>
-  `);
-  parts.push(`
-    <div class="detail-section">
-      <div class="detail-label">Run</div>
-      <div class="detail-value"><pre>${escHtml(JSON.stringify({
-        runId: run.runId,
-        rootRunId: run.rootRunId,
-        parentRunId: run.parentRunId,
-        conversationId: run.conversationId,
-        model: run.model,
-        startedAt: run.startedAt,
-        completedAt: run.completedAt,
-        task: run.task,
-      }, null, 2))}</pre></div>
-    </div>
-  `);
-  dom.usageDetailBody.innerHTML = parts.join('');
+  const view = buildUsageRunDetailView(run);
+  if (!view) return;
+  dom.usageDetailTitle.textContent = view.title;
+  dom.usageDetailBody.innerHTML = view.bodyHtml;
   dom.usageRunDetail.classList.remove('hidden');
 }
 

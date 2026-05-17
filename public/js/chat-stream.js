@@ -1,6 +1,7 @@
 import { dom } from './dom.js';
 import { state } from './state.js';
-import { escHtml, mergeSources, renderBlocks, subagentEventToBlocks } from './renderers.js';
+import { mergeSources, subagentEventToBlocks } from './message-blocks.js';
+import { escHtml, renderBlocks } from './renderers.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
 import { addAssistantPlaceholder, addUserMessage, renderConvoList, renderMessages, scrollBottom } from './views.js';
 import { api } from './api-client.js';

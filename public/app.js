@@ -324,7 +324,7 @@ function bindEvents() {
       const currencyInput = row.querySelector('[data-price-field="currency"]');
       if (currencyInput) currencyInput.value = 'USD';
       const effective = effectivePricingForChannelModel({ ...channel, pricing: { models: {} } }, model);
-      row.querySelector('.pricing-source').textContent = effective.pricing ? 'Base Default' : 'Missing';
+      row.querySelector('.pricing-source').textContent = effective.label;
       row.querySelector('.pricing-source').classList.toggle('missing', !effective.pricing);
     }
   });
