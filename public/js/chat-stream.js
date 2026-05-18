@@ -223,7 +223,7 @@ function appendStreamEvent(evt, stream) {
         }
         const block = { type: tool.renderType, ...tool.data };
         if (isTerminalSubagentBlock(block)) block.collapsed = true;
-        if (block.type === 'source-cards' || block.type === 'sources') block.collapsed = true;
+        if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch') block.collapsed = true;
         stream.blocks.push(block);
       }
     }
