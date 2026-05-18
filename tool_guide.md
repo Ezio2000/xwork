@@ -8,7 +8,9 @@ lib/tools/
 │   ├── index.mjs      ← 导出 builtinTools 数组
 │   ├── calculator.mjs
 │   ├── current-time.mjs
+│   ├── delegate-task.mjs
 │   ├── uuid-gen.mjs
+│   ├── web-fetch.mjs
 │   └── web-search.mjs
 ├── runner.mjs         ← 工具执行引擎（生命周期 + parseResult）
 ├── registry.mjs       ← 工具注册 + 启用/禁用 + 配置
@@ -199,9 +201,9 @@ async handler(input, { config }) {
 ```
 handler output → parseResult(output, input) → result.render
   → query-loop SSE → { type:'tool_result', renderType, data }
-  → app.js tool_result handler → blocks.push({ type, ...data })
-  → app.js renderBlocks() → 对应渲染函数
-  → style.css
+  → public/js/chat-stream.js → blocks.push({ type, ...data })
+  → public/js/renderers.js blockRenderers[type]() → 渲染函数返回 HTML
+  → public/style.css
 ```
 
 ### 后端：加 parseResult
@@ -219,34 +221,40 @@ parseResult(output, input) {
 }
 ```
 
-### 前端：三处改动（app.js）
+### 前端：两处改动
 
-**1. SSE 事件处理**（`tool_result` 分支，约 890 行）：
-
-```js
-if (tool.renderType === 'my-render-type' && tool.data) {
-  blocks.push({ type: 'my-render-type', ...tool.data });
-}
-```
-
-**2. renderBlocks 分支**（约 600 行）：
+**1. 渲染函数 + blockRenderers 注册**（`public/js/renderers.js`）：
 
 ```js
-if (block.type === 'my-render-type') {
-  return renderMyBlock(block.items, block.total);
-}
-```
-
-**3. 渲染函数**：
-
-```js
-function renderMyBlock(items, total) {
+// 渲染函数：返回 HTML 字符串，用 escHtml() 防止 XSS
+// 用 data-toggle-parent 属性实现折叠交互（自动生效，无需额外 JS）
+function renderMyBlock(block) {
   return `
-    <div class="my-block-container">
-      ${items.map(item => `<div class="my-item">${escHtml(item)}</div>`).join('')}
+    <div class="my-block-toggle">
+      <div class="my-block-toggle-header" data-toggle-parent>
+        <span class="my-block-toggle-label">${escHtml(block.label)}</span>
+        <span class="my-block-toggle-arrow">▾</span>
+      </div>
+      <div class="my-block-toggle-body">
+        ${block.items.map(item => `<div class="my-block-item">${escHtml(item)}</div>`).join('')}
+      </div>
     </div>
   `;
 }
+
+// 在 blockRenderers 注册表中添加一行
+const blockRenderers = {
+  // ...已有条目
+  'my-render-type': (block, collapsed) => renderMyBlock(block, block.collapsed ?? collapsed),
+};
+```
+
+**2. 自动折叠**（`public/js/chat-stream.js`，可选）：
+
+如果希望新类型的 block 在流式传输时默认折叠，在 `tool_result` 处理中加一个条件：
+
+```js
+if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'my-render-type') block.collapsed = true;
 ```
 
 ### 前端：加 CSS（style.css）
@@ -259,6 +267,8 @@ function renderMyBlock(items, total) {
 |---|---|---|
 | `source-cards` | web_search | 可折叠来源卡片列表 |
 | `uuid-list` | uuid_gen | UUID 列表 + 逐行/全部复制 |
+| `subagent-run` | delegate_task | 子代理运行状态和结果 |
+| `web-fetch` | web_fetch | 可折叠网页内容卡片（URL、状态码、内容预览） |
 
 ---
 
@@ -277,6 +287,7 @@ function renderMyBlock(items, total) {
 1. 创建 `lib/tools/builtin/<name>.mjs`，定义工具对象
 2. 在 `lib/tools/builtin/index.mjs` 中 import 并加入 `builtinTools` 数组
 3. 如需渲染：实现 `parseResult`
-4. 如需渲染：在 `public/app.js` 的 `tool_result` 处理、`renderBlocks` 加分支，添加渲染函数
-5. 如需渲染：在 `public/style.css` 加样式
-6. 重启服务，工具自动注册到 `data/tools.json`
+4. 如需渲染：在 `public/js/renderers.js` 添加渲染函数并在 `blockRenderers` 注册
+5. 如需默认折叠：在 `public/js/chat-stream.js` 的 `tool_result` 处理中添加类型条件
+6. 如需渲染：在 `public/style.css` 加样式
+7. 重启服务，工具自动注册到 `data/tools.json`
