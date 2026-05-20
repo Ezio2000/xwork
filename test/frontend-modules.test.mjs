@@ -211,4 +211,38 @@ describe('frontend module boundaries', () => {
     assert.match(html, /shell-terminal-output stderr/);
     assert.match(html, /npm test/);
   });
+
+  it('renders mysql query results as a collapsible table', async () => {
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const html = renderBlocks([{
+      type: 'mysql-query',
+      source: { id: 'dev', host: '127.0.0.1', database: 'biz' },
+      sql: 'select 1 as n',
+      rowCount: 1,
+      returnedRowCount: 1,
+      columns: ['n'],
+      previewRows: [{ n: 1 }],
+    }], false);
+
+    assert.match(html, /mysql-query-table/);
+    assert.match(html, /select 1 as n/);
+    assert.match(html, /dev/);
+  });
+
+  it('renders sqlite query results with the shared database table renderer', async () => {
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const html = renderBlocks([{
+      type: 'sqlite-query',
+      source: { id: 'xwork', path: 'data/xwork.sqlite' },
+      sql: 'select name from sqlite_master',
+      rowCount: 1,
+      returnedRowCount: 1,
+      columns: ['name'],
+      previewRows: [{ name: 'documents' }],
+    }], false);
+
+    assert.match(html, /mysql-query-table/);
+    assert.match(html, /data\/xwork\.sqlite/);
+    assert.match(html, /documents/);
+  });
 });

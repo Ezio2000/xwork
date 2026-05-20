@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
+    "mysql2": "^3.22.3",
     "turndown": "^7.2.4"
   }
 }

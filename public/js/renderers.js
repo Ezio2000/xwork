@@ -315,6 +315,43 @@ function processLikePrompt(cwd) {
   return `${short}>`;
 }
 
+function renderDatabaseQuery(block, collapsed = false) {
+  const source = block.source || {};
+  const columns = Array.isArray(block.columns) ? block.columns : [];
+  const rows = Array.isArray(block.previewRows) ? block.previewRows : [];
+  const sourceLabel = [source.id, source.host || source.path, source.database].filter(Boolean).join(' · ') || 'database';
+  const meta = [
+    `${Number(block.returnedRowCount || rows.length)} shown`,
+    `${Number(block.rowCount || rows.length)} total`,
+    block.truncated ? 'truncated' : '',
+  ].filter(Boolean).join(' · ');
+
+  return `
+    <div class="mysql-query-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="mysql-query-toggle-header" data-toggle-parent>
+        <span class="mysql-query-toggle-label">${escHtml(sourceLabel)}</span>
+        <span class="mysql-query-meta">${escHtml(meta)}</span>
+        <span class="mysql-query-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="mysql-query-toggle-body">
+        <pre class="mysql-query-sql"><code>${escHtml(block.sql || '')}</code></pre>
+        <div class="mysql-query-table-wrap">
+          <table class="mysql-query-table">
+            <thead>
+              <tr>${columns.map(col => `<th>${escHtml(col)}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${rows.map(row => `
+                <tr>${columns.map(col => `<td>${escHtml(row?.[col] ?? '')}</td>`).join('')}</tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 const blockRenderers = {
   'text': (block) => renderContent(stripLeadingNewlines(stripSearchQueryText(block.content || ''))),
   'source-cards': (block, collapsed) => renderSourceCards(block.sources || [], block.collapsed ?? collapsed, block.searchCount || 0),
@@ -323,6 +360,8 @@ const blockRenderers = {
   'subagent-run': (block, collapsed) => renderSubagentRun(block, collapsed),
   'web-fetch': (block, collapsed) => renderWebFetch(block, block.collapsed ?? collapsed),
   'shell-command': (block, collapsed) => renderShellCommand(block, block.collapsed ?? collapsed),
+  'mysql-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
+  'sqlite-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
 };
 
 export function renderBlocks(blocks, collapsed) {

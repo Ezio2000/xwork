@@ -72,7 +72,7 @@ function applyToolResult(evt, stream) {
       const block = { type: tool.renderType, ...tool.data };
       if (tool.id) block.toolCallId = tool.id;
       if (isTerminalSubagentBlock(block)) block.collapsed = true;
-      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'shell-command') block.collapsed = true;
+      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'shell-command' || block.type === 'mysql-query' || block.type === 'sqlite-query') block.collapsed = true;
       stream.blocks.push(block);
     }
   }
