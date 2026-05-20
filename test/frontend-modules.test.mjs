@@ -131,4 +131,84 @@ describe('frontend module boundaries', () => {
     assert.equal(typeof modules[6].bindUsageController, 'function');
     assert.equal(typeof modules[6].showUsagePage, 'function');
   });
+
+  it('shows shell command blocks while the command is still running', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    let scheduled = 0;
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: {
+        schedule() {
+          scheduled++;
+        },
+        cancel() {},
+      },
+    };
+
+    appendStreamEvent({
+      type: 'tool_call',
+      seq: 1,
+      tools: [{
+        id: 'toolu_shell_1',
+        name: 'shell_command',
+        input: { command: 'npm test', cwd: '.' },
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks.length, 1);
+    assert.equal(stream.blocks[0].type, 'shell-command');
+    assert.equal(stream.blocks[0].toolCallId, 'toolu_shell_1');
+    assert.equal(stream.blocks[0].status, 'running');
+    assert.equal(stream.blocks[0].command, 'npm test');
+    assert.equal(stream.blocks[0].collapsed, false);
+
+    appendStreamEvent({
+      type: 'tool_result',
+      seq: 2,
+      tools: [{
+        id: 'toolu_shell_1',
+        name: 'shell_command',
+        isError: false,
+        renderType: 'shell-command',
+        data: {
+          command: 'npm test',
+          cwd: 'D:\\Project\\AI\\xwork',
+          exitCode: 0,
+          durationMs: 1200,
+          stdout: 'ok',
+          stderr: '',
+          truncated: false,
+        },
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks.length, 2);
+    assert.equal(stream.blocks[0].status, 'completed');
+    assert.equal(stream.blocks[0].collapsed, true);
+    assert.equal(stream.blocks[0].exitCode, 0);
+    assert.equal(stream.blocks[0].stdout, 'ok');
+    assert.equal(stream.blocks[1].type, 'text');
+    assert.ok(scheduled >= 2);
+  });
+
+  it('renders shell command output with terminal-like structure', async () => {
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const html = renderBlocks([{
+      type: 'shell-command',
+      status: 'completed',
+      command: 'npm test',
+      cwd: 'D:\\Project\\AI\\xwork',
+      exitCode: 1,
+      stdout: 'stdout line',
+      stderr: 'stderr line',
+      durationMs: 123,
+    }], false);
+
+    assert.match(html, /shell-terminal/);
+    assert.match(html, /shell-terminal-prompt/);
+    assert.match(html, /shell-terminal-output stdout/);
+    assert.match(html, /shell-terminal-output stderr/);
+    assert.match(html, /npm test/);
+  });
 });

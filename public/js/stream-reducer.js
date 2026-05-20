@@ -53,6 +53,14 @@ function isTerminalSubagentBlock(block) {
 function applyToolResult(evt, stream) {
   for (const tool of evt.tools) {
     if (tool.renderType && tool.data) {
+      if (tool.renderType === 'shell-command' && tool.id) {
+        const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
+        if (existing) {
+          Object.assign(existing, { type: 'shell-command', toolCallId: tool.id, status: tool.isError ? 'error' : 'completed', ...tool.data });
+          existing.collapsed = true;
+          continue;
+        }
+      }
       if (tool.renderType === 'subagent-run' && tool.data.runId) {
         const existing = stream.blocks.find(block => block.type === 'subagent-run' && block.runId === tool.data.runId);
         if (existing) {
@@ -62,14 +70,44 @@ function applyToolResult(evt, stream) {
         }
       }
       const block = { type: tool.renderType, ...tool.data };
+      if (tool.id) block.toolCallId = tool.id;
       if (isTerminalSubagentBlock(block)) block.collapsed = true;
-      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch') block.collapsed = true;
+      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'shell-command') block.collapsed = true;
       stream.blocks.push(block);
     }
   }
   const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
   if (errored) currentTextBlock(stream.blocks).content += `\n\n_Tool error: ${errored}_`;
   stream.blocks.push({ type: 'text', content: '' });
+  stream.renderer.schedule();
+}
+
+function applyToolCall(evt, stream) {
+  for (const tool of evt.tools || []) {
+    if (tool.name !== 'shell_command' || !tool.id) continue;
+    const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
+    if (existing) {
+      Object.assign(existing, {
+        status: 'running',
+        command: tool.input?.command || existing.command || 'shell command',
+        cwd: tool.input?.cwd || existing.cwd || '',
+        startedAt: Date.now(),
+        collapsed: false,
+      });
+      continue;
+    }
+    stream.blocks.push({
+      type: 'shell-command',
+      toolCallId: tool.id,
+      status: 'running',
+      command: tool.input?.command || 'shell command',
+      cwd: tool.input?.cwd || '',
+      stdout: '',
+      stderr: '',
+      collapsed: false,
+      startedAt: Date.now(),
+    });
+  }
   stream.renderer.schedule();
 }
 
@@ -163,7 +201,7 @@ export function appendStreamEvent(evt, stream) {
   }
 
   if (evt.type === 'tool_call') {
-    stream.renderer.schedule();
+    applyToolCall(evt, stream);
     return;
   }
 

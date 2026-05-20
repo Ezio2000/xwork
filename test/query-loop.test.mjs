@@ -223,13 +223,9 @@ describe('queryLoop', () => {
       await drain(iterator);
 
       assert.equal(events.length, 4); // 2 calls + 2 results
-      // All tool_calls yielded first, then all tool_results (matches stream order)
-      assert.equal(events[0].type, 'tool_call');
+      assert.deepEqual(events.map(event => event.type), ['tool_call', 'tool_result', 'tool_call', 'tool_result']);
       assert.equal(events[0].name, 'get_current_time');
-      assert.equal(events[1].type, 'tool_call');
-      assert.equal(events[1].name, 'get_current_time');
-      assert.equal(events[2].type, 'tool_result');
-      assert.equal(events[3].type, 'tool_result');
+      assert.equal(events[2].name, 'get_current_time');
       assert.equal(returnValue.reason, 'completed');
     });
 

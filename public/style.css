@@ -2131,6 +2131,170 @@ body {
 /* ===== Hidden ===== */
 .hidden { display: none !important; }
 
+.shell-command-toggle {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 10px 0;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.shell-command-toggle-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.shell-command-toggle-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.shell-command-toggle-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-command-icon {
+  color: var(--accent);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.shell-command-meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.shell-command-meta.status-ok { color: var(--text-muted); }
+.shell-command-meta.status-running { color: var(--accent); }
+.shell-command-meta.status-error { color: var(--danger); }
+
+.shell-command-toggle-arrow {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.shell-command-toggle.collapsed .shell-command-toggle-arrow {
+  transform: rotate(-90deg);
+}
+
+.shell-command-toggle.collapsed .shell-command-toggle-body {
+  display: none;
+}
+
+.shell-command-toggle-body {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+}
+
+.shell-terminal {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #111827;
+  background: #0b0f14;
+  color: #d1d5db;
+  font-family: var(--font-mono);
+}
+
+.shell-terminal-title {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  background: #111827;
+  border-bottom: 1px solid #1f2937;
+}
+
+.shell-terminal-title-text {
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-terminal-screen {
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.shell-terminal-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.shell-terminal-prompt {
+  color: #34d399;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.shell-terminal-command-text {
+  color: #e5e7eb;
+  word-break: break-word;
+}
+
+.shell-terminal-cursor {
+  color: #e5e7eb;
+  animation: shell-cursor-blink 1s steps(1) infinite;
+}
+
+.shell-terminal-output {
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.message .content .shell-terminal-output,
+.message .content .shell-terminal-output code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: 12px;
+}
+
+.shell-terminal-output.stdout {
+  color: #d1d5db;
+}
+
+.shell-terminal-output.stderr {
+  color: #fca5a5;
+  margin-top: 10px;
+}
+
+.shell-terminal-running {
+  margin-top: 8px;
+  color: #93c5fd;
+  font-style: italic;
+}
+
+@keyframes shell-cursor-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 640px) {
   #sidebar { display: none; }
