@@ -6,7 +6,7 @@ import { buildAuditTrace } from '../lib/audit-trace.mjs';
 import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
 import { CHAT_SERVICE_TEST_HOOKS, getChatRunSnapshot, handleChatRequest, handleChatRunStream } from '../lib/chat-service.mjs';
 import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
-import { SchemaValidationError, validateChatRequest, validateToolConfigPatch } from '../lib/schema.mjs';
+import { SchemaValidationError, validateChannelPayload, validateChatRequest, validateToolConfigPatch } from '../lib/schema.mjs';
 import { withConversationQueue } from '../lib/storage.mjs';
 import { summarizeRunsForUsage } from '../lib/usage-report.mjs';
 import { calculateUsageCost, findEffectiveModelPricing } from '../lib/model-pricing.mjs';
@@ -157,6 +157,37 @@ describe('architecture safety contracts', () => {
     });
     assert.throws(
       () => validateToolConfigPatch({ timeoutMs: -1 }),
+      SchemaValidationError,
+    );
+  });
+
+  it('validates configurable channel max turns', () => {
+    const channel = validateChannelPayload({
+      name: 'Test',
+      baseUrl: 'https://example.test/anthropic',
+      apiKey: 'sk-test',
+      models: ['m'],
+      maxTokens: 1024,
+      maxTurns: 12,
+      extraHeaders: {},
+      pricing: { models: {} },
+    });
+
+    assert.equal(channel.maxTurns, 12);
+    assert.equal(validateChannelPayload({
+      name: 'Default',
+      baseUrl: 'https://example.test/anthropic',
+      models: [],
+      maxTokens: 1024,
+    }).maxTurns, 5);
+    assert.throws(
+      () => validateChannelPayload({
+        name: 'Bad',
+        baseUrl: 'https://example.test/anthropic',
+        models: [],
+        maxTokens: 1024,
+        maxTurns: 0,
+      }),
       SchemaValidationError,
     );
   });

@@ -36,6 +36,7 @@ export const dom = {
   editApiKey: $('#edit-api-key'),
   editModels: $('#edit-models'),
   editMaxTokens: $('#edit-max-tokens'),
+  editMaxTurns: $('#edit-max-turns'),
   channelPricingSection: $('#channel-pricing-section'),
   channelPricingList: $('#channel-pricing-list'),
   btnToggleKey: $('#btn-toggle-key'),

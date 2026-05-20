@@ -136,6 +136,7 @@ export function showChannelEditor(channel) {
     dom.btnToggleKey.textContent = 'Show';
     dom.editModels.value = (channel.models || []).join(', ');
     dom.editMaxTokens.value = channel.maxTokens || 8192;
+    dom.editMaxTurns.value = channel.maxTurns || 5;
     dom.channelPricingSection.classList.remove('hidden');
     dom.channelPricingList.innerHTML = renderChannelPricingRows(channel);
   } else {
@@ -148,6 +149,7 @@ export function showChannelEditor(channel) {
     dom.btnToggleKey.textContent = 'Show';
     dom.editModels.value = '';
     dom.editMaxTokens.value = 8192;
+    dom.editMaxTurns.value = 5;
     dom.channelPricingSection.classList.add('hidden');
     dom.channelPricingList.innerHTML = '';
   }

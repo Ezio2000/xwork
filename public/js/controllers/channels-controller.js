@@ -41,6 +41,7 @@ async function saveChannel() {
     apiKey: dom.editApiKey.value.trim(),
     models: dom.editModels.value.split(',').map(item => item.trim()).filter(Boolean),
     maxTokens: parseInt(dom.editMaxTokens.value) || 8192,
+    maxTurns: parseInt(dom.editMaxTurns.value) || 5,
     pricing: id ? collectChannelPricingOverrides(current) : { models: {} },
   };
 
