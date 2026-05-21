@@ -192,6 +192,130 @@ describe('frontend module boundaries', () => {
     assert.ok(scheduled >= 2);
   });
 
+  it('marks a running shell command as errored when safety validation blocks it', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: {
+        schedule() {},
+        cancel() {},
+      },
+    };
+
+    appendStreamEvent({
+      type: 'tool_call',
+      seq: 1,
+      tools: [{
+        id: 'toolu_shell_blocked',
+        name: 'shell_command',
+        input: { command: 'rm -rf ~/Library/Caches/*' },
+      }],
+    }, stream);
+
+    appendStreamEvent({
+      type: 'tool_result',
+      seq: 2,
+      tools: [{
+        id: 'toolu_shell_blocked',
+        name: 'shell_command',
+        isError: true,
+        durationMs: 2,
+        output: 'command blocked by shell safety policy',
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks[0].type, 'shell-command');
+    assert.equal(stream.blocks[0].status, 'error');
+    assert.equal(stream.blocks[0].collapsed, true);
+    assert.match(stream.blocks[1].content, /Tool error: shell_command/);
+  });
+
+  it('appends shell command output while the command is running', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    let scheduled = 0;
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: {
+        schedule() {
+          scheduled++;
+        },
+        cancel() {},
+      },
+    };
+
+    appendStreamEvent({
+      type: 'tool_call',
+      seq: 1,
+      tools: [{
+        id: 'toolu_shell_stream',
+        name: 'shell_command',
+        input: { command: 'npm install' },
+      }],
+    }, stream);
+    appendStreamEvent({
+      type: 'tool_delta',
+      seq: 2,
+      id: 'toolu_shell_stream',
+      name: 'shell_command',
+      stream: 'stdout',
+      text: 'fetching packages\n',
+    }, stream);
+    appendStreamEvent({
+      type: 'tool_delta',
+      seq: 3,
+      id: 'toolu_shell_stream',
+      name: 'shell_command',
+      stream: 'stderr',
+      text: 'warning\n',
+    }, stream);
+
+    assert.equal(stream.blocks[0].stdout, 'fetching packages\n');
+    assert.equal(stream.blocks[0].stderr, 'warning\n');
+    assert.equal(stream.blocks[0].status, 'running');
+    assert.equal(stream.blocks[0].collapsed, false);
+    assert.ok(scheduled >= 3);
+  });
+
+  it('lets stream reducer use injected effects instead of global UI state', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    let hidden = 0;
+    let scheduled = 0;
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [{ type: 'text', content: '' }],
+      renderer: {
+        schedule() {
+          scheduled++;
+        },
+        flush() {},
+        cancel() {},
+      },
+    };
+
+    appendStreamEvent({
+      type: 'delta',
+      seq: 1,
+      text: 'hello',
+    }, stream, {
+      isActiveConversation: () => true,
+      showThinking() {},
+      hideThinking() {
+        hidden++;
+      },
+      scheduleRender() {
+        scheduled++;
+      },
+      flushRender() {},
+      cancelRender() {},
+    });
+
+    assert.equal(stream.blocks[0].content, 'hello');
+    assert.equal(hidden, 1);
+    assert.equal(scheduled, 1);
+  });
+
   it('renders shell command output with terminal-like structure', async () => {
     const { renderBlocks } = await import('../public/js/renderers.js');
     const html = renderBlocks([{

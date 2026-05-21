@@ -1,4 +1,5 @@
 import { appendStreamEvent } from './stream-reducer.js';
+import { STREAM_EVENT_TYPES } from './stream-events.js';
 
 export async function readChatStream(res, stream) {
   const reader = res.body.getReader();
@@ -19,7 +20,7 @@ export async function readChatStream(res, stream) {
       try {
         const evt = JSON.parse(jsonStr);
         appendStreamEvent(evt, stream);
-        if (evt.type === 'done' || evt.type === 'error') {
+        if (evt.type === STREAM_EVENT_TYPES.DONE || evt.type === STREAM_EVENT_TYPES.ERROR) {
           stream.terminalEvent = evt;
         }
       } catch {}

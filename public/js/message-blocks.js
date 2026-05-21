@@ -1,3 +1,5 @@
+import { STREAM_AGENT_EVENT_TYPES, streamAgentEventType } from './stream-events.js';
+
 export function stripSearchQueryText(text) {
   return String(text || '').replace(/^Search results for query: .*/gm, '').replace(/\n{3,}/g, '\n\n');
 }
@@ -42,10 +44,15 @@ function renderBlockFromOutput(output) {
 }
 
 export function subagentEventToBlocks(event) {
-  const type = event.eventType || event.type || event.event || '';
-  if (type === 'subagent_delta' || type === 'subagent_thinking' || type === 'subagent_start' || type === 'subagent_tool_call') return [];
+  const type = streamAgentEventType(event);
+  if (
+    type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DELTA
+    || type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_THINKING
+    || type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_START
+    || type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_CALL
+  ) return [];
 
-  if (type === 'subagent_tool_result') {
+  if (type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_RESULT) {
     const rendered = renderBlockFromResult(event.renderType, event.data) || renderBlockFromOutput(event.output);
     if (rendered) return [rendered];
     if (!event.isError) return [];
@@ -53,7 +60,7 @@ export function subagentEventToBlocks(event) {
     return [{ type: 'text', content: codeBlock(`Tool result · ${event.name || 'tool'}`, output) }];
   }
 
-  if (type === 'subagent_server_tool') {
+  if (type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_SERVER_TOOL) {
     const serverEvent = event.event || {};
     const name = serverEvent.name || event.name || 'server tool';
     if (serverEvent.phase === 'call') {
@@ -66,7 +73,7 @@ export function subagentEventToBlocks(event) {
     }
   }
 
-  if (type === 'subagent_done' && event.error) {
+  if (type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DONE && event.error) {
     return [{ type: 'text', content: `**Subagent error**\n\n${event.error}` }];
   }
 

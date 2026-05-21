@@ -79,6 +79,10 @@ describe('queryLoop', () => {
   let onServerToolCalls;
 
   const baseConfig = { baseUrl: 'https://test.api', apiKey: 'sk-test', model: 'test-model', maxTokens: 1024, tools: [] };
+  const configWithDelegateCapability = {
+    ...baseConfig,
+    tools: [{ name: 'delegate_task', capabilities: { executionMode: 'parallel_batch' } }],
+  };
   const baseHistory = [{ role: 'user', content: 'hello' }];
 
   // Helper: drain the generator and collect results
@@ -167,7 +171,7 @@ describe('queryLoop', () => {
         { id: 'toolu_01', name: 'get_current_time', isError: false, output: '2026-05-14 15:30:00', durationMs: 5 },
       ]);
 
-      const iterator = queryLoop({ config: baseConfig, history: baseHistory, streamChat, runTool });
+      const iterator = queryLoop({ config: configWithDelegateCapability, history: baseHistory, streamChat, runTool });
       await drain(iterator);
 
       assert.equal(callCount, 2, 'should make 2 API calls');
@@ -219,7 +223,7 @@ describe('queryLoop', () => {
         { id: 'toolu_02', name: 'get_current_time', isError: false, output: '03:30 EST', durationMs: 4 },
       ]);
 
-      const iterator = queryLoop({ config: baseConfig, history: baseHistory, streamChat, runTool });
+      const iterator = queryLoop({ config: configWithDelegateCapability, history: baseHistory, streamChat, runTool });
       await drain(iterator);
 
       assert.equal(events.length, 4); // 2 calls + 2 results
@@ -269,7 +273,7 @@ describe('queryLoop', () => {
         };
       };
 
-      const iterator = queryLoop({ config: baseConfig, history: baseHistory, streamChat, runTool });
+      const iterator = queryLoop({ config: configWithDelegateCapability, history: baseHistory, streamChat, runTool });
       await drain(iterator);
 
       assert.equal(events.length, 4);
@@ -325,7 +329,7 @@ describe('queryLoop', () => {
         };
       };
 
-      const iterator = queryLoop({ config: baseConfig, history: baseHistory, streamChat, runTool });
+      const iterator = queryLoop({ config: configWithDelegateCapability, history: baseHistory, streamChat, runTool });
       await drain(iterator);
 
       assert.equal(events.length, 12);
@@ -468,6 +472,7 @@ describe('queryLoop', () => {
 
       assert.equal(returnValue.reason, 'max_turns');
     });
+
   });
 
   // =========================================================================
@@ -744,6 +749,43 @@ describe('queryLoop', () => {
 
       assert.equal(returnValue.reason, 'completed');
     });
+
+    it('should yield tool_delta events while a tool is still running', async () => {
+      let callCount = 0;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return (fakeStreamChatThatReturns({
+            text: 'installing',
+            content: [
+              { type: 'text', text: 'installing' },
+              { type: 'tool_use', id: 'toolu_shell', name: 'shell_command', input: { command: 'npm install' } },
+            ],
+            toolCalls: [{ id: 'toolu_shell', name: 'shell_command', input: { command: 'npm install' } }],
+          }))(...args);
+        }
+        return (fakeStreamChatThatReturns({
+          text: 'Done',
+          content: [{ type: 'text', text: 'Done' }],
+          toolCalls: [],
+        }))(...args);
+      };
+      const runTool = async (_call, context) => {
+        context.emitToolEvent({ stream: 'stdout', text: 'fetching packages\n' });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        context.emitToolEvent({ stream: 'stderr', text: 'warning\n' });
+        return { id: 'toolu_shell', name: 'shell_command', isError: false, output: 'ok', durationMs: 5 };
+      };
+
+      const iterator = queryLoop({ config: baseConfig, history: baseHistory, streamChat, runTool });
+      await drain(iterator);
+
+      assert.deepEqual(events.map(event => event.type).slice(0, 4), ['tool_call', 'tool_delta', 'tool_delta', 'tool_result']);
+      assert.equal(events[1].stream, 'stdout');
+      assert.equal(events[1].text, 'fetching packages\n');
+      assert.equal(events[2].stream, 'stderr');
+      assert.equal(events[2].text, 'warning\n');
+    });
   });
 
   // =========================================================================
@@ -783,7 +825,10 @@ describe('queryLoop', () => {
       await drain(iterator);
 
       assert.equal(receivedCtxs.length, 1);
-      assert.deepEqual(receivedCtxs[0], ctx);
+      assert.equal(receivedCtxs[0].conversationId, ctx.conversationId);
+      assert.equal(receivedCtxs[0].channelId, ctx.channelId);
+      assert.equal(receivedCtxs[0].model, ctx.model);
+      assert.equal(typeof receivedCtxs[0].emitToolEvent, 'function');
     });
   });
 

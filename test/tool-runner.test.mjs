@@ -1,12 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { release, type } from 'node:os';
+import { spawnSync } from 'node:child_process';
 
 import { runTool } from '../lib/tools/runner.mjs';
 import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { shellCommandTool } from '../lib/tools/builtin/shell-command.mjs';
 import { mysqlQueryTool } from '../lib/tools/builtin/mysql-query.mjs';
 import { sqliteQueryTool } from '../lib/tools/builtin/sqlite-query.mjs';
+
+function hasCommand(command) {
+  const result = process.platform === 'win32' ? spawnSync('where', [command], {
+    stdio: 'ignore',
+  }) : spawnSync('sh', ['-c', `command -v ${command}`], {
+    stdio: 'ignore',
+  });
+  return result.status === 0;
+}
 
 async function withShellCommandEnabled(fn) {
   const tools = await listTools();
@@ -92,10 +102,11 @@ describe('shell command tool', () => {
     });
   });
 
-  it('does not block PowerShell Format-* commands as disk format commands', async () => {
+  it('does not block PowerShell Format-* commands as disk format commands', { skip: process.platform !== 'win32' && !hasCommand('powershell') && !hasCommand('pwsh') }, async () => {
     await withShellCommandEnabled(async () => {
+      const shell = hasCommand('powershell') ? 'powershell' : 'pwsh';
       const result = await runTool(
-        { id: 'toolu_shell_format_table', name: 'shell_command', input: { command: 'powershell -Command "Get-Process -Id $PID | Format-Table -AutoSize"' } },
+        { id: 'toolu_shell_format_table', name: 'shell_command', input: { command: `${shell} -Command "Get-Process -Id $PID | Format-Table -AutoSize"` } },
         { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
       );
 

@@ -10,8 +10,68 @@ import { SchemaValidationError, validateChannelPayload, validateChatRequest, val
 import { withConversationQueue } from '../lib/storage.mjs';
 import { summarizeRunsForUsage } from '../lib/usage-report.mjs';
 import { calculateUsageCost, findEffectiveModelPricing } from '../lib/model-pricing.mjs';
+import { CONVERSATION_CONTRACT_VERSION } from '../lib/conversations/contracts.mjs';
+import { PROVIDER_CONTRACT_VERSION } from '../lib/providers/provider-contract.mjs';
+import { RUN_EVENT_TYPES, AGENT_EVENT_TYPES } from '../lib/run-events.mjs';
+import { defaultToolScheduler, executeToolCalls } from '../lib/tools/scheduler.mjs';
 
 describe('architecture safety contracts', () => {
+  it('publishes stable architecture contract versions and event names', () => {
+    assert.equal(CONVERSATION_CONTRACT_VERSION, 1);
+    assert.equal(PROVIDER_CONTRACT_VERSION, 1);
+    assert.equal(RUN_EVENT_TYPES.TOOL_CALL, 'tool_call');
+    assert.equal(RUN_EVENT_TYPES.TOOL_RESULT, 'tool_result');
+    assert.equal(AGENT_EVENT_TYPES.SUBAGENT_DONE, 'subagent_done');
+  });
+
+  it('keeps tool scheduling strategy outside queryLoop', async () => {
+    const calls = [
+      { id: 'a1', name: 'delegate_task', input: {} },
+      { id: 'a2', name: 'delegate_task', input: {} },
+      { id: 'b1', name: 'calculator', input: {} },
+    ];
+    const marks = [];
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const iterator = executeToolCalls({
+      calls,
+      scheduler: defaultToolScheduler({
+        tools: [{ name: 'delegate_task', capabilities: { executionMode: 'parallel_batch' } }],
+      }),
+      executeCall: async (call) => {
+        marks.push(`${call.id}:start`);
+        await wait(call.id === 'a1' ? 20 : 1);
+        marks.push(`${call.id}:end`);
+        return { id: call.id, name: call.name, isError: false, output: call.id, durationMs: 1 };
+      },
+      publishOutcome: (call, outcome) => ({
+        type: RUN_EVENT_TYPES.TOOL_RESULT,
+        id: call.id,
+        name: call.name,
+        isError: outcome.isError,
+        output: outcome.output,
+      }),
+    });
+
+    const events = [];
+    let result = await iterator.next();
+    while (!result.done) {
+      events.push(result.value);
+      result = await iterator.next();
+    }
+
+    assert.deepEqual(events.map(event => event.type), [
+      RUN_EVENT_TYPES.TOOL_CALL,
+      RUN_EVENT_TYPES.TOOL_CALL,
+      RUN_EVENT_TYPES.TOOL_RESULT,
+      RUN_EVENT_TYPES.TOOL_RESULT,
+      RUN_EVENT_TYPES.TOOL_CALL,
+      RUN_EVENT_TYPES.TOOL_RESULT,
+    ]);
+    assert.ok(marks.indexOf('a2:start') < marks.indexOf('a1:end'));
+    assert.ok(marks.indexOf('b1:start') > marks.indexOf('a1:end'));
+    assert.equal(result.value.aborted, false);
+  });
+
   it('serializes work for the same conversation id', async () => {
     const events = [];
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));

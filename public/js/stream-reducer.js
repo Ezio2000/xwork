@@ -1,6 +1,18 @@
-import { state } from './state.js';
 import { subagentEventToBlocks } from './message-blocks.js';
+import { STREAM_AGENT_EVENT_TYPES, STREAM_EVENT_TYPES, streamAgentEventType } from './stream-events.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
+import { isActiveConversation } from './stores/app-store.js';
+
+function defaultEffects(stream) {
+  return {
+    isActiveConversation: () => isActiveConversation(stream.conversationId),
+    showThinking: showThinkingPopup,
+    hideThinking: hideThinkingPopup,
+    scheduleRender: () => stream.renderer.schedule(),
+    flushRender: (options) => stream.renderer.flush(options),
+    cancelRender: () => stream.renderer.cancel(),
+  };
+}
 
 function currentTextBlock(blocks) {
   for (let i = blocks.length - 1; i >= 0; i--) {
@@ -12,8 +24,8 @@ function currentTextBlock(blocks) {
 }
 
 function pushSubagentEvent(block, evt) {
-  const eventType = evt.eventType || evt.type || evt.event || '';
-  if (eventType === 'subagent_delta' || eventType === 'subagent_thinking') return;
+  const eventType = streamAgentEventType(evt);
+  if (eventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DELTA || eventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_THINKING) return;
   block.events = Array.isArray(block.events) ? block.events : [];
   block.events.push({ ...evt });
   if (block.events.length > 80) block.events = block.events.slice(-80);
@@ -50,8 +62,22 @@ function isTerminalSubagentBlock(block) {
   return block?.type === 'subagent-run' && status && status !== 'running' && status !== 'tool_error';
 }
 
-function applyToolResult(evt, stream) {
+function markExistingShellCommandErrored(tool, stream) {
+  if (tool.name !== 'shell_command' || !tool.id || !tool.isError) return false;
+  const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
+  if (!existing) return false;
+  Object.assign(existing, {
+    status: 'error',
+    durationMs: tool.durationMs,
+    stderr: existing.stderr || 'Tool execution was blocked or failed before command output was available.',
+    collapsed: true,
+  });
+  return true;
+}
+
+function applyToolResult(evt, stream, effects) {
   for (const tool of evt.tools) {
+    if (markExistingShellCommandErrored(tool, stream)) continue;
     if (tool.renderType && tool.data) {
       if (tool.renderType === 'shell-command' && tool.id) {
         const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
@@ -79,10 +105,10 @@ function applyToolResult(evt, stream) {
   const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
   if (errored) currentTextBlock(stream.blocks).content += `\n\n_Tool error: ${errored}_`;
   stream.blocks.push({ type: 'text', content: '' });
-  stream.renderer.schedule();
+  effects.scheduleRender();
 }
 
-function applyToolCall(evt, stream) {
+function applyToolCall(evt, stream, effects) {
   for (const tool of evt.tools || []) {
     if (tool.name !== 'shell_command' || !tool.id) continue;
     const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
@@ -108,19 +134,33 @@ function applyToolCall(evt, stream) {
       startedAt: Date.now(),
     });
   }
-  stream.renderer.schedule();
+  effects.scheduleRender();
 }
 
-function applyAgentEvent(evt, stream) {
-  const agentEventType = evt.eventType || evt.event || '';
-  if (agentEventType === 'root_start') return;
-  if (agentEventType === 'subagent_thinking') {
+function applyToolDelta(evt, stream, effects) {
+  if (evt.name !== 'shell_command' || !evt.id) return;
+  const block = stream.blocks.find(item => item.type === 'shell-command' && item.toolCallId === evt.id);
+  if (!block) return;
+  if (evt.stream === 'stderr') {
+    block.stderr = (block.stderr || '') + (evt.text || '');
+  } else {
+    block.stdout = (block.stdout || '') + (evt.text || '');
+  }
+  block.status = block.status || 'running';
+  block.collapsed = false;
+  effects.scheduleRender();
+}
+
+function applyAgentEvent(evt, stream, effects) {
+  const agentEventType = streamAgentEventType(evt);
+  if (agentEventType === STREAM_AGENT_EVENT_TYPES.ROOT_START) return;
+  if (agentEventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_THINKING) {
     const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
     if (block) block.thinking = true;
-    stream.renderer.schedule();
+    effects.scheduleRender();
     return;
   }
-  if (agentEventType === 'subagent_start') {
+  if (agentEventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_START) {
     let block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
     if (!block) {
       block = {
@@ -138,14 +178,14 @@ function applyAgentEvent(evt, stream) {
       stream.blocks.push(block);
     }
     pushSubagentEvent(block, evt);
-  } else if (agentEventType === 'subagent_delta') {
-    if (state.activeId === stream.conversationId) hideThinkingPopup();
+  } else if (agentEventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DELTA) {
+    if (effects.isActiveConversation()) effects.hideThinking();
     const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
     if (block) {
       appendSubagentText(block, evt.text || '');
     }
-  } else if (agentEventType === 'subagent_done') {
-    if (state.activeId === stream.conversationId) hideThinkingPopup();
+  } else if (agentEventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DONE) {
+    if (effects.isActiveConversation()) effects.hideThinking();
     const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
     if (block) {
       block.thinking = false;
@@ -158,15 +198,15 @@ function applyAgentEvent(evt, stream) {
       pushSubagentEvent(block, evt);
       block.collapsed = true;
     }
-    stream.renderer.flush({ rememberCollapseState: false });
+    effects.flushRender({ rememberCollapseState: false });
     return;
-  } else if (agentEventType === 'subagent_tool_call' || agentEventType === 'subagent_server_tool') {
+  } else if (agentEventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_CALL || agentEventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_SERVER_TOOL) {
     const block = stream.blocks.find(item => item.type === 'subagent-run' && item.runId === evt.runId);
     if (block) {
       block.thinking = false;
       pushSubagentEvent(block, evt);
     }
-  } else if (agentEventType === 'subagent_tool_result') {
+  } else if (agentEventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_RESULT) {
     for (let i = stream.blocks.length - 1; i >= 0; i--) {
       const block = stream.blocks[i];
       if (block.type === 'subagent-run' && block.runId === evt.runId) {
@@ -177,47 +217,53 @@ function applyAgentEvent(evt, stream) {
       }
     }
   }
-  stream.renderer.schedule();
+  effects.scheduleRender();
 }
 
-export function appendStreamEvent(evt, stream) {
+export function appendStreamEvent(evt, stream, injectedEffects = null) {
+  const effects = injectedEffects || defaultEffects(stream);
   stream.lastSeq = Math.max(stream.lastSeq || 0, Number(evt.seq || 0));
 
-  if (evt.type === 'chat_run_start') {
+  if (evt.type === STREAM_EVENT_TYPES.CHAT_RUN_START) {
     if (evt.chatRunId) stream.runId = evt.chatRunId;
     return;
   }
 
-  if (evt.type === 'thinking') {
-    if (state.activeId === stream.conversationId) showThinkingPopup(evt.text);
+  if (evt.type === STREAM_EVENT_TYPES.THINKING) {
+    if (effects.isActiveConversation()) effects.showThinking(evt.text);
     return;
   }
 
-  if (evt.type === 'delta') {
-    if (state.activeId === stream.conversationId) hideThinkingPopup();
+  if (evt.type === STREAM_EVENT_TYPES.DELTA) {
+    if (effects.isActiveConversation()) effects.hideThinking();
     currentTextBlock(stream.blocks).content += evt.text;
-    stream.renderer.schedule();
+    effects.scheduleRender();
     return;
   }
 
-  if (evt.type === 'tool_call') {
-    applyToolCall(evt, stream);
+  if (evt.type === STREAM_EVENT_TYPES.TOOL_CALL) {
+    applyToolCall(evt, stream, effects);
     return;
   }
 
-  if (evt.type === 'tool_result') {
-    applyToolResult(evt, stream);
+  if (evt.type === STREAM_EVENT_TYPES.TOOL_DELTA) {
+    applyToolDelta(evt, stream, effects);
     return;
   }
 
-  if (evt.type === 'agent_event') {
-    applyAgentEvent(evt, stream);
+  if (evt.type === STREAM_EVENT_TYPES.TOOL_RESULT) {
+    applyToolResult(evt, stream, effects);
     return;
   }
 
-  if (evt.type === 'error') {
+  if (evt.type === STREAM_EVENT_TYPES.AGENT_EVENT) {
+    applyAgentEvent(evt, stream, effects);
+    return;
+  }
+
+  if (evt.type === STREAM_EVENT_TYPES.ERROR) {
     stream.status = 'error';
     stream.error = evt.message || 'Unknown error';
-    stream.renderer.cancel();
+    effects.cancelRender();
   }
 }

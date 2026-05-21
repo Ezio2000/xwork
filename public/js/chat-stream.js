@@ -6,11 +6,8 @@ import { attachChatStream } from './stream-client.js';
 import { createStreamRenderScheduler, getStreamingContentEl } from './stream-render-controller.js';
 import { hideThinkingPopup } from './thinking-popup.js';
 import { state } from './state.js';
+import { getActiveStream } from './stores/app-store.js';
 import { addAssistantPlaceholder, addUserMessage, renderConvoList, renderMessages } from './views.js';
-
-function getActiveStream() {
-  return state.activeId ? state.streamingByConversationId.get(state.activeId) : null;
-}
 
 function setSendDisabled() {
   dom.btnSend.disabled = Boolean(getActiveStream());
