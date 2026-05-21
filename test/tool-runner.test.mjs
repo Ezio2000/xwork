@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { runTool } from '../lib/tools/runner.mjs';
 import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { shellCommandTool } from '../lib/tools/builtin/shell-command.mjs';
+import { browserActionTool } from '../lib/tools/builtin/browser-action.mjs';
 import { mysqlQueryTool } from '../lib/tools/builtin/mysql-query.mjs';
 import { sqliteQueryTool } from '../lib/tools/builtin/sqlite-query.mjs';
 
@@ -176,6 +177,47 @@ describe('tool configuration surface', () => {
     } finally {
       await updateToolConfig('web_search', { config: previous });
     }
+  });
+});
+
+describe('browser action tool', () => {
+  it('is registered but disabled by default', async () => {
+    const tools = await listTools();
+    const browser = tools.find(tool => tool.name === 'browser_action');
+
+    assert.ok(browser);
+    assert.equal(browser.dangerLevel, 'high');
+    assert.equal(browserActionTool.defaultEnabled, false);
+    assert.equal(browser.config.headless, true);
+  });
+
+  it('validates URL and host restrictions', () => {
+    const url = browserActionTool.__test.validateHttpUrl('http://localhost:3000/');
+    assert.equal(url.hostname, 'localhost');
+
+    assert.doesNotThrow(() => browserActionTool.__test.assertAllowedUrl(url, { allowedHosts: ['localhost'] }));
+    assert.throws(() => browserActionTool.__test.assertAllowedUrl(url, { allowedHosts: ['example.com'] }), /not allowed/i);
+    assert.throws(() => browserActionTool.__test.assertAllowedUrl(url, { blockedHosts: ['localhost'] }), /Blocked/i);
+    assert.throws(() => browserActionTool.__test.validateHttpUrl('file:///etc/passwd'), /http or https/);
+  });
+
+  it('sanitizes screenshot names and exposes render metadata', () => {
+    assert.equal(browserActionTool.__test.screenshotFilename('home'), 'home.png');
+    assert.throws(() => browserActionTool.__test.screenshotFilename('../bad'), /letters/);
+
+    const render = browserActionTool.parseResult({
+      action: 'screenshot',
+      url: 'http://localhost:3000/',
+      title: 'xwork',
+      statusCode: 200,
+      screenshotPath: '/workspace/data/browser-screenshots/home.png',
+      fullPage: true,
+    });
+
+    assert.equal(render.renderType, 'browser-action');
+    assert.equal(render.data.action, 'screenshot');
+    assert.equal(render.data.title, 'xwork');
+    assert.match(render.data.screenshotPath, /home\.png$/);
   });
 });
 

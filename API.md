@@ -433,6 +433,10 @@ while (true) {
 | renderType | 含义 | data 结构 | 前端渲染方式 |
 |---|---|---|---|
 | `"source-cards"` | 搜索结果 | `{ sources: [...], resultCount: N }` | 渲染为可折叠的来源卡片列表 |
+| `"web-fetch"` | 网页读取结果 | `{ url, statusCode, contentType, contentLength, cached, contentPreview }` | 渲染为可折叠网页内容卡片 |
+| `"browser-action"` | 浏览器动作结果 | `{ action, url, title, statusCode, text?, result?, screenshotPath? }` | 渲染为可折叠浏览器动作摘要 |
+| `"shell-command"` | Shell 命令结果 | `{ command, cwd, exitCode, stdout, stderr, durationMs, truncated }` | 渲染为终端样式输出块 |
+| `"mysql-query"` / `"sqlite-query"` | 数据库查询结果 | `{ source, sql, columns, previewRows, rowCount, returnedRowCount }` | 渲染为可折叠表格 |
 | 其他 / 无 | 通用结果 | 任意 | 不产生可见 UI，或按工具自定义处理 |
 
 #### Source 对象结构

@@ -336,6 +336,66 @@ describe('frontend module boundaries', () => {
     assert.match(html, /npm test/);
   });
 
+  it('renders browser action results as a collapsible block', async () => {
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const html = renderBlocks([{
+      type: 'browser-action',
+      action: 'screenshot',
+      url: 'http://localhost:3000/',
+      title: 'xwork',
+      statusCode: 200,
+      screenshotPath: '/workspace/data/browser-screenshots/home.png',
+      text: 'visible page text',
+      collapsed: true,
+    }], false);
+
+    assert.match(html, /browser-action-toggle collapsed/);
+    assert.match(html, /xwork/);
+    assert.match(html, /HTTP 200/);
+    assert.match(html, /browser-screenshots\/home\.png/);
+    assert.match(html, /visible page text/);
+  });
+
+  it('collapses browser action render blocks after tool result', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const stream = {
+      conversationId: 'test',
+      blocks: [],
+      renderer: { schedule() {}, flush() {}, cancel() {} },
+    };
+    let scheduled = 0;
+
+    appendStreamEvent({
+      type: 'tool_result',
+      tools: [{
+        id: 'toolu_browser',
+        name: 'browser_action',
+        isError: false,
+        renderType: 'browser-action',
+        data: {
+          action: 'text',
+          url: 'http://localhost:3000/',
+          title: 'xwork',
+          text: 'hello',
+        },
+      }],
+    }, stream, {
+      isActiveConversation: () => true,
+      showThinking() {},
+      hideThinking() {},
+      scheduleRender() {
+        scheduled++;
+      },
+      flushRender() {},
+      cancelRender() {},
+    });
+
+    assert.equal(stream.blocks[0].type, 'browser-action');
+    assert.equal(stream.blocks[0].collapsed, true);
+    assert.equal(stream.blocks[0].toolCallId, 'toolu_browser');
+    assert.equal(scheduled, 1);
+  });
+
   it('renders mysql query results as a collapsible table', async () => {
     const { renderBlocks } = await import('../public/js/renderers.js');
     const html = renderBlocks([{

@@ -8,6 +8,7 @@
 lib/tools/
 ├── builtin/           ← 内置工具定义
 │   ├── index.mjs      ← 异步加载内置工具：loadBuiltinTools()
+│   ├── browser-action.mjs
 │   ├── calculator.mjs
 │   ├── current-time.mjs
 │   ├── delegate-task.mjs
@@ -508,6 +509,7 @@ if (
 | `uuid-list` | `uuid_gen` | UUID 列表 + 逐行/全部复制 |
 | `subagent-run` | `delegate_task` / agent 事件 | 子代理运行状态、事件和结果 |
 | `web-fetch` | `web_fetch` | 可折叠网页内容卡片（URL、状态码、内容预览） |
+| `browser-action` | `browser_action` | 浏览器动作结果（URL、标题、文本摘要、截图路径等） |
 | `shell-command` | `shell_command` | 命令、cwd、stdout/stderr、退出码、耗时；支持 running / completed / error 状态 |
 | `mysql-query` | `mysql_query` | MySQL 查询结果表格，隐藏连接密码等敏感配置 |
 | `sqlite-query` | `sqlite_query` | SQLite 查询结果表格，路径受工作区限制 |
@@ -568,6 +570,7 @@ if (
 
 ## 常见注意点
 
+- `browser_action` 基于 Playwright Chromium，默认禁用。它适合跨平台网页 UI 验证，截图写入 workspace 内的 `data/browser-screenshots`。建议优先配置 `allowedHosts`，例如只允许 `localhost` 和 `127.0.0.1`。
 - `anthropic_server` 工具不会由 `runTool()` 执行；它们只会被传给 provider。
 - `anthropic_server` 工具会被转换为 Anthropic 工具格式：`apiToolType/type` → `type`，`maxUses` → `max_uses`，`allowedDomains/blockedDomains` → `allowed_domains/blocked_domains`。
 - `systemPrompt()` 不会随工具定义直接发送，而是在 `message-normalizer.mjs` 的 `buildSystemPrompt()` 中拼接进系统提示。

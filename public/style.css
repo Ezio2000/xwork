@@ -2328,6 +2328,105 @@ body {
   background: var(--bg-secondary);
 }
 
+.browser-action-toggle {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 10px 0;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.browser-action-toggle-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.browser-action-toggle-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.browser-action-toggle-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browser-action-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.browser-action-meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.browser-action-toggle-arrow {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.browser-action-toggle.collapsed .browser-action-toggle-arrow {
+  transform: rotate(-90deg);
+}
+
+.browser-action-toggle.collapsed .browser-action-toggle-body {
+  display: none;
+}
+
+.browser-action-toggle-body {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+}
+
+.browser-action-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.browser-action-row span {
+  color: var(--text-muted);
+}
+
+.browser-action-row a,
+.browser-action-row code {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.browser-action-output {
+  margin: 10px 0 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.browser-action-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .shell-command-toggle-header {
   display: flex;
   align-items: center;

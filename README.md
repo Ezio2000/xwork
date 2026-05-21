@@ -180,6 +180,10 @@ parseResult(output, input) {
 | renderType | data 结构 | 前端渲染 |
 |---|---|---|
 | `source-cards` | `{ sources: [...], resultCount: N }` | 来源卡片列表 |
+| `web-fetch` | `{ url, statusCode, contentType, contentLength, cached, contentPreview }` | 网页内容卡片 |
+| `browser-action` | `{ action, url, title, statusCode, text?, result?, screenshotPath? }` | 浏览器动作摘要 |
+| `shell-command` | `{ command, cwd, exitCode, stdout, stderr, durationMs, truncated }` | 终端样式输出 |
+| `mysql-query` / `sqlite-query` | `{ source, sql, columns, previewRows, rowCount, returnedRowCount }` | 查询结果表格 |
 
 ## anthropic_server 工具
 

@@ -261,6 +261,74 @@ function renderWebFetch(block, collapsed = false) {
   `;
 }
 
+function renderBrowserAction(block, collapsed = false) {
+  const action = block.action || 'browser';
+  const title = block.title || block.url || 'Browser action';
+  const meta = [
+    action,
+    block.statusCode ? `HTTP ${block.statusCode}` : '',
+    block.resultType ? String(block.resultType) : '',
+    block.truncated ? 'truncated' : '',
+    block.closed ? 'closed' : '',
+  ].filter(Boolean).join(' · ');
+  const bodyParts = [];
+
+  if (block.url) {
+    bodyParts.push(`
+      <div class="browser-action-row">
+        <span>URL</span>
+        <a href="${escHtml(block.url)}" target="_blank" rel="noreferrer">${escHtml(block.url)}</a>
+      </div>
+    `);
+  }
+  if (block.selector) {
+    bodyParts.push(`
+      <div class="browser-action-row">
+        <span>Selector</span>
+        <code>${escHtml(block.selector)}</code>
+      </div>
+    `);
+  }
+  if (block.key) {
+    bodyParts.push(`
+      <div class="browser-action-row">
+        <span>Key</span>
+        <code>${escHtml(block.key)}</code>
+      </div>
+    `);
+  }
+  if (block.screenshotPath) {
+    bodyParts.push(`
+      <div class="browser-action-row">
+        <span>Screenshot</span>
+        <code>${escHtml(block.screenshotPath)}</code>
+      </div>
+    `);
+  }
+  if (block.text) {
+    bodyParts.push(`<pre class="browser-action-output"><code>${escHtml(block.text)}</code></pre>`);
+  }
+  if (block.result) {
+    bodyParts.push(`<pre class="browser-action-output"><code>${escHtml(block.result)}</code></pre>`);
+  }
+
+  return `
+    <div class="browser-action-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="browser-action-toggle-header" data-toggle-parent>
+        <span class="browser-action-toggle-label">
+          <span class="browser-action-icon">&#9711;</span>
+          ${escHtml(title)}
+        </span>
+        <span class="browser-action-meta">${escHtml(meta)}</span>
+        <span class="browser-action-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="browser-action-toggle-body">
+        ${bodyParts.join('') || '<div class="browser-action-empty">No browser output.</div>'}
+      </div>
+    </div>
+  `;
+}
+
 function renderShellCommand(block, collapsed = false) {
   const exitCode = block.exitCode;
   const timedOut = block.timedOut === true;
@@ -359,6 +427,7 @@ const blockRenderers = {
   'uuid-list': (block) => renderUuidList(block.uuids || [], block.count || 0),
   'subagent-run': (block, collapsed) => renderSubagentRun(block, collapsed),
   'web-fetch': (block, collapsed) => renderWebFetch(block, block.collapsed ?? collapsed),
+  'browser-action': (block, collapsed) => renderBrowserAction(block, block.collapsed ?? collapsed),
   'shell-command': (block, collapsed) => renderShellCommand(block, block.collapsed ?? collapsed),
   'mysql-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
   'sqlite-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
