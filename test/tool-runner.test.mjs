@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { release, type } from 'node:os';
 
 import { runTool } from '../lib/tools/runner.mjs';
-import { listTools, updateToolConfig } from '../lib/tools/registry.mjs';
+import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { shellCommandTool } from '../lib/tools/builtin/shell-command.mjs';
 import { mysqlQueryTool } from '../lib/tools/builtin/mysql-query.mjs';
 import { sqliteQueryTool } from '../lib/tools/builtin/sqlite-query.mjs';
@@ -118,6 +118,53 @@ describe('shell command tool', () => {
       assert.match(result.output.stderr, /路径不存在/);
       assert.doesNotMatch(result.output.stderr, /�/);
     });
+  });
+});
+
+describe('tool configuration surface', () => {
+  it('exposes config metadata and applies server-tool config overrides', async () => {
+    const tools = await listTools();
+    const webSearch = tools.find(tool => tool.id === 'web_search');
+
+    assert.ok(webSearch);
+    assert.deepEqual(webSearch.defaultConfig, {
+      maxUses: 4,
+      allowedDomains: [],
+      blockedDomains: [],
+    });
+    assert.equal(webSearch.config.maxUses, 4);
+    assert.equal(webSearch.configSchema.properties.maxUses.type, 'number');
+
+    const previous = webSearch.config;
+    try {
+      const updated = await updateToolConfig('web_search', {
+        config: {
+          ...previous,
+          maxUses: 2,
+          allowedDomains: ['example.com'],
+          blockedDomains: [],
+        },
+      });
+      assert.equal(updated.maxUses, 2);
+
+      const enabled = await getEnabledToolDefinitions();
+      const definition = enabled.find(tool => tool.name === 'web_search');
+      assert.equal(definition.maxUses, 2);
+      assert.deepEqual(definition.allowedDomains, ['example.com']);
+
+      await updateToolConfig('web_search', {
+        config: {
+          ...previous,
+          maxUses: 'bad',
+          allowedDomains: 'example.com',
+        },
+      });
+      const fallbackDefinition = (await getEnabledToolDefinitions()).find(tool => tool.name === 'web_search');
+      assert.equal(fallbackDefinition.maxUses, 4);
+      assert.deepEqual(fallbackDefinition.allowedDomains, []);
+    } finally {
+      await updateToolConfig('web_search', { config: previous });
+    }
   });
 });
 

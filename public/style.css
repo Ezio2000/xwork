@@ -1053,12 +1053,19 @@ body {
   border-radius: var(--radius);
   padding: 14px 16px;
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   margin-bottom: 8px;
 }
 
 .tool-card.enabled { border-color: var(--accent); }
+
+.tool-card-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
 
 .tool-info { flex: 1; min-width: 0; }
 
@@ -1085,6 +1092,11 @@ body {
 
 .tool-card.enabled .tool-status {
   color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.tool-status.danger {
+  color: var(--danger);
   background: var(--accent-dim);
 }
 
@@ -1151,6 +1163,183 @@ body {
 }
 
 .switch input:checked + span::after { transform: translateX(18px); }
+
+.tool-config-panel {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.tool-config-panel summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  list-style-position: inside;
+}
+
+.tool-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tool-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tool-config-field span,
+.tool-config-schema-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.tool-config-field input,
+.tool-config-field textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.tool-config-field textarea {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  line-height: 1.45;
+  resize: vertical;
+  white-space: pre;
+}
+
+.tool-config-field input:focus,
+.tool-config-field textarea:focus {
+  border-color: var(--accent);
+}
+
+.tool-config-field input:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.tool-config-schema {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+
+.tool-config-examples {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+
+.tool-config-examples-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+}
+
+.tool-config-example {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.tool-config-example:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.tool-config-example-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-config-example-header span {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tool-config-examples pre,
+.tool-config-example pre {
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.tool-config-schema-title {
+  margin-bottom: 8px;
+}
+
+.tool-config-schema-row {
+  border-top: 1px solid var(--border);
+  padding: 8px 0 0;
+  margin-top: 8px;
+}
+
+.tool-config-schema-row:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.tool-config-schema-row code {
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+.tool-config-schema-row span {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.tool-config-schema-row p,
+.tool-config-empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.tool-config-error {
+  color: var(--danger);
+  display: none;
+  font-size: 12px;
+}
+
+.tool-config-error.visible {
+  display: block;
+}
+
+.tool-config-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 .tool-runs-panel {
   background: var(--bg-secondary);

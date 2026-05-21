@@ -33,6 +33,69 @@ async function toggleTool(id, enabled) {
   renderToolList();
 }
 
+function replaceTool(updated) {
+  const idx = state.tools.findIndex(tool => tool.id === updated.id);
+  if (idx !== -1) state.tools[idx] = updated;
+}
+
+function setConfigError(form, message = '') {
+  const error = form.querySelector('[data-role="tool-config-error"]');
+  if (!error) return;
+  error.textContent = message;
+  error.classList.toggle('visible', Boolean(message));
+}
+
+function parseConfigForm(form) {
+  const timeoutInput = form.elements.timeoutMs;
+  const rawConfig = form.elements.config?.value || '{}';
+  let config;
+  try {
+    config = JSON.parse(rawConfig);
+  } catch (err) {
+    throw new Error(`Config JSON is invalid: ${err.message}`);
+  }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('Config JSON must be an object');
+  }
+  const payload = { config };
+  if (timeoutInput && !timeoutInput.disabled) {
+    const timeoutMs = Number(timeoutInput.value);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300000) {
+      throw new Error('Timeout must be an integer between 1 and 300000');
+    }
+    payload.timeoutMs = timeoutMs;
+  }
+  return payload;
+}
+
+async function saveToolConfig(card, form) {
+  const payload = parseConfigForm(form);
+  const updated = await api('PUT', `/api/v1/tools/${card.dataset.toolId}`, payload);
+  replaceTool(updated);
+  renderToolList();
+}
+
+async function resetToolConfig(card) {
+  const tool = state.tools.find(item => item.id === card.dataset.toolId);
+  if (!tool) return;
+  const payload = { config: tool.defaultConfig || {} };
+  if (tool.adapter !== 'anthropic_server') payload.timeoutMs = Number(tool.defaultTimeoutMs || tool.timeoutMs || 1);
+  const updated = await api('PUT', `/api/v1/tools/${tool.id}`, payload);
+  replaceTool(updated);
+  renderToolList();
+}
+
+function applyToolConfigExample(card, index) {
+  const tool = state.tools.find(item => item.id === card.dataset.toolId);
+  const example = tool?.configExamples?.[index];
+  if (!example) return;
+  const textarea = card.querySelector('textarea[name="config"]');
+  if (!textarea) return;
+  textarea.value = JSON.stringify(example.config || {}, null, 2);
+  const form = textarea.closest('form');
+  if (form) setConfigError(form);
+}
+
 export function bindToolsController() {
   dom.btnBackChatTools.addEventListener('click', showChatPage);
   dom.btnRefreshTools.addEventListener('click', loadTools);
@@ -45,6 +108,33 @@ export function bindToolsController() {
     toggleTool(card.dataset.toolId, toggle.checked).catch(err => {
       alert(err.message);
       toggle.checked = !toggle.checked;
+    });
+  });
+  dom.toolList.addEventListener('submit', (event) => {
+    const form = event.target.closest('form[data-action="save-tool-config"]');
+    if (!form) return;
+    event.preventDefault();
+    const card = form.closest('.tool-card');
+    if (!card) return;
+    setConfigError(form);
+    saveToolConfig(card, form).catch(err => setConfigError(form, err.message));
+  });
+  dom.toolList.addEventListener('click', (event) => {
+    const example = event.target.closest('[data-action="apply-tool-config-example"]');
+    if (example) {
+      const card = example.closest('.tool-card');
+      if (card) applyToolConfigExample(card, Number(example.dataset.exampleIndex));
+      return;
+    }
+
+    const reset = event.target.closest('[data-action="reset-tool-config"]');
+    if (!reset) return;
+    const card = reset.closest('.tool-card');
+    if (!card) return;
+    resetToolConfig(card).catch(err => {
+      const form = reset.closest('form');
+      if (form) setConfigError(form, err.message);
+      else alert(err.message);
     });
   });
 

@@ -2,6 +2,55 @@ import { dom } from './dom.js';
 import { escHtml, formatDateTime } from './renderers.js';
 import { state } from './state.js';
 
+function prettyJson(value) {
+  return JSON.stringify(value && typeof value === 'object' ? value : {}, null, 2);
+}
+
+function configSchemaRows(schema = {}) {
+  const properties = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {};
+  const entries = Object.entries(properties);
+  if (!entries.length) return '<div class="tool-config-empty">No documented config keys.</div>';
+
+  return entries.map(([key, prop]) => {
+    const type = Array.isArray(prop?.type) ? prop.type.join(' | ') : prop?.type || 'value';
+    const enumText = Array.isArray(prop?.enum) && prop.enum.length ? ` · ${prop.enum.join(', ')}` : '';
+    return `
+      <div class="tool-config-schema-row">
+        <code>${escHtml(key)}</code>
+        <span>${escHtml(type)}${escHtml(enumText)}</span>
+        ${prop?.description ? `<p>${escHtml(prop.description)}</p>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function configExamples(tool) {
+  const examples = Array.isArray(tool.configExamples) ? tool.configExamples : [];
+  if (!examples.length) {
+    return `
+      <div class="tool-config-examples">
+        <div class="tool-config-examples-title">Example</div>
+        <pre>${escHtml(prettyJson(tool.defaultConfig || {}))}</pre>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="tool-config-examples">
+      <div class="tool-config-examples-title">Examples</div>
+      ${examples.map((example, index) => `
+        <div class="tool-config-example">
+          <div class="tool-config-example-header">
+            <span>${escHtml(example.title || `Example ${index + 1}`)}</span>
+            <button type="button" class="btn-text small" data-action="apply-tool-config-example" data-example-index="${index}">Use</button>
+          </div>
+          <pre>${escHtml(prettyJson(example.config || {}))}</pre>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 export function renderToolList() {
   if (!state.tools.length) {
     dom.toolList.innerHTML = '<div class="empty-panel">No tools available.</div>';
@@ -10,23 +59,50 @@ export function renderToolList() {
 
   dom.toolList.innerHTML = state.tools.map(tool => `
     <div class="tool-card${tool.enabled ? ' enabled' : ''}" data-tool-id="${escHtml(tool.id)}">
-      <div class="tool-info">
-        <div class="tool-title-row">
-          <div class="tool-title">${escHtml(tool.title || tool.name)}</div>
-          <span class="tool-status">${tool.enabled ? 'Enabled' : 'Disabled'}</span>
+      <div class="tool-card-main">
+        <div class="tool-info">
+          <div class="tool-title-row">
+            <div class="tool-title">${escHtml(tool.title || tool.name)}</div>
+            <span class="tool-status">${tool.enabled ? 'Enabled' : 'Disabled'}</span>
+            ${tool.unavailable ? '<span class="tool-status danger">Unavailable</span>' : ''}
+          </div>
+          <div class="tool-desc">${escHtml(tool.description || '')}</div>
+          <div class="tool-meta">
+            <span>${escHtml(tool.name)}</span>
+            <span>${escHtml(tool.adapter || 'builtin')}</span>
+            <span>${escHtml(tool.category || 'general')}</span>
+            <span>${Number(tool.timeoutMs || 0)}ms</span>
+            ${tool.maxUses !== undefined ? `<span>max ${Number(tool.maxUses)} uses</span>` : ''}
+          </div>
         </div>
-        <div class="tool-desc">${escHtml(tool.description || '')}</div>
-        <div class="tool-meta">
-          <span>${escHtml(tool.name)}</span>
-          <span>${escHtml(tool.adapter || 'builtin')}</span>
-          <span>${escHtml(tool.category || 'general')}</span>
-          <span>${Number(tool.timeoutMs || 0)}ms</span>
-        </div>
+        <label class="switch" title="Toggle tool">
+          <input type="checkbox" data-action="toggle-tool" ${tool.enabled ? 'checked' : ''} ${tool.unavailable ? 'disabled' : ''}>
+          <span></span>
+        </label>
       </div>
-      <label class="switch" title="Toggle tool">
-        <input type="checkbox" data-action="toggle-tool" ${tool.enabled ? 'checked' : ''}>
-        <span></span>
-      </label>
+      <details class="tool-config-panel">
+        <summary>Parameters</summary>
+        <form class="tool-config-form" data-action="save-tool-config">
+          <label class="tool-config-field">
+            <span>Timeout (ms)</span>
+            <input type="number" name="timeoutMs" min="1" max="300000" step="1" value="${Number(tool.timeoutMs || 0)}" ${tool.adapter === 'anthropic_server' ? 'disabled' : ''}>
+          </label>
+          ${configExamples(tool)}
+          <label class="tool-config-field">
+            <span>Config JSON</span>
+            <textarea name="config" rows="8" spellcheck="false">${escHtml(prettyJson(tool.config))}</textarea>
+          </label>
+          <div class="tool-config-schema">
+            <div class="tool-config-schema-title">Available Config Keys</div>
+            ${configSchemaRows(tool.configSchema)}
+          </div>
+          <div class="tool-config-error" data-role="tool-config-error"></div>
+          <div class="tool-config-actions">
+            <button type="button" class="btn-text small" data-action="reset-tool-config">Reset</button>
+            <button type="submit" class="btn-primary small">Save</button>
+          </div>
+        </form>
+      </details>
     </div>
   `).join('');
 }
