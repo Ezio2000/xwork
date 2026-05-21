@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { streamChat } from '../lib/api.mjs';
 import { buildAuditTrace } from '../lib/audit-trace.mjs';
 import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
+import { buildSystemPrompt } from '../lib/anthropic/message-normalizer.mjs';
 import { CHAT_SERVICE_TEST_HOOKS, getChatRunSnapshot, handleChatRequest, handleChatRunStream } from '../lib/chat-service.mjs';
 import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
 import { SchemaValidationError, validateChannelPayload, validateChatRequest, validateToolConfigPatch } from '../lib/schema.mjs';
@@ -22,6 +23,12 @@ describe('architecture safety contracts', () => {
     assert.equal(RUN_EVENT_TYPES.TOOL_CALL, 'tool_call');
     assert.equal(RUN_EVENT_TYPES.TOOL_RESULT, 'tool_result');
     assert.equal(AGENT_EVENT_TYPES.SUBAGENT_DONE, 'subagent_done');
+  });
+
+  it('requires a brief progress sentence before tool calls unless silent mode is requested', () => {
+    const system = buildSystemPrompt([], {});
+    assert.match(system, /MUST write one brief progress sentence before any tool call/);
+    assert.match(system, /Unless the user explicitly asks you to run silently or avoid commentary/);
   });
 
   it('keeps tool scheduling strategy outside queryLoop', async () => {
