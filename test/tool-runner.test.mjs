@@ -103,6 +103,19 @@ describe('shell command tool', () => {
     });
   });
 
+  it('raises small maxOutputChars values instead of rejecting them', async () => {
+    await withShellCommandEnabled(async () => {
+      const result = await runTool(
+        { id: 'toolu_shell_small_output_budget', name: 'shell_command', input: { command: 'node -e "console.log(42)"', maxOutputChars: 500 } },
+        { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+      );
+
+      assert.equal(result.isError, false);
+      assert.equal(result.output.exitCode, 0);
+      assert.match(result.output.stdout, /42/);
+    });
+  });
+
   it('does not block PowerShell Format-* commands as disk format commands', { skip: process.platform !== 'win32' && !hasCommand('powershell') && !hasCommand('pwsh') }, async () => {
     await withShellCommandEnabled(async () => {
       const shell = hasCommand('powershell') ? 'powershell' : 'pwsh';
@@ -203,21 +216,50 @@ describe('browser action tool', () => {
 
   it('sanitizes screenshot names and exposes render metadata', () => {
     assert.equal(browserActionTool.__test.screenshotFilename('home'), 'home.png');
-    assert.throws(() => browserActionTool.__test.screenshotFilename('../bad'), /letters/);
+    assert.equal(browserActionTool.__test.screenshotFilename('bilibili_search_黄仁勋.png'), 'bilibili_search.png');
+    assert.equal(browserActionTool.__test.screenshotFilename('../bad'), 'bad.png');
+    assert.equal(
+      browserActionTool.__test.screenshotUrlFromPath('/workspace/data/browser-screenshots/home.png'),
+      '/api/v1/tool-assets/browser-screenshots/home.png',
+    );
 
     const render = browserActionTool.parseResult({
-      action: 'screenshot',
+      action: 'locate',
       url: 'http://localhost:3000/',
       title: 'xwork',
       statusCode: 200,
       screenshotPath: '/workspace/data/browser-screenshots/home.png',
+      screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
       fullPage: true,
+      count: 1,
+      matches: [{ index: 0, tagName: 'button', text: 'Send' }],
     });
 
     assert.equal(render.renderType, 'browser-action');
-    assert.equal(render.data.action, 'screenshot');
+    assert.equal(render.data.action, 'locate');
     assert.equal(render.data.title, 'xwork');
     assert.match(render.data.screenshotPath, /home\.png$/);
+    assert.equal(render.data.screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
+    assert.deepEqual(render.data.matches, [{ index: 0, tagName: 'button', text: 'Send' }]);
+  });
+
+  it('accepts visible text as a click or locate target', () => {
+    assert.doesNotThrow(() => browserActionTool.validate({ action: 'click', text: '仙童数学' }));
+    assert.doesNotThrow(() => browserActionTool.validate({ action: 'locate', text: '仙童数学' }));
+    assert.throws(() => browserActionTool.validate({ action: 'click' }), /selector or text/);
+    assert.throws(() => browserActionTool.validate({ action: 'locate' }), /selector or text/);
+
+    const render = browserActionTool.parseResult({
+      action: 'locate',
+      url: 'https://www.bilibili.com/',
+      title: 'bilibili',
+      textQuery: '仙童数学',
+      count: 1,
+      matches: [{ index: 0, tagName: 'a', text: '仙童数学' }],
+    });
+
+    assert.equal(render.data.textQuery, '仙童数学');
+    assert.equal(render.data.count, 1);
   });
 });
 

@@ -264,7 +264,10 @@ function renderWebFetch(block, collapsed = false) {
 function renderBrowserAction(block, collapsed = false) {
   const action = block.action || 'browser';
   const title = block.title || block.url || 'Browser action';
+  const running = block.status === 'running';
+  const error = block.status === 'error';
   const meta = [
+    running ? 'running' : error ? 'error' : '',
     action,
     block.statusCode ? `HTTP ${block.statusCode}` : '',
     block.resultType ? String(block.resultType) : '',
@@ -289,6 +292,14 @@ function renderBrowserAction(block, collapsed = false) {
       </div>
     `);
   }
+  if (block.textQuery) {
+    bodyParts.push(`
+      <div class="browser-action-row">
+        <span>Text</span>
+        <code>${escHtml(block.textQuery)}</code>
+      </div>
+    `);
+  }
   if (block.key) {
     bodyParts.push(`
       <div class="browser-action-row">
@@ -302,6 +313,43 @@ function renderBrowserAction(block, collapsed = false) {
       <div class="browser-action-row">
         <span>Screenshot</span>
         <code>${escHtml(block.screenshotPath)}</code>
+      </div>
+    `);
+  }
+  if (block.screenshotUrl) {
+    bodyParts.push(`
+      <div class="browser-action-preview">
+        <a href="${escHtml(block.screenshotUrl)}" target="_blank" rel="noreferrer">
+          <img src="${escHtml(block.screenshotUrl)}" alt="Browser screenshot">
+        </a>
+      </div>
+    `);
+  }
+  if (Array.isArray(block.steps) && block.steps.length) {
+    bodyParts.push(`
+      <div class="browser-action-steps">
+        ${block.steps.map(step => `
+          <div class="browser-action-step ${escHtml(step.phase || 'event')}">
+            <span class="browser-action-step-dot"></span>
+            <span class="browser-action-step-main">
+              <span class="browser-action-step-label">${escHtml(browserStepLabel(step))}</span>
+              <span class="browser-action-step-meta">${escHtml(browserStepMeta(step))}</span>
+            </span>
+          </div>
+        `).join('')}
+      </div>
+    `);
+  }
+  if (Array.isArray(block.matches) && block.matches.length) {
+    bodyParts.push(`
+      <div class="browser-action-matches">
+        ${block.matches.map(match => `
+          <div class="browser-action-match">
+            <span>#${Number(match.index || 0) + 1}</span>
+            <code>${escHtml(match.tagName || '')}</code>
+            <span>${escHtml(match.text || '')}</span>
+          </div>
+        `).join('')}
       </div>
     `);
   }
@@ -327,6 +375,31 @@ function renderBrowserAction(block, collapsed = false) {
       </div>
     </div>
   `;
+}
+
+function browserStepLabel(step) {
+  if (step.label) return step.label;
+  const phase = step.phase || 'event';
+  const action = step.action || 'browser';
+  return `${phase} ${action}`;
+}
+
+function browserStepMeta(step) {
+  const parts = [
+    step.title,
+    step.url,
+    step.selector ? `selector ${step.selector}` : '',
+    step.textQuery ? `text ${step.textQuery}` : '',
+    step.key ? `key ${step.key}` : '',
+    step.waitUntil ? `wait ${step.waitUntil}` : '',
+    step.waitState ? `state ${step.waitState}` : '',
+    step.statusCode ? `HTTP ${step.statusCode}` : '',
+    step.count !== undefined ? `${Number(step.count || 0)} matches` : '',
+    step.textLength !== undefined ? `${Number(step.textLength || 0)} chars` : '',
+    step.resultType ? String(step.resultType) : '',
+    step.screenshotPath,
+  ].filter(Boolean);
+  return parts.join(' · ');
 }
 
 function renderShellCommand(block, collapsed = false) {

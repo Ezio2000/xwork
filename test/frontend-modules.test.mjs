@@ -345,6 +345,12 @@ describe('frontend module boundaries', () => {
       title: 'xwork',
       statusCode: 200,
       screenshotPath: '/workspace/data/browser-screenshots/home.png',
+      screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
+      textQuery: '仙童数学',
+      steps: [
+        { phase: 'start', action: 'screenshot', label: 'start screenshot' },
+        { phase: 'complete', action: 'screenshot', label: 'complete screenshot', screenshotPath: '/workspace/data/browser-screenshots/home.png', textQuery: '仙童数学' },
+      ],
       text: 'visible page text',
       collapsed: true,
     }], false);
@@ -353,10 +359,14 @@ describe('frontend module boundaries', () => {
     assert.match(html, /xwork/);
     assert.match(html, /HTTP 200/);
     assert.match(html, /browser-screenshots\/home\.png/);
+    assert.match(html, /<img src="\/api\/v1\/tool-assets\/browser-screenshots\/home\.png"/);
+    assert.match(html, /browser-action-steps/);
+    assert.match(html, /complete screenshot/);
+    assert.match(html, /仙童数学/);
     assert.match(html, /visible page text/);
   });
 
-  it('collapses browser action render blocks after tool result', async () => {
+  it('streams browser action steps and merges final tool result into the same block', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
     const stream = {
       conversationId: 'test',
@@ -364,6 +374,51 @@ describe('frontend module boundaries', () => {
       renderer: { schedule() {}, flush() {}, cancel() {} },
     };
     let scheduled = 0;
+
+    const effects = {
+      isActiveConversation: () => true,
+      showThinking() {},
+      hideThinking() {},
+      scheduleRender() {
+        scheduled++;
+      },
+      flushRender() {},
+      cancelRender() {},
+    };
+
+    appendStreamEvent({
+      type: 'tool_call',
+      tools: [{
+        id: 'toolu_browser',
+        name: 'browser_action',
+        input: { action: 'screenshot', url: 'http://localhost:3000/' },
+      }],
+    }, stream, effects);
+
+    appendStreamEvent({
+      type: 'tool_delta',
+      id: 'toolu_browser',
+      name: 'browser_action',
+      stream: 'browser',
+      phase: 'start',
+      action: 'screenshot',
+      url: 'http://localhost:3000/',
+      ts: '2026-05-22T00:00:00.000Z',
+    }, stream, effects);
+
+    appendStreamEvent({
+      type: 'tool_delta',
+      id: 'toolu_browser',
+      name: 'browser_action',
+      stream: 'browser',
+      phase: 'complete',
+      action: 'screenshot',
+      url: 'http://localhost:3000/',
+      title: 'xwork',
+      screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
+      textQuery: 'Run',
+      ts: '2026-05-22T00:00:01.000Z',
+    }, stream, effects);
 
     appendStreamEvent({
       type: 'tool_result',
@@ -373,27 +428,24 @@ describe('frontend module boundaries', () => {
         isError: false,
         renderType: 'browser-action',
         data: {
-          action: 'text',
+          action: 'screenshot',
           url: 'http://localhost:3000/',
           title: 'xwork',
-          text: 'hello',
+          screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
+          textQuery: 'Run',
         },
       }],
-    }, stream, {
-      isActiveConversation: () => true,
-      showThinking() {},
-      hideThinking() {},
-      scheduleRender() {
-        scheduled++;
-      },
-      flushRender() {},
-      cancelRender() {},
-    });
+    }, stream, effects);
 
     assert.equal(stream.blocks[0].type, 'browser-action');
+    assert.equal(stream.blocks.length, 2);
     assert.equal(stream.blocks[0].collapsed, true);
     assert.equal(stream.blocks[0].toolCallId, 'toolu_browser');
-    assert.equal(scheduled, 1);
+    assert.equal(stream.blocks[0].status, 'completed');
+    assert.equal(stream.blocks[0].steps.length, 3);
+    assert.equal(stream.blocks[0].screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
+    assert.equal(stream.blocks[0].textQuery, 'Run');
+    assert.equal(scheduled, 4);
   });
 
   it('renders mysql query results as a collapsible table', async () => {

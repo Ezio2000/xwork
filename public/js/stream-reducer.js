@@ -75,10 +75,42 @@ function markExistingShellCommandErrored(tool, stream) {
   return true;
 }
 
+function markExistingBrowserActionErrored(tool, stream) {
+  if (tool.name !== 'browser_action' || !tool.id || !tool.isError) return false;
+  const existing = stream.blocks.find(block => block.type === 'browser-action' && block.toolCallId === tool.id);
+  if (!existing) return false;
+  existing.status = 'error';
+  existing.error = String(tool.output || 'Browser action failed');
+  existing.durationMs = tool.durationMs;
+  existing.steps = Array.isArray(existing.steps) ? existing.steps : [];
+  existing.steps.push({
+    phase: 'error',
+    action: existing.action || 'browser',
+    label: existing.error,
+    ts: new Date().toISOString(),
+  });
+  existing.collapsed = false;
+  return true;
+}
+
 function applyToolResult(evt, stream, effects) {
   for (const tool of evt.tools) {
+    if (markExistingBrowserActionErrored(tool, stream)) continue;
     if (markExistingShellCommandErrored(tool, stream)) continue;
     if (tool.renderType && tool.data) {
+      if (tool.renderType === 'browser-action' && tool.id) {
+        const existing = stream.blocks.find(block => block.type === 'browser-action' && block.toolCallId === tool.id);
+        if (existing) {
+          Object.assign(existing, {
+            type: 'browser-action',
+            toolCallId: tool.id,
+            status: tool.isError ? 'error' : 'completed',
+            ...tool.data,
+          });
+          existing.collapsed = !tool.isError;
+          continue;
+        }
+      }
       if (tool.renderType === 'shell-command' && tool.id) {
         const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
         if (existing) {
@@ -98,7 +130,8 @@ function applyToolResult(evt, stream, effects) {
       const block = { type: tool.renderType, ...tool.data };
       if (tool.id) block.toolCallId = tool.id;
       if (isTerminalSubagentBlock(block)) block.collapsed = true;
-      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'browser-action' || block.type === 'shell-command' || block.type === 'mysql-query' || block.type === 'sqlite-query') block.collapsed = true;
+      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'shell-command' || block.type === 'mysql-query' || block.type === 'sqlite-query') block.collapsed = true;
+      if (block.type === 'browser-action') block.collapsed = !tool.isError;
       stream.blocks.push(block);
     }
   }
@@ -110,6 +143,37 @@ function applyToolResult(evt, stream, effects) {
 
 function applyToolCall(evt, stream, effects) {
   for (const tool of evt.tools || []) {
+    if (tool.name === 'browser_action' && tool.id) {
+      const existing = stream.blocks.find(block => block.type === 'browser-action' && block.toolCallId === tool.id);
+      if (existing) {
+        Object.assign(existing, {
+          status: 'running',
+          action: tool.input?.action || existing.action || 'browser',
+          textQuery: tool.input?.action !== 'type' ? tool.input?.text || existing.textQuery || '' : existing.textQuery || '',
+          collapsed: false,
+        });
+        continue;
+      }
+      stream.blocks.push({
+        type: 'browser-action',
+        toolCallId: tool.id,
+        status: 'running',
+        action: tool.input?.action || 'browser',
+        url: tool.input?.url || '',
+        selector: tool.input?.selector || '',
+        textQuery: tool.input?.action !== 'type' ? tool.input?.text || '' : '',
+        key: tool.input?.key || '',
+        steps: [{
+          phase: 'call',
+          action: tool.input?.action || 'browser',
+          label: `call ${tool.input?.action || 'browser'}`,
+          ts: new Date().toISOString(),
+        }],
+        collapsed: false,
+        startedAt: Date.now(),
+      });
+      continue;
+    }
     if (tool.name !== 'shell_command' || !tool.id) continue;
     const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
     if (existing) {
@@ -138,17 +202,55 @@ function applyToolCall(evt, stream, effects) {
 }
 
 function applyToolDelta(evt, stream, effects) {
-  if (evt.name !== 'shell_command' || !evt.id) return;
-  const block = stream.blocks.find(item => item.type === 'shell-command' && item.toolCallId === evt.id);
-  if (!block) return;
-  if (evt.stream === 'stderr') {
-    block.stderr = (block.stderr || '') + (evt.text || '');
-  } else {
-    block.stdout = (block.stdout || '') + (evt.text || '');
+  if (evt.name === 'browser_action' && evt.id) {
+    const block = stream.blocks.find(item => item.type === 'browser-action' && item.toolCallId === evt.id);
+    if (!block) return;
+    block.steps = Array.isArray(block.steps) ? block.steps : [];
+    block.steps.push({
+      phase: evt.phase || 'event',
+      action: evt.action || block.action || 'browser',
+      label: evt.label || `${evt.phase || 'event'} ${evt.action || block.action || 'browser'}`,
+      ts: evt.ts || new Date().toISOString(),
+      url: evt.url,
+      title: evt.title,
+      selector: evt.selector,
+      textQuery: evt.textQuery,
+      key: evt.key,
+      waitUntil: evt.waitUntil,
+      waitState: evt.waitState,
+      statusCode: evt.statusCode,
+      screenshotUrl: evt.screenshotUrl,
+      screenshotPath: evt.screenshotPath,
+      count: evt.count,
+      textLength: evt.textLength,
+      resultType: evt.resultType,
+      truncated: evt.truncated,
+      fullPage: evt.fullPage,
+      closed: evt.closed,
+    });
+    if (evt.url) block.url = evt.url;
+    if (evt.title) block.title = evt.title;
+    if (evt.textQuery) block.textQuery = evt.textQuery;
+    if (evt.screenshotUrl) block.screenshotUrl = evt.screenshotUrl;
+    if (evt.screenshotPath) block.screenshotPath = evt.screenshotPath;
+    block.status = evt.phase === 'complete' ? 'completed' : 'running';
+    block.collapsed = false;
+    effects.scheduleRender();
+    return;
   }
-  block.status = block.status || 'running';
-  block.collapsed = false;
-  effects.scheduleRender();
+
+  if (evt.name === 'shell_command' && evt.id) {
+    const block = stream.blocks.find(item => item.type === 'shell-command' && item.toolCallId === evt.id);
+    if (!block) return;
+    if (evt.stream === 'stderr') {
+      block.stderr = (block.stderr || '') + (evt.text || '');
+    } else {
+      block.stdout = (block.stdout || '') + (evt.text || '');
+    }
+    block.status = block.status || 'running';
+    block.collapsed = false;
+    effects.scheduleRender();
+  }
 }
 
 function applyAgentEvent(evt, stream, effects) {
