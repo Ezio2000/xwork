@@ -36,6 +36,7 @@ npm run dev      # 开发模式 (文件变更自动重启)
 ## API 文档
 
 详见 [API.md](./API.md)。
+工具开发详见 [TOOL.md](./TOOL.md)。
 
 ---
 
@@ -183,7 +184,6 @@ parseResult(output, input) {
 | `web-fetch` | `{ url, statusCode, contentType, contentLength, cached, contentPreview }` | 网页内容卡片 |
 | `browser-action` | `{ action, url, title, statusCode, text?, result?, screenshotPath? }` | 浏览器动作摘要 |
 | `shell-command` | `{ command, cwd, exitCode, stdout, stderr, durationMs, truncated }` | 终端样式输出 |
-| `mysql-query` / `sqlite-query` | `{ source, sql, columns, previewRows, rowCount, returnedRowCount }` | 查询结果表格 |
 
 ## anthropic_server 工具
 

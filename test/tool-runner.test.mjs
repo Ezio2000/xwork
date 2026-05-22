@@ -7,8 +7,6 @@ import { runTool } from '../lib/tools/runner.mjs';
 import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { shellCommandTool } from '../lib/tools/builtin/shell-command.mjs';
 import { browserActionTool } from '../lib/tools/builtin/browser-action.mjs';
-import { mysqlQueryTool } from '../lib/tools/builtin/mysql-query.mjs';
-import { sqliteQueryTool } from '../lib/tools/builtin/sqlite-query.mjs';
 
 function hasCommand(command) {
   const result = process.platform === 'win32' ? spawnSync('where', [command], {
@@ -260,86 +258,5 @@ describe('browser action tool', () => {
 
     assert.equal(render.data.textQuery, '仙童数学');
     assert.equal(render.data.count, 1);
-  });
-});
-
-describe('mysql query tool', () => {
-  it('is registered but disabled by default', async () => {
-    const tools = await listTools();
-    const mysql = tools.find(tool => tool.name === 'mysql_query');
-
-    assert.ok(mysql);
-    assert.equal(mysql.dangerLevel, 'high');
-    assert.equal(mysqlQueryTool.defaultEnabled, false);
-  });
-
-  it('accepts multiple configured sources with host or ip', () => {
-    const sources = mysqlQueryTool.__test.configuredSources({
-      sources: [
-        { id: 'dev', ip: '127.0.0.1', username: 'root', password: 'pw' },
-        { id: 'uat', host: 'mysql.internal', port: 3307, username: 'app', password: 'pw', database: 'biz' },
-      ],
-    });
-
-    assert.deepEqual(sources.map(source => source.id), ['dev', 'uat']);
-    assert.equal(sources[0].host, '127.0.0.1');
-    assert.equal(sources[0].port, 3306);
-    assert.equal(sources[1].database, 'biz');
-  });
-
-  it('allows read-only SQL and blocks writes or multiple statements', () => {
-    assert.doesNotThrow(() => mysqlQueryTool.__test.assertReadonlySql('select * from users limit 1'));
-    assert.doesNotThrow(() => mysqlQueryTool.__test.assertReadonlySql('SHOW TABLES'));
-    assert.doesNotThrow(() => mysqlQueryTool.__test.assertReadonlySql('WITH x AS (SELECT 1) SELECT * FROM x'));
-
-    assert.throws(() => mysqlQueryTool.__test.assertReadonlySql('update users set name = 1'), /read-only/i);
-    assert.throws(() => mysqlQueryTool.__test.assertReadonlySql('select * from users; drop table users'), /forbidden|multiple/i);
-  });
-
-  it('exposes a mysql query render block without leaking passwords', () => {
-    const render = mysqlQueryTool.parseResult({
-      source: { id: 'dev', host: '127.0.0.1', port: 3306, database: 'biz', user: 'root' },
-      sql: 'select 1 as n',
-      rowCount: 1,
-      returnedRowCount: 1,
-      truncated: false,
-      columns: ['n'],
-      rows: [{ n: 1 }],
-    });
-
-    assert.equal(render.renderType, 'mysql-query');
-    assert.equal(render.data.source.id, 'dev');
-    assert.equal(render.data.source.password, undefined);
-    assert.deepEqual(render.data.previewRows, [{ n: 1 }]);
-  });
-});
-
-describe('sqlite query tool', () => {
-  it('is registered but disabled by default', async () => {
-    const tools = await listTools();
-    const sqlite = tools.find(tool => tool.name === 'sqlite_query');
-
-    assert.ok(sqlite);
-    assert.equal(sqlite.dangerLevel, 'medium');
-    assert.equal(sqliteQueryTool.defaultEnabled, false);
-  });
-
-  it('accepts multiple configured sources inside the workspace', () => {
-    const sources = sqliteQueryTool.__test.configuredSources({
-      sources: [
-        { id: 'xwork', path: 'data/xwork.sqlite' },
-        { id: 'other', file: 'data/other.sqlite' },
-      ],
-    });
-
-    assert.deepEqual(sources.map(source => source.id), ['xwork', 'other']);
-    assert.match(sources[0].path, /xwork\.sqlite$/);
-  });
-
-  it('blocks writes and paths outside the workspace', () => {
-    assert.doesNotThrow(() => sqliteQueryTool.__test.assertReadonlySql('select name from sqlite_master'));
-    assert.doesNotThrow(() => sqliteQueryTool.__test.assertReadonlySql('pragma table_info(conversations)'));
-    assert.throws(() => sqliteQueryTool.__test.assertReadonlySql('delete from conversations'), /read-only/i);
-    assert.throws(() => sqliteQueryTool.__test.configuredSources({ sources: [{ id: 'bad', path: '..\\outside.sqlite' }] }), /workspace root/);
   });
 });

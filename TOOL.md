@@ -12,9 +12,7 @@ lib/tools/
 │   ├── calculator.mjs
 │   ├── current-time.mjs
 │   ├── delegate-task.mjs
-│   ├── mysql-query.mjs
 │   ├── shell-command.mjs
-│   ├── sqlite-query.mjs
 │   ├── uuid-gen.mjs
 │   ├── web-fetch.mjs
 │   └── web-search.mjs
@@ -511,8 +509,6 @@ if (
 | `web-fetch` | `web_fetch` | 可折叠网页内容卡片（URL、状态码、内容预览） |
 | `browser-action` | `browser_action` | 浏览器动作结果（URL、标题、文本摘要、截图路径等） |
 | `shell-command` | `shell_command` | 命令、cwd、stdout/stderr、退出码、耗时；支持 running / completed / error 状态 |
-| `mysql-query` | `mysql_query` | MySQL 查询结果表格，隐藏连接密码等敏感配置 |
-| `sqlite-query` | `sqlite_query` | SQLite 查询结果表格，路径受工作区限制 |
 
 ---
 
