@@ -16,6 +16,7 @@ import { PROVIDER_CONTRACT_VERSION } from '../lib/providers/provider-contract.mj
 import { RUN_EVENT_TYPES, AGENT_EVENT_TYPES } from '../lib/run-events.mjs';
 import { defaultToolScheduler, executeToolCalls } from '../lib/tools/scheduler.mjs';
 import { workspaceExplorationSystemPrompt } from '../lib/tools/builtin/workspace-exploration-prompt.mjs';
+import { getWorkspaceInfo } from '../lib/workspace-root.mjs';
 
 describe('architecture safety contracts', () => {
   it('publishes stable architecture contract versions and event names', () => {
@@ -30,6 +31,15 @@ describe('architecture safety contracts', () => {
     const system = buildSystemPrompt([], {});
     assert.match(system, /MUST write one brief progress sentence before any tool call/);
     assert.match(system, /Unless the user explicitly asks you to run silently or avoid commentary/);
+  });
+
+  it('includes current workspace context in the model system prompt', () => {
+    const info = getWorkspaceInfo();
+    const system = buildSystemPrompt([], { model: 'test-model' });
+    assert.match(system, /# Workspace/);
+    assert.match(system, new RegExp(info.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(system, /Workspace file tools resolve relative paths from the current workspace root/);
+    assert.match(system, /You are currently running as: test-model/);
   });
 
   it('tells models to grep known files before reading broad content', () => {
