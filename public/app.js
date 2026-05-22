@@ -1,5 +1,6 @@
 import { bindChannelsController, loadActive } from './js/controllers/channels-controller.js';
 import { bindChatInputController } from './js/controllers/chat-input-controller.js';
+import { bindFileMentionController } from './js/controllers/file-mention-controller.js';
 import {
   bindConversationsController,
   loadConversations,
@@ -17,6 +18,7 @@ import { renderMessages } from './js/views.js';
 function bindEvents() {
   installRendererEventHandlers(document);
   bindChatInputController();
+  bindFileMentionController();
   bindConversationsController();
   bindSettingsController({ showPricingPage, showToolsPage, showUsagePage });
   bindChannelsController();

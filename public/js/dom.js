@@ -5,6 +5,7 @@ export const dom = {
   messages: $('#messages'),
   chatTitle: $('#chat-title'),
   msgInput: $('#msg-input'),
+  fileMentionMenu: $('#file-mention-menu'),
   btnSend: $('#btn-send'),
   btnNewChat: $('#btn-new-chat'),
   channelSelect: $('#channel-select'),

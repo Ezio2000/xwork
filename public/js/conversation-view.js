@@ -1,6 +1,6 @@
 import { dom } from './dom.js';
 import { contentToBlocks, messageSources, messageText } from './message-blocks.js';
-import { escHtml, renderBlocks, renderContent, renderSourceCards } from './renderers.js';
+import { escHtml, renderBlocks, renderContent, renderSourceCards, renderUserMessage } from './renderers.js';
 import { state } from './state.js';
 
 export function scrollBottom() {
@@ -108,9 +108,12 @@ export function renderMessages() {
         <div class="content">${renderBlocks(message.blocks, true)}</div>
       </div>`;
     }
+    const body = message.role === 'user'
+      ? renderUserMessage(messageText(message))
+      : renderContent(messageText(message));
     return `<div class="message ${message.role}">
       <div class="role-label">${message.role === 'user' ? 'YOU' : 'ASSISTANT'}</div>
-      <div class="content">${renderContent(messageText(message))}</div>
+      <div class="content">${body}</div>
       ${message.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(message), true, message.searchCount || 0)}</div>` : ''}
     </div>`;
   }).join('');
@@ -128,7 +131,7 @@ export function addUserMessage(text) {
   if (emptyState) dom.messages.innerHTML = '';
   const div = document.createElement('div');
   div.className = 'message user';
-  div.innerHTML = `<div class="role-label">You</div><div class="content">${renderContent(text)}</div>`;
+  div.innerHTML = `<div class="role-label">You</div><div class="content">${renderUserMessage(text)}</div>`;
   dom.messages.appendChild(div);
   scrollBottom();
 }

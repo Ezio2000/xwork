@@ -7,10 +7,12 @@ import { toolRoutes } from './tool-routes.mjs';
 import { agentRoutes } from './agent-routes.mjs';
 import { usageRoutes } from './usage-routes.mjs';
 import { pricingRoutes } from './pricing-routes.mjs';
+import { workspaceRoutes } from './workspace-routes.mjs';
 
 export function apiRoutes() {
   const router = Router();
   router.use(channelRoutes());
+  router.use(workspaceRoutes());
   router.use(toolRoutes());
   router.use(agentRoutes());
   router.use(usageRoutes());

@@ -24,6 +24,27 @@ export function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+const FILE_MENTION_DISPLAY_RE = /(?:^|[\s([{])@([A-Za-z0-9_./\-]+)/g;
+
+export function renderUserMessage(text) {
+  const mentionPaths = [];
+  const placeholderText = String(text || '').replace(FILE_MENTION_DISPLAY_RE, (match, path) => {
+    const id = mentionPaths.length;
+    mentionPaths.push(path);
+    const prefix = match.slice(0, match.length - path.length - 1);
+    return `${prefix}⟦FM${id}⟧`;
+  });
+
+  let html = renderContent(placeholderText);
+  for (let i = 0; i < mentionPaths.length; i += 1) {
+    const token = `⟦FM${i}⟧`;
+    const chip = `<span class="file-mention-chip">@${escHtml(mentionPaths[i])}</span>`;
+    html = html.split(token).join(chip);
+    html = html.split(escHtml(token)).join(chip);
+  }
+  return html;
+}
+
 export function formatDateTime(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -402,6 +423,36 @@ function browserStepMeta(step) {
   return parts.join(' · ');
 }
 
+function renderFileSnippet(block, collapsed = false) {
+  const path = block.path || 'file';
+  const range = block.startLine && block.endLine
+    ? `L${block.startLine}-${block.endLine}`
+    : '';
+  const meta = [
+    range,
+    block.encoding || 'utf-8',
+    block.truncated ? 'truncated' : '',
+    block.size !== undefined ? `${Number(block.size)} bytes` : '',
+  ].filter(Boolean).join(' · ');
+  const content = block.content || block.contentPreview || '';
+
+  return `
+    <div class="shell-command-toggle file-snippet-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">📄</span>
+          ${escHtml(path)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <pre class="shell-command-output"><code>${escHtml(content)}</code></pre>
+      </div>
+    </div>
+  `;
+}
+
 function renderShellCommand(block, collapsed = false) {
   const exitCode = block.exitCode;
   const timedOut = block.timedOut === true;
@@ -501,6 +552,7 @@ const blockRenderers = {
   'subagent-run': (block, collapsed) => renderSubagentRun(block, collapsed),
   'web-fetch': (block, collapsed) => renderWebFetch(block, block.collapsed ?? collapsed),
   'browser-action': (block, collapsed) => renderBrowserAction(block, block.collapsed ?? collapsed),
+  'file-snippet': (block, collapsed) => renderFileSnippet(block, block.collapsed ?? collapsed),
   'shell-command': (block, collapsed) => renderShellCommand(block, block.collapsed ?? collapsed),
   'mysql-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
   'sqlite-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
