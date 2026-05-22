@@ -32,14 +32,16 @@
     <div id="input-area">
       <div class="input-wrapper">
         <div id="file-mention-menu" class="file-mention-menu" hidden></div>
-        <textarea id="msg-input" rows="1" placeholder="Send a message…  Type @ to mention a file path" autofocus></textarea>
-        <button id="btn-send" class="btn-send" title="Send">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M2 10L18 2L10 18L9 11L2 10Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-          </svg>
-        </button>
+        <textarea id="msg-input" rows="1" placeholder="How can I help you today?" autofocus></textarea>
+        <div class="input-toolbar">
+          <button id="btn-send" class="btn-send" title="Send">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 14V2M8 2L3 7M8 2L13 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      <p class="input-hint">Enter to send · Shift+Enter for new line · <code>@</code> to mention workspace file paths</p>
+      <p class="input-hint">Enter to send · Shift+Enter for new line · @ to mention file paths</p>
     </div>
   </main>
 

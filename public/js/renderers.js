@@ -724,6 +724,20 @@ export function installRendererEventHandlers(root = document) {
       return;
     }
 
+    const actionCopy = event.target.closest('.action-copy');
+    if (actionCopy) {
+      event.preventDefault();
+      const msg = actionCopy.closest('.message');
+      const content = msg?.querySelector('.content');
+      if (content) {
+        navigator.clipboard.writeText(content.innerText).then(() => {
+          actionCopy.textContent = '✓';
+          setTimeout(() => { actionCopy.textContent = '⎘'; }, 1200);
+        }).catch(() => {});
+      }
+      return;
+    }
+
     const copyOne = event.target.closest('[data-copy-uuid]');
     if (copyOne) {
       event.preventDefault();

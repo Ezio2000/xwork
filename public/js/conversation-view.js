@@ -102,25 +102,25 @@ export function renderMessages() {
   }
 
   const html = pendingMessages.map(message => {
+    const actions = `<div class="message-actions"><button class="action-copy" title="Copy">⎘</button></div>`;
     if (message.role === 'assistant' && Array.isArray(message.blocks)) {
       return `<div class="message assistant">
-        <div class="role-label">ASSISTANT</div>
         <div class="content">${renderBlocks(message.blocks, true)}</div>
+        ${actions}
       </div>`;
     }
     const body = message.role === 'user'
       ? renderUserMessage(messageText(message))
       : renderContent(messageText(message));
     return `<div class="message ${message.role}">
-      <div class="role-label">${message.role === 'user' ? 'YOU' : 'ASSISTANT'}</div>
       <div class="content">${body}</div>
       ${message.role === 'assistant' ? `<div class="web-sources">${renderSourceCards(messageSources(message), true, message.searchCount || 0)}</div>` : ''}
+      ${actions}
     </div>`;
   }).join('');
   dom.messages.innerHTML = stream
     ? `${html}
       <div class="message assistant streaming" data-chat-run-id="${escHtml(stream.runId || '')}">
-        <div class="role-label">ASSISTANT</div>
         <div class="content"></div>
       </div>`
     : html;
@@ -131,7 +131,7 @@ export function addUserMessage(text) {
   if (emptyState) dom.messages.innerHTML = '';
   const div = document.createElement('div');
   div.className = 'message user';
-  div.innerHTML = `<div class="role-label">You</div><div class="content">${renderUserMessage(text)}</div>`;
+  div.innerHTML = `<div class="content">${renderUserMessage(text)}</div>`;
   dom.messages.appendChild(div);
   scrollBottom();
 }
@@ -140,7 +140,7 @@ export function addAssistantPlaceholder(stream = null) {
   const div = document.createElement('div');
   div.className = 'message assistant streaming';
   if (stream?.runId) div.dataset.chatRunId = stream.runId;
-  div.innerHTML = `<div class="role-label">ASSISTANT</div><div class="content"></div>`;
+  div.innerHTML = `<div class="content"></div>`;
   dom.messages.appendChild(div);
   scrollBottom();
   return {
