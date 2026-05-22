@@ -15,6 +15,7 @@ import { CONVERSATION_CONTRACT_VERSION } from '../lib/conversations/contracts.mj
 import { PROVIDER_CONTRACT_VERSION } from '../lib/providers/provider-contract.mjs';
 import { RUN_EVENT_TYPES, AGENT_EVENT_TYPES } from '../lib/run-events.mjs';
 import { defaultToolScheduler, executeToolCalls } from '../lib/tools/scheduler.mjs';
+import { workspaceExplorationSystemPrompt } from '../lib/tools/builtin/workspace-exploration-prompt.mjs';
 
 describe('architecture safety contracts', () => {
   it('publishes stable architecture contract versions and event names', () => {
@@ -29,6 +30,13 @@ describe('architecture safety contracts', () => {
     const system = buildSystemPrompt([], {});
     assert.match(system, /MUST write one brief progress sentence before any tool call/);
     assert.match(system, /Unless the user explicitly asks you to run silently or avoid commentary/);
+  });
+
+  it('tells models to grep known files before reading broad content', () => {
+    const prompt = workspaceExplorationSystemPrompt();
+    assert.match(prompt, /Known file but unknown line\/section/);
+    assert.match(prompt, /grep with path set to that file before read_file/);
+    assert.match(prompt, /grep is not only for broad repo search/);
   });
 
   it('keeps tool scheduling strategy outside queryLoop', async () => {
