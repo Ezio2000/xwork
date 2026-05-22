@@ -423,6 +423,66 @@ function browserStepMeta(step) {
   return parts.join(' · ');
 }
 
+function renderGrepMatches(block, collapsed = false) {
+  const pattern = block.pattern || '';
+  const meta = [
+    `${Number(block.matchCount || block.matches?.length || 0)} matches`,
+    block.truncated ? 'truncated' : '',
+    block.scannedFiles !== undefined ? `${Number(block.scannedFiles)} files scanned` : '',
+  ].filter(Boolean).join(' · ');
+  const lines = (block.matches || []).map(match => {
+    const location = `${match.path}:${match.line}`;
+    const context = [
+      ...(match.before || []).map(line => `  ${line}`),
+      `> ${match.content || ''}`,
+      ...(match.after || []).map(line => `  ${line}`),
+    ].join('\n');
+    return `${location}\n${context}`;
+  }).join('\n\n');
+
+  return `
+    <div class="shell-command-toggle grep-matches-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">🔎</span>
+          grep ${escHtml(pattern)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <pre class="shell-command-output"><code>${escHtml(lines || '(no matches)')}</code></pre>
+      </div>
+    </div>
+  `;
+}
+
+function renderGlobList(block, collapsed = false) {
+  const pattern = block.pattern || '';
+  const files = block.files || [];
+  const meta = [
+    `${files.length} files`,
+    block.truncated ? 'truncated' : '',
+  ].filter(Boolean).join(' · ');
+  const listing = files.map(file => file.path || file.name || '').filter(Boolean).join('\n');
+
+  return `
+    <div class="shell-command-toggle glob-list-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">📁</span>
+          glob ${escHtml(pattern)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <pre class="shell-command-output"><code>${escHtml(listing || '(no files)')}</code></pre>
+      </div>
+    </div>
+  `;
+}
+
 function renderFileSnippet(block, collapsed = false) {
   const path = block.path || 'file';
   const range = block.startLine && block.endLine
@@ -553,6 +613,8 @@ const blockRenderers = {
   'web-fetch': (block, collapsed) => renderWebFetch(block, block.collapsed ?? collapsed),
   'browser-action': (block, collapsed) => renderBrowserAction(block, block.collapsed ?? collapsed),
   'file-snippet': (block, collapsed) => renderFileSnippet(block, block.collapsed ?? collapsed),
+  'grep-matches': (block, collapsed) => renderGrepMatches(block, block.collapsed ?? collapsed),
+  'glob-list': (block, collapsed) => renderGlobList(block, block.collapsed ?? collapsed),
   'shell-command': (block, collapsed) => renderShellCommand(block, block.collapsed ?? collapsed),
   'mysql-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
   'sqlite-query': (block, collapsed) => renderDatabaseQuery(block, block.collapsed ?? collapsed),
