@@ -89,6 +89,23 @@ describe('shell command tool', () => {
     });
   });
 
+  it('accepts absolute cwd paths that resolve to the workspace root with different casing', async () => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    await withShellCommandEnabled(async () => {
+      const alternateCaseCwd = process.cwd().replace('/AI/', '/ai/');
+      const result = await runTool(
+        { id: 'toolu_shell_case_cwd', name: 'shell_command', input: { command: 'pwd', cwd: alternateCaseCwd, maxOutputChars: 1000 } },
+        { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+      );
+
+      assert.equal(result.isError, false, String(result.output || ''));
+      assert.match(result.output.stdout, /xwork/);
+    });
+  });
+
   it('blocks clearly destructive commands', async () => {
     await withShellCommandEnabled(async () => {
       const result = await runTool(

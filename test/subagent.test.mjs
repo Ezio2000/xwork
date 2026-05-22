@@ -8,6 +8,13 @@ import { delegateTaskTool } from '../lib/tools/builtin/delegate-task.mjs';
 import { webSearchTool } from '../lib/tools/builtin/web-search.mjs';
 
 describe('subagent runtime', () => {
+  it('delegate_task accepts shell_command in allowedTools', () => {
+    assert.doesNotThrow(() => delegateTaskTool.validate({
+      objective: 'Inspect files with shell',
+      allowedTools: ['shell_command', 'read_file'],
+    }));
+  });
+
   it('does not block agent creation on run-store persistence', async () => {
     const run = await createAgentRun({
       role: 'subagent',
@@ -251,6 +258,42 @@ describe('subagent runtime', () => {
     assert.deepEqual(receivedToolNames, []);
     assert.match(receivedSystem, /Available tools: none/);
     assert.match(receivedSystem, /Do not create subagents/);
+  });
+
+  it('allows shell_command when explicitly delegated to a subagent', async () => {
+    let receivedToolNames;
+    const streamChat = async (config, _messages, _onDelta, _onThink, onDone) => {
+      receivedToolNames = config.tools.map(tool => tool.name);
+      onDone('done', 'end_turn', null);
+      return {
+        text: 'done',
+        content: [{ type: 'text', text: 'done' }],
+        stopReason: 'end_turn',
+        usage: null,
+        toolCalls: [],
+        serverToolEvents: [],
+      };
+    };
+
+    const result = await runSubagent({
+      task: 'Use shell for one inspection',
+      allowedTools: ['shell_command'],
+      config: {
+        model: 'test-model',
+        tools: [
+          { name: 'web_search' },
+          { name: 'shell_command' },
+          { name: 'read_file' },
+        ],
+        streamChat,
+      },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      maxTurns: 1,
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(receivedToolNames, ['shell_command']);
+    assert.deepEqual(result.allowedTools, ['shell_command']);
   });
 
   it('delegate_task exposes a subagent render block', () => {

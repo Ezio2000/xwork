@@ -133,6 +133,24 @@ describe('read_file tool', () => {
     }
   });
 
+  it('accepts absolute paths that resolve to the workspace root with different casing', async () => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    await withReadFileEnabled(async () => {
+      const alternateCasePath = join(process.cwd().replace('/AI/', '/ai/'), 'package.json');
+      const result = await runTool(
+        { id: 'toolu_read_case_variant', name: 'read_file', input: { path: alternateCasePath, limit: 3 } },
+        { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+      );
+
+      assert.equal(result.isError, false, String(result.output || ''));
+      assert.equal(result.output.path, 'package.json');
+      assert.match(result.output.content, /"name": "xwork"/);
+    });
+  });
+
   it('rejects paths outside the workspace', async () => {
     await withReadFileEnabled(async () => {
       const result = await runTool(
