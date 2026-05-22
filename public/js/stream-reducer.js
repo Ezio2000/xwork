@@ -130,7 +130,7 @@ function applyToolResult(evt, stream, effects) {
       const block = { type: tool.renderType, ...tool.data };
       if (tool.id) block.toolCallId = tool.id;
       if (isTerminalSubagentBlock(block)) block.collapsed = true;
-      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'file-snippet' || block.type === 'grep-matches' || block.type === 'glob-list' || block.type === 'shell-command' || block.type === 'mysql-query' || block.type === 'sqlite-query') block.collapsed = true;
+      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'file-snippet' || block.type === 'file-write' || block.type === 'symbol-list' || block.type === 'grep-matches' || block.type === 'glob-list' || block.type === 'shell-command' || block.type === 'mysql-query' || block.type === 'sqlite-query') block.collapsed = true;
       if (block.type === 'browser-action') block.collapsed = !tool.isError;
       stream.blocks.push(block);
     }

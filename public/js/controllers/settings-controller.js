@@ -1,7 +1,7 @@
 import { dom } from '../dom.js';
 import { hideSettings, showChannelsPage, showChatPage, showSettings } from '../views.js';
 
-export function bindSettingsController({ showPricingPage, showToolsPage, showUsagePage }) {
+export function bindSettingsController({ showPricingPage, showToolsPage, showUsagePage, showWorkspacePage }) {
   dom.logo.addEventListener('click', showChatPage);
 
   dom.btnSettings.addEventListener('click', showSettings);
@@ -12,6 +12,12 @@ export function bindSettingsController({ showPricingPage, showToolsPage, showUsa
     hideSettings();
     showChannelsPage();
   });
+  if (dom.settingWorkspace && typeof showWorkspacePage === 'function') {
+    dom.settingWorkspace.addEventListener('click', () => {
+      hideSettings();
+      showWorkspacePage();
+    });
+  }
   dom.settingTools.addEventListener('click', () => {
     hideSettings();
     showToolsPage();

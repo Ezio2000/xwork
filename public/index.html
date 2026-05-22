@@ -97,6 +97,59 @@
     </div>
   </main>
 
+  <!-- Workspace page (replaces chat-main) -->
+  <main id="workspace-page" class="hidden">
+    <div id="workspace-header">
+      <button id="btn-back-chat-workspace" class="btn-icon">←</button>
+      <h2>Workspace</h2>
+      <button id="btn-refresh-workspace" class="btn-text small">Refresh</button>
+    </div>
+    <div id="workspace-content">
+      <section class="workspace-section">
+        <h3>Current</h3>
+        <div class="workspace-current">
+          <div class="workspace-row">
+            <span class="workspace-row-label">Root</span>
+            <code id="workspace-current-root">—</code>
+          </div>
+          <div class="workspace-row">
+            <span class="workspace-row-label">Label</span>
+            <span id="workspace-current-label">—</span>
+          </div>
+          <div class="workspace-row">
+            <span class="workspace-row-label">Mode</span>
+            <span id="workspace-current-mode">—</span>
+          </div>
+          <div class="workspace-row">
+            <span class="workspace-row-label">xwork install</span>
+            <code id="workspace-project-root">—</code>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace-section">
+        <h3>Mount a directory</h3>
+        <p class="workspace-hint">
+          Provide an absolute path to a project directory. All file/shell/sqlite tools will be sandboxed under this directory.
+          Leave the field empty to fall back to the xwork install directory.
+        </p>
+        <label class="workspace-field">
+          <span>Absolute path</span>
+          <input id="workspace-root-input" type="text" placeholder="D:/path/to/your/project or /home/me/project">
+        </label>
+        <label class="workspace-field">
+          <span>Label (optional)</span>
+          <input id="workspace-label-input" type="text" placeholder="My Project" maxlength="80">
+        </label>
+        <div class="workspace-actions">
+          <button id="btn-save-workspace" class="btn-primary small">Save</button>
+          <button id="btn-reset-workspace" class="btn-text small">Reset to default</button>
+        </div>
+        <p id="workspace-status" class="workspace-status" aria-live="polite"></p>
+      </section>
+    </div>
+  </main>
+
   <!-- Tools page (replaces chat-main) -->
   <main id="tools-page" class="hidden">
     <div id="tools-header">
@@ -265,6 +318,12 @@
         <div class="setting-info">
           <span class="setting-label">Channels</span>
           <span class="setting-desc">Manage API providers and models</span>
+        </div>
+      </div>
+      <div id="setting-workspace" class="setting-item clickable">
+        <div class="setting-info">
+          <span class="setting-label">Workspace</span>
+          <span class="setting-desc">Mount a project directory for file/shell tools</span>
         </div>
       </div>
       <div id="setting-tools" class="setting-item clickable">

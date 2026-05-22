@@ -3,8 +3,29 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { apiRoutes } from './routes/index.mjs';
+import { readConfig } from './lib/config-store.mjs';
+import { setWorkspaceRoot, validateWorkspaceCandidate } from './lib/workspace-root.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+async function bootstrapWorkspace() {
+  try {
+    const cfg = await readConfig();
+    const root = cfg?.workspace?.root || null;
+    const label = cfg?.workspace?.label || null;
+    if (!root) return;
+    try {
+      const { absolutePath } = validateWorkspaceCandidate(root);
+      setWorkspaceRoot(absolutePath, { label });
+    } catch (err) {
+      console.warn(`[xwork] configured workspace root is invalid, falling back to default: ${err.message}`);
+    }
+  } catch (err) {
+    console.warn(`[xwork] failed to load workspace from config: ${err.message}`);
+  }
+}
+
+await bootstrapWorkspace();
 
 const app = express();
 

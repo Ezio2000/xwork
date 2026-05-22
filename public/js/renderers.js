@@ -483,6 +483,130 @@ function renderGlobList(block, collapsed = false) {
   `;
 }
 
+function renderFileWrite(block, collapsed = false) {
+  const path = block.path || 'file';
+  const mode = block.mode || 'overwrite';
+  const created = block.created === true;
+  const deltaLines = (Number(block.afterLines) || 0) - (Number(block.beforeLines) || 0);
+  const deltaBytes = (Number(block.afterSize) || 0) - (Number(block.beforeSize) || 0);
+  const fmtDelta = (n) => (n > 0 ? `+${n}` : `${n}`);
+  const modeLabel = mode === 'str_replace' ? 'edit' : mode;
+  const metaItems = [
+    created ? 'created' : modeLabel,
+    `lines ${block.afterLines ?? '?'} (${fmtDelta(deltaLines)})`,
+    `${block.afterSize ?? '?'} bytes (${fmtDelta(deltaBytes)})`,
+    block.replacements ? `${block.replacements} match` : '',
+    block.encoding || 'utf-8',
+  ].filter(Boolean);
+  const meta = metaItems.join(' · ');
+  const icon = created ? '🆕' : mode === 'str_replace' ? '✏️' : mode === 'append' ? '➕' : '💾';
+  const preview = block.preview || '';
+
+  return `
+    <div class="shell-command-toggle file-write-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">${icon}</span>
+          ${escHtml(path)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <pre class="shell-command-output"><code>${escHtml(preview)}</code></pre>
+      </div>
+    </div>
+  `;
+}
+
+const TODO_STATUS_META = {
+  pending: { icon: '○', label: 'todo' },
+  in_progress: { icon: '◐', label: 'in progress' },
+  completed: { icon: '●', label: 'done' },
+  cancelled: { icon: '×', label: 'cancelled' },
+};
+
+function renderTodoList(block) {
+  const todos = Array.isArray(block.todos) ? block.todos : [];
+  if (!todos.length) return '';
+  const counts = block.counts || {};
+  const done = counts.completed || 0;
+  const total = block.total || todos.length;
+  const items = todos.map(todo => {
+    const meta = TODO_STATUS_META[todo.status] || TODO_STATUS_META.pending;
+    return `
+      <li class="todo-item todo-status-${escHtml(todo.status)}">
+        <span class="todo-bullet">${meta.icon}</span>
+        <span class="todo-content">${escHtml(todo.content || '')}</span>
+        <span class="todo-status-label">${escHtml(meta.label)}</span>
+      </li>
+    `;
+  }).join('');
+
+  return `
+    <div class="todo-block">
+      <div class="todo-header">
+        <span class="todo-title">Todos</span>
+        <span class="todo-progress">${done} / ${total}</span>
+      </div>
+      <ul class="todo-list">${items}</ul>
+    </div>
+  `;
+}
+
+const SYMBOL_KIND_ICON = {
+  function: 'ƒ',
+  class: '◇',
+  interface: 'I',
+  type: 'T',
+  enum: 'E',
+  struct: 'S',
+  trait: 'R',
+  impl: 'i',
+  method: 'm',
+  variable: 'v',
+};
+
+function renderSymbolList(block, collapsed = false) {
+  const symbols = Array.isArray(block.symbols) ? block.symbols : [];
+  const path = block.path || 'file';
+  const meta = [
+    block.language ? `lang: ${block.language}` : '',
+    block.symbolCount !== undefined ? `${block.symbolCount} symbol${block.symbolCount === 1 ? '' : 's'}` : '',
+    block.totalLines !== undefined ? `${block.totalLines} lines` : '',
+    block.truncated ? 'truncated' : '',
+  ].filter(Boolean).join(' · ');
+
+  const items = symbols.map(sym => {
+    const icon = SYMBOL_KIND_ICON[String(sym.kind).split(' ')[0]] || '·';
+    const params = sym.params ? `(${escHtml(sym.params)})` : '';
+    return `
+      <li class="symbol-item">
+        <span class="symbol-icon">${icon}</span>
+        <span class="symbol-kind">${escHtml(sym.kind || '')}</span>
+        <span class="symbol-name">${escHtml(sym.name || '')}${params}</span>
+        <span class="symbol-line">L${Number(sym.line) || '?'}</span>
+      </li>
+    `;
+  }).join('');
+
+  return `
+    <div class="shell-command-toggle symbol-list-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">⌘</span>
+          ${escHtml(path)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <ul class="symbol-list">${items || '<li class="symbol-empty">(no symbols found)</li>'}</ul>
+      </div>
+    </div>
+  `;
+}
+
 function renderFileSnippet(block, collapsed = false) {
   const path = block.path || 'file';
   const range = block.startLine && block.endLine
@@ -613,6 +737,9 @@ const blockRenderers = {
   'web-fetch': (block, collapsed) => renderWebFetch(block, block.collapsed ?? collapsed),
   'browser-action': (block, collapsed) => renderBrowserAction(block, block.collapsed ?? collapsed),
   'file-snippet': (block, collapsed) => renderFileSnippet(block, block.collapsed ?? collapsed),
+  'file-write': (block, collapsed) => renderFileWrite(block, block.collapsed ?? collapsed),
+  'todo-list': (block) => renderTodoList(block),
+  'symbol-list': (block, collapsed) => renderSymbolList(block, block.collapsed ?? collapsed),
   'grep-matches': (block, collapsed) => renderGrepMatches(block, block.collapsed ?? collapsed),
   'glob-list': (block, collapsed) => renderGlobList(block, block.collapsed ?? collapsed),
   'shell-command': (block, collapsed) => renderShellCommand(block, block.collapsed ?? collapsed),
