@@ -15,6 +15,128 @@ describe('subagent runtime', () => {
     }));
   });
 
+  it('delegate_task accepts workspace exploration tools in allowedTools', () => {
+    assert.doesNotThrow(() => delegateTaskTool.validate({
+      objective: 'Review repo structure and recent changes',
+      allowedTools: ['list_dir', 'git', 'code_outline', 'grep', 'glob'],
+    }));
+  });
+
+  it('uses delegate_task tool config defaultMaxTurns when input omits maxTurns', async () => {
+    let captured;
+    const runSubagent = async (opts) => {
+      captured = opts;
+      return {
+        runId: 'run_cfg',
+        status: 'completed',
+        text: 'ok',
+        label: '',
+        task: opts.task,
+        parentRunId: null,
+        rootRunId: 'run_cfg',
+        reason: 'completed',
+        durationMs: 1,
+      };
+    };
+
+    await delegateTaskTool.handler(
+      { objective: 'Configured default turns' },
+      { config: { defaultMaxTurns: 5 }, context: { runSubagent, agentDepth: 0 } },
+    );
+
+    assert.equal(captured.maxTurns, 5);
+  });
+
+  it('prefers delegate_task input maxTurns over tool config defaultMaxTurns', async () => {
+    let captured;
+    const runSubagent = async (opts) => {
+      captured = opts;
+      return {
+        runId: 'run_override',
+        status: 'completed',
+        text: 'ok',
+        label: '',
+        task: opts.task,
+        parentRunId: null,
+        rootRunId: 'run_override',
+        reason: 'completed',
+        durationMs: 1,
+      };
+    };
+
+    await delegateTaskTool.handler(
+      { objective: 'Override turns', maxTurns: 2 },
+      { config: { defaultMaxTurns: 5 }, context: { runSubagent, agentDepth: 0 } },
+    );
+
+    assert.equal(captured.maxTurns, 2);
+  });
+
+  it('accepts maxTurns up to 10 and rejects above the hard cap', () => {
+    assert.doesNotThrow(() => delegateTaskTool.validate({
+      objective: 'Six turns',
+      maxTurns: 6,
+    }));
+    assert.doesNotThrow(() => delegateTaskTool.validate({
+      objective: 'Ten turns',
+      maxTurns: 10,
+    }));
+    assert.throws(
+      () => delegateTaskTool.validate({ objective: 'Too many turns', maxTurns: 11 }),
+      /maxTurns must be between 1 and 10/,
+    );
+  });
+
+  it('clamps tool config defaultMaxTurns to the hard cap of 10', async () => {
+    let captured;
+    const runSubagent = async (opts) => {
+      captured = opts;
+      return {
+        runId: 'run_cap',
+        status: 'completed',
+        text: 'ok',
+        label: '',
+        task: opts.task,
+        parentRunId: null,
+        rootRunId: 'run_cap',
+        reason: 'completed',
+        durationMs: 1,
+      };
+    };
+
+    await delegateTaskTool.handler(
+      { objective: 'Use configured cap' },
+      { config: { defaultMaxTurns: 100 }, context: { runSubagent, agentDepth: 0 } },
+    );
+
+    assert.equal(captured.maxTurns, 10);
+  });
+
+  it('falls back to runtime default when tool config defaultMaxTurns is invalid', async () => {
+    let captured;
+    const runSubagent = async (opts) => {
+      captured = opts;
+      return {
+        runId: 'run_fallback',
+        status: 'completed',
+        text: 'ok',
+        label: '',
+        task: opts.task,
+        parentRunId: null,
+        rootRunId: 'run_fallback',
+        reason: 'completed',
+        durationMs: 1,
+      };
+    };
+
+    await delegateTaskTool.handler(
+      { objective: 'Invalid config default' },
+      { config: { defaultMaxTurns: 'bad' }, context: { runSubagent, agentDepth: 0 } },
+    );
+
+    assert.equal(captured.maxTurns, undefined);
+  });
+
   it('does not block agent creation on run-store persistence', async () => {
     const run = await createAgentRun({
       role: 'subagent',
@@ -182,6 +304,53 @@ describe('subagent runtime', () => {
     assert.equal(stored.result.limits.maxOutputChars, 500);
   });
 
+  it('includes list_dir, git, and code_outline in the default subagent tool set', async () => {
+    let receivedToolNames;
+    const streamChat = async (config, _messages, _onDelta, _onThink, onDone) => {
+      receivedToolNames = config.tools.map(tool => tool.name);
+      onDone('done', 'end_turn', null);
+      return {
+        text: 'done',
+        content: [{ type: 'text', text: 'done' }],
+        stopReason: 'end_turn',
+        usage: null,
+        toolCalls: [],
+        serverToolEvents: [],
+      };
+    };
+
+    const result = await runSubagent({
+      task: 'Default workspace exploration',
+      config: {
+        model: 'test-model',
+        tools: [
+          { name: 'web_search' },
+          { name: 'list_dir' },
+          { name: 'git' },
+          { name: 'code_outline' },
+          { name: 'grep' },
+          { name: 'write_file' },
+        ],
+        streamChat,
+      },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      maxTurns: 1,
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(receivedToolNames, ['web_search', 'list_dir', 'git', 'code_outline']);
+    assert.deepEqual(result.allowedTools, [
+      'web_search',
+      'get_current_time',
+      'calculator',
+      'uuid_gen',
+      'list_dir',
+      'git',
+      'code_outline',
+      'shell_command',
+    ]);
+  });
+
   it('filters tools and blocks nested delegate_task by default', async () => {
     let receivedToolNames;
     const streamChat = async (config, _messages, _onDelta, _onThink, onDone) => {
@@ -258,6 +427,44 @@ describe('subagent runtime', () => {
     assert.deepEqual(receivedToolNames, []);
     assert.match(receivedSystem, /Available tools: none/);
     assert.match(receivedSystem, /Do not create subagents/);
+  });
+
+  it('allows list_dir, git, and code_outline when explicitly delegated to a subagent', async () => {
+    let receivedToolNames;
+    const streamChat = async (config, _messages, _onDelta, _onThink, onDone) => {
+      receivedToolNames = config.tools.map(tool => tool.name);
+      onDone('done', 'end_turn', null);
+      return {
+        text: 'done',
+        content: [{ type: 'text', text: 'done' }],
+        stopReason: 'end_turn',
+        usage: null,
+        toolCalls: [],
+        serverToolEvents: [],
+      };
+    };
+
+    const result = await runSubagent({
+      task: 'Explore workspace and git history',
+      allowedTools: ['list_dir', 'git', 'code_outline', 'grep'],
+      config: {
+        model: 'test-model',
+        tools: [
+          { name: 'list_dir' },
+          { name: 'git' },
+          { name: 'code_outline' },
+          { name: 'grep' },
+          { name: 'write_file' },
+        ],
+        streamChat,
+      },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      maxTurns: 1,
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(receivedToolNames, ['list_dir', 'git', 'code_outline', 'grep']);
+    assert.deepEqual(result.allowedTools, ['list_dir', 'git', 'code_outline', 'grep']);
   });
 
   it('allows shell_command when explicitly delegated to a subagent', async () => {

@@ -162,6 +162,15 @@ describe('shell command tool', () => {
 });
 
 describe('tool configuration surface', () => {
+  it('exposes delegate_task defaultMaxTurns config metadata', async () => {
+    const tools = await listTools();
+    const delegateTask = tools.find(tool => tool.id === 'delegate_task');
+
+    assert.ok(delegateTask);
+    assert.deepEqual(delegateTask.defaultConfig, { defaultMaxTurns: 3 });
+    assert.equal(delegateTask.configSchema.properties.defaultMaxTurns.type, 'number');
+  });
+
   it('exposes config metadata and applies server-tool config overrides', async () => {
     const tools = await listTools();
     const webSearch = tools.find(tool => tool.id === 'web_search');
