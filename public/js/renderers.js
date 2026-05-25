@@ -483,6 +483,113 @@ function renderGlobList(block, collapsed = false) {
   `;
 }
 
+function formatDirEntry(entry) {
+  const indent = '  '.repeat(Math.max(0, (entry.depth || 1) - 1));
+  const suffix = entry.kind === 'directory'
+    ? entry.skipped ? '/' : '/'
+    : entry.size != null ? ` (${entry.size} bytes)` : '';
+  const skipped = entry.skipped ? ' [skipped]' : '';
+  return `${indent}${entry.name}${suffix}${skipped}`;
+}
+
+function renderDirList(block, collapsed = false) {
+  const path = block.path || '.';
+  const entries = block.entries || [];
+  const meta = [
+    `${entries.length} entries`,
+    block.depth ? `depth ${block.depth}` : '',
+    block.truncated ? 'truncated' : '',
+  ].filter(Boolean).join(' · ');
+  const listing = entries.map(formatDirEntry).join('\n');
+
+  return `
+    <div class="shell-command-toggle dir-list-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">🗂️</span>
+          list ${escHtml(path)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <pre class="shell-command-output"><code>${escHtml(listing || '(empty directory)')}</code></pre>
+      </div>
+    </div>
+  `;
+}
+
+function formatGitSummary(block) {
+  const summary = block.summary || {};
+  switch (block.action) {
+    case 'status':
+      return [
+        summary.branch ? `branch ${summary.branch}` : '',
+        summary.clean ? 'clean' : '',
+        summary.stagedCount ? `${summary.stagedCount} staged` : '',
+        summary.unstagedCount ? `${summary.unstagedCount} unstaged` : '',
+        summary.untrackedCount ? `${summary.untrackedCount} untracked` : '',
+      ].filter(Boolean).join(' · ');
+    case 'branch':
+      return [
+        summary.current ? `current ${summary.current}` : '',
+        summary.branchCount !== undefined ? `${summary.branchCount} branches` : '',
+      ].filter(Boolean).join(' · ');
+    case 'log':
+    case 'reflog':
+    case 'stash_list':
+      return summary.commitCount !== undefined ? `${summary.commitCount} entries` : '';
+    default:
+      return '';
+  }
+}
+
+function renderGitOutput(block, collapsed = false) {
+  const action = block.action || 'git';
+  const meta = [
+    block.exitCode === 0 ? 'ok' : `exit ${block.exitCode ?? '?'}`,
+    formatGitSummary(block),
+    block.truncated ? 'truncated' : '',
+  ].filter(Boolean).join(' · ');
+  const output = block.output || '';
+
+  return `
+    <div class="shell-command-toggle git-output-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">⎇</span>
+          git ${escHtml(action)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <pre class="shell-command-output"><code>${escHtml(output || '(no output)')}</code></pre>
+      </div>
+    </div>
+  `;
+}
+
+function renderToolRunning(block, collapsed = false) {
+  const label = block.label || block.toolName || 'tool';
+  const isCollapsed = block.collapsed ?? collapsed;
+  return `
+    <div class="shell-command-toggle tool-running-toggle${isCollapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">⚙</span>
+          ${escHtml(label)}
+        </span>
+        <span class="shell-command-meta status-running">running</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <div class="shell-terminal-running">running...</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderFileWrite(block, collapsed = false) {
   const path = block.path || 'file';
   const mode = block.mode || 'overwrite';
@@ -824,6 +931,9 @@ const blockRenderers = {
   'symbol-list': (block, collapsed) => renderSymbolList(block, block.collapsed ?? collapsed),
   'grep-matches': (block, collapsed) => renderGrepMatches(block, block.collapsed ?? collapsed),
   'glob-list': (block, collapsed) => renderGlobList(block, block.collapsed ?? collapsed),
+  'dir-list': (block, collapsed) => renderDirList(block, block.collapsed ?? collapsed),
+  'git-output': (block, collapsed) => renderGitOutput(block, block.collapsed ?? collapsed),
+  'tool-running': (block, collapsed) => renderToolRunning(block, block.collapsed ?? collapsed),
   'shell-command': (block, collapsed) => renderShellCommand(block, block.collapsed ?? collapsed),
   'ask-user': (block, collapsed) => renderAskUser(block, block.collapsed ?? collapsed),
 };

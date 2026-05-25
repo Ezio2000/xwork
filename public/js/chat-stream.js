@@ -5,6 +5,7 @@ import { escHtml } from './renderers.js';
 import { attachChatStream } from './stream-client.js';
 import { createStreamRenderScheduler, getStreamingContentEl } from './stream-render-controller.js';
 import { hideThinkingPopup } from './thinking-popup.js';
+import { collapseFinishedToolBlocks, collapseToolToggleElements } from './tool-block-collapse.js';
 import { state } from './state.js';
 import { getActiveStream } from './stores/app-store.js';
 import { addAssistantPlaceholder, addUserMessage, renderConvoList, renderMessages } from './views.js';
@@ -59,8 +60,10 @@ function finalizeStreamingMessage(stream) {
   const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
   if (streamingEl) {
     streamingEl.classList.remove('streaming');
-    streamingEl.querySelectorAll('.sources-toggle').forEach(toggle => toggle.classList.add('collapsed'));
+    collapseToolToggleElements(streamingEl);
   }
+
+  collapseFinishedToolBlocks(stream.blocks);
 
   const allSources = stream.blocks
     .filter(block => block.type === 'source-cards' || block.type === 'sources')

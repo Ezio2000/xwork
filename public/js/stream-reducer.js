@@ -1,5 +1,11 @@
 import { subagentEventToBlocks } from './message-blocks.js';
 import { STREAM_AGENT_EVENT_TYPES, STREAM_EVENT_TYPES, streamAgentEventType } from './stream-events.js';
+import {
+  buildRunningToolBlock,
+  collapseFinishedToolBlock,
+  isTerminalSubagentBlock,
+  shouldCreateRunningToolBlock,
+} from './tool-block-collapse.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
 import { isActiveConversation } from './stores/app-store.js';
 
@@ -57,11 +63,6 @@ function appendSubagentText(block, text) {
   }
 }
 
-function isTerminalSubagentBlock(block) {
-  const status = String(block?.status || '').toLowerCase();
-  return block?.type === 'subagent-run' && status && status !== 'running' && status !== 'tool_error';
-}
-
 function markExistingShellCommandErrored(tool, stream) {
   if (tool.name !== 'shell_command' || !tool.id || !tool.isError) return false;
   const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
@@ -89,8 +90,21 @@ function markExistingBrowserActionErrored(tool, stream) {
     label: existing.error,
     ts: new Date().toISOString(),
   });
-  existing.collapsed = false;
+  existing.collapsed = true;
   return true;
+}
+
+function findToolBlockByCallId(stream, toolCallId) {
+  if (!toolCallId) return null;
+  return stream.blocks.find(block => block.toolCallId === toolCallId && block.type !== 'text') || null;
+}
+
+function replaceToolBlock(existing, next) {
+  if (!existing) return next;
+  const toolCallId = existing.toolCallId;
+  Object.keys(existing).forEach(key => { delete existing[key]; });
+  Object.assign(existing, next, toolCallId ? { toolCallId } : {});
+  return existing;
 }
 
 function applyAskUserPending(evt, stream, effects) {
@@ -127,61 +141,68 @@ function applyToolResult(evt, stream, effects) {
   for (const tool of evt.tools) {
     if (markExistingBrowserActionErrored(tool, stream)) continue;
     if (markExistingShellCommandErrored(tool, stream)) continue;
-    if (tool.renderType === 'ask-user' && tool.id) {
-      const existing = stream.blocks.find(block => block.type === 'ask-user' && block.toolCallId === tool.id);
+
+    const renderType = tool.renderType;
+    const existing = findToolBlockByCallId(stream, tool.id);
+
+    if (renderType === 'ask-user' && tool.id) {
+      const block = existing || { type: 'ask-user', toolCallId: tool.id };
+      Object.assign(block, {
+        status: tool.isError ? 'error' : (tool.data?.status || 'answered'),
+        ...tool.data,
+      });
+      if (!existing) stream.blocks.push(block);
+      collapseFinishedToolBlock(block);
+      continue;
+    }
+
+    if (!renderType) {
       if (existing) {
-        Object.assign(existing, {
-          type: 'ask-user',
-          toolCallId: tool.id,
-          status: tool.isError ? 'error' : (tool.data?.status || 'answered'),
-          ...tool.data,
-          collapsed: false,
-        });
+        existing.status = tool.isError ? 'error' : 'completed';
+        if (tool.isError) existing.error = String(tool.output || 'Tool failed');
+        collapseFinishedToolBlock(existing);
+      }
+      continue;
+    }
+
+    if (!tool.data && !tool.isError) continue;
+
+    if (renderType === 'subagent-run' && tool.data?.runId) {
+      const subagent = stream.blocks.find(block => block.type === 'subagent-run' && block.runId === tool.data.runId) || existing;
+      if (subagent) {
+        Object.assign(subagent, { type: 'subagent-run', ...tool.data });
+        if (tool.id) subagent.toolCallId = tool.id;
+        collapseFinishedToolBlock(subagent);
         continue;
       }
     }
-    if (tool.renderType && tool.data) {
-      if (tool.renderType === 'browser-action' && tool.id) {
-        const existing = stream.blocks.find(block => block.type === 'browser-action' && block.toolCallId === tool.id);
-        if (existing) {
-          Object.assign(existing, {
-            type: 'browser-action',
-            toolCallId: tool.id,
-            status: tool.isError ? 'error' : 'completed',
-            ...tool.data,
-          });
-          existing.collapsed = !tool.isError;
-          continue;
-        }
+
+    const status = tool.isError ? 'error' : 'completed';
+    const nextBlock = {
+      type: renderType,
+      ...(tool.data || {}),
+      status,
+      toolCallId: tool.id,
+    };
+
+    if (existing) {
+      if (existing.type === 'tool-running' || existing.type !== renderType) {
+        replaceToolBlock(existing, nextBlock);
+      } else {
+        Object.assign(existing, nextBlock);
       }
-      if (tool.renderType === 'shell-command' && tool.id) {
-        const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
-        if (existing) {
-          Object.assign(existing, { type: 'shell-command', toolCallId: tool.id, status: tool.isError ? 'error' : 'completed', ...tool.data });
-          existing.collapsed = true;
-          continue;
-        }
-      }
-      if (tool.renderType === 'subagent-run' && tool.data.runId) {
-        const existing = stream.blocks.find(block => block.type === 'subagent-run' && block.runId === tool.data.runId);
-        if (existing) {
-          Object.assign(existing, { ...tool.data, type: 'subagent-run' });
-          if (existing.collapsed === undefined && isTerminalSubagentBlock(existing)) existing.collapsed = true;
-          continue;
-        }
-      }
-      const block = { type: tool.renderType, ...tool.data };
-      if (tool.id) block.toolCallId = tool.id;
-      if (isTerminalSubagentBlock(block)) block.collapsed = true;
-      if (block.type === 'source-cards' || block.type === 'sources' || block.type === 'web-fetch' || block.type === 'file-snippet' || block.type === 'file-write' || block.type === 'symbol-list' || block.type === 'grep-matches' || block.type === 'glob-list' || block.type === 'shell-command') block.collapsed = true;
-      if (block.type === 'browser-action') block.collapsed = !tool.isError;
-      stream.blocks.push(block);
+      collapseFinishedToolBlock(existing);
+      continue;
     }
+
+    const block = { ...nextBlock };
+    collapseFinishedToolBlock(block);
+    stream.blocks.push(block);
   }
   const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');
   if (errored) currentTextBlock(stream.blocks).content += `\n\n_Tool error: ${errored}_`;
   stream.blocks.push({ type: 'text', content: '' });
-  effects.scheduleRender();
+  effects.flushRender({ rememberCollapseState: false });
 }
 
 function applyToolCall(evt, stream, effects) {
@@ -236,29 +257,35 @@ function applyToolCall(evt, stream, effects) {
       }
       continue;
     }
-    if (tool.name !== 'shell_command' || !tool.id) continue;
-    const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
-    if (existing) {
-      Object.assign(existing, {
+    if (tool.name === 'shell_command' && tool.id) {
+      const existing = stream.blocks.find(block => block.type === 'shell-command' && block.toolCallId === tool.id);
+      if (existing) {
+        Object.assign(existing, {
+          status: 'running',
+          command: tool.input?.command || existing.command || 'shell command',
+          cwd: tool.input?.cwd || existing.cwd || '',
+          startedAt: Date.now(),
+          collapsed: false,
+        });
+        continue;
+      }
+      stream.blocks.push({
+        type: 'shell-command',
+        toolCallId: tool.id,
         status: 'running',
-        command: tool.input?.command || existing.command || 'shell command',
-        cwd: tool.input?.cwd || existing.cwd || '',
-        startedAt: Date.now(),
+        command: tool.input?.command || 'shell command',
+        cwd: tool.input?.cwd || '',
+        stdout: '',
+        stderr: '',
         collapsed: false,
+        startedAt: Date.now(),
       });
       continue;
     }
-    stream.blocks.push({
-      type: 'shell-command',
-      toolCallId: tool.id,
-      status: 'running',
-      command: tool.input?.command || 'shell command',
-      cwd: tool.input?.cwd || '',
-      stdout: '',
-      stderr: '',
-      collapsed: false,
-      startedAt: Date.now(),
-    });
+
+    if (shouldCreateRunningToolBlock(tool) && !findToolBlockByCallId(stream, tool.id)) {
+      stream.blocks.push(buildRunningToolBlock(tool));
+    }
   }
   effects.scheduleRender();
 }
@@ -338,6 +365,7 @@ function applyAgentEvent(evt, stream, effects) {
         events: [],
         timeline: [],
         blocks: [],
+        collapsed: false,
       };
       stream.blocks.push(block);
     }
@@ -360,7 +388,7 @@ function applyAgentEvent(evt, stream, effects) {
       block.parentRunId = evt.parentRunId || block.parentRunId || null;
       block.rootRunId = evt.rootRunId || block.rootRunId || null;
       pushSubagentEvent(block, evt);
-      block.collapsed = true;
+      collapseFinishedToolBlock(block);
     }
     effects.flushRender({ rememberCollapseState: false });
     return;

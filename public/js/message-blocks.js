@@ -29,7 +29,7 @@ function codeBlock(label, value) {
 
 function renderBlockFromResult(renderType, data) {
   if (!renderType || !data) return null;
-  return { type: renderType, ...data };
+  return { type: renderType, ...data, collapsed: true };
 }
 
 function renderBlockFromOutput(output) {

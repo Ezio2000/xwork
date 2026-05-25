@@ -142,6 +142,9 @@ describe('frontend module boundaries', () => {
         schedule() {
           scheduled++;
         },
+        flush() {
+          scheduled++;
+        },
         cancel() {},
       },
     };
@@ -199,6 +202,7 @@ describe('frontend module boundaries', () => {
       blocks: [],
       renderer: {
         schedule() {},
+        flush() {},
         cancel() {},
       },
     };
@@ -239,6 +243,9 @@ describe('frontend module boundaries', () => {
       blocks: [],
       renderer: {
         schedule() {
+          scheduled++;
+        },
+        flush() {
           scheduled++;
         },
         cancel() {},
@@ -445,7 +452,89 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.blocks[0].steps.length, 3);
     assert.equal(stream.blocks[0].screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
     assert.equal(stream.blocks[0].textQuery, 'Run');
-    assert.equal(scheduled, 4);
+    assert.equal(scheduled, 3);
+  });
+
+  it('expands while running and collapses after grep completes', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    let flushed = 0;
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [{ type: 'text', content: '' }],
+      renderer: {
+        schedule() {},
+        flush() {
+          flushed++;
+        },
+        cancel() {},
+      },
+    };
+
+    appendStreamEvent({
+      type: 'tool_call',
+      seq: 1,
+      tools: [{
+        id: 'toolu_grep_1',
+        name: 'grep',
+        input: { pattern: 'xwork', glob: 'package.json' },
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks[1].type, 'tool-running');
+    assert.equal(stream.blocks[1].status, 'running');
+    assert.equal(stream.blocks[1].collapsed, false);
+
+    appendStreamEvent({
+      type: 'tool_result',
+      seq: 2,
+      tools: [{
+        id: 'toolu_grep_1',
+        name: 'grep',
+        isError: false,
+        renderType: 'grep-matches',
+        data: {
+          pattern: 'xwork',
+          matches: [{ path: 'package.json', line: 2, content: '"name": "xwork"' }],
+          matchCount: 1,
+        },
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks[1].type, 'grep-matches');
+    assert.equal(stream.blocks[1].status, 'completed');
+    assert.equal(stream.blocks[1].collapsed, true);
+    assert.equal(flushed, 1);
+  });
+
+  it('collapses browser tool blocks after errors', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: { schedule() {}, flush() {}, cancel() {} },
+    };
+
+    appendStreamEvent({
+      type: 'tool_call',
+      tools: [{
+        id: 'toolu_browser_err',
+        name: 'browser_action',
+        input: { action: 'open', url: 'http://localhost:3000/' },
+      }],
+    }, stream);
+
+    appendStreamEvent({
+      type: 'tool_result',
+      tools: [{
+        id: 'toolu_browser_err',
+        name: 'browser_action',
+        isError: true,
+        output: 'blocked by policy',
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks[0].status, 'error');
+    assert.equal(stream.blocks[0].collapsed, true);
   });
 
 });
