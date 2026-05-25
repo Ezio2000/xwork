@@ -1,6 +1,11 @@
 import { Router } from 'express';
 
-import { handleChatRequest, handleChatRunStatus, handleChatRunStream } from '../lib/chat-service.mjs';
+import {
+  handleChatRequest,
+  handleChatRunStatus,
+  handleChatRunStream,
+  handleChatRunUserInput,
+} from '../lib/chat-service.mjs';
 
 export function chatRoutes() {
   const router = Router();
@@ -8,6 +13,7 @@ export function chatRoutes() {
   router.post('/chat', handleChatRequest);
   router.get('/chat-runs/:id', handleChatRunStatus);
   router.get('/chat-runs/:id/stream', handleChatRunStream);
+  router.post('/chat-runs/:id/user-input', handleChatRunUserInput);
 
   return router;
 }

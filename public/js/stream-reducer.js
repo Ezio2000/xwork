@@ -93,10 +93,53 @@ function markExistingBrowserActionErrored(tool, stream) {
   return true;
 }
 
+function applyAskUserPending(evt, stream, effects) {
+  const toolCallId = evt.id;
+  if (!toolCallId) return;
+  const block = {
+    type: 'ask-user',
+    toolCallId,
+    status: 'waiting',
+    kind: evt.kind || 'text',
+    question: evt.question || '',
+    context: evt.context || '',
+    options: evt.options,
+    fields: evt.fields,
+    allowSkip: evt.allowSkip !== false,
+    allowCustom: evt.allowCustom === true,
+    recommended: evt.recommended,
+    default: evt.default,
+    multiline: evt.multiline !== false,
+    placeholder: evt.placeholder || '',
+    min: evt.min,
+    max: evt.max,
+    minSelections: evt.minSelections,
+    maxSelections: evt.maxSelections,
+    collapsed: false,
+  };
+  const existing = stream.blocks.find(item => item.type === 'ask-user' && item.toolCallId === toolCallId);
+  if (existing) Object.assign(existing, block);
+  else stream.blocks.push(block);
+  effects.scheduleRender();
+}
+
 function applyToolResult(evt, stream, effects) {
   for (const tool of evt.tools) {
     if (markExistingBrowserActionErrored(tool, stream)) continue;
     if (markExistingShellCommandErrored(tool, stream)) continue;
+    if (tool.renderType === 'ask-user' && tool.id) {
+      const existing = stream.blocks.find(block => block.type === 'ask-user' && block.toolCallId === tool.id);
+      if (existing) {
+        Object.assign(existing, {
+          type: 'ask-user',
+          toolCallId: tool.id,
+          status: tool.isError ? 'error' : (tool.data?.status || 'answered'),
+          ...tool.data,
+          collapsed: false,
+        });
+        continue;
+      }
+    }
     if (tool.renderType && tool.data) {
       if (tool.renderType === 'browser-action' && tool.id) {
         const existing = stream.blocks.find(block => block.type === 'browser-action' && block.toolCallId === tool.id);
@@ -172,6 +215,25 @@ function applyToolCall(evt, stream, effects) {
         collapsed: false,
         startedAt: Date.now(),
       });
+      continue;
+    }
+    if (tool.name === 'ask_user' && tool.id) {
+      const existing = stream.blocks.find(block => block.type === 'ask-user' && block.toolCallId === tool.id);
+      if (!existing) {
+        stream.blocks.push({
+          type: 'ask-user',
+          toolCallId: tool.id,
+          status: 'waiting',
+          kind: tool.input?.kind || 'text',
+          question: tool.input?.question || 'Waiting for your answer…',
+          context: tool.input?.context || '',
+          options: tool.input?.options,
+          fields: tool.input?.fields,
+          allowSkip: tool.input?.allowSkip !== false,
+          allowCustom: tool.input?.allowCustom === true,
+          collapsed: false,
+        });
+      }
       continue;
     }
     if (tool.name !== 'shell_command' || !tool.id) continue;
@@ -345,6 +407,11 @@ export function appendStreamEvent(evt, stream, injectedEffects = null) {
 
   if (evt.type === STREAM_EVENT_TYPES.TOOL_CALL) {
     applyToolCall(evt, stream, effects);
+    return;
+  }
+
+  if (evt.type === STREAM_EVENT_TYPES.ASK_USER_PENDING) {
+    applyAskUserPending(evt, stream, effects);
     return;
   }
 

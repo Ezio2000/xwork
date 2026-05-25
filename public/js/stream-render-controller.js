@@ -67,7 +67,12 @@ export function createStreamRenderScheduler(stream) {
     const contentEl = getStreamingContentEl(stream);
     if (!contentEl) return;
     if (rememberCollapseState) rememberAllCollapseStates(stream.blocks, contentEl);
-    contentEl.innerHTML = renderBlocks(stream.blocks, false);
+    const blocks = stream.blocks.map(block => (
+      block.type === 'ask-user' && block.status === 'waiting' && stream.runId
+        ? { ...block, runId: stream.runId }
+        : block
+    ));
+    contentEl.innerHTML = renderBlocks(blocks, false);
     scrollRunningSubagentsToBottom(contentEl);
     scrollBottom();
   }

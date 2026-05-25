@@ -24,6 +24,7 @@ describe('architecture safety contracts', () => {
     assert.equal(PROVIDER_CONTRACT_VERSION, 1);
     assert.equal(RUN_EVENT_TYPES.TOOL_CALL, 'tool_call');
     assert.equal(RUN_EVENT_TYPES.TOOL_RESULT, 'tool_result');
+    assert.equal(RUN_EVENT_TYPES.ASK_USER_PENDING, 'ask_user_pending');
     assert.equal(AGENT_EVENT_TYPES.SUBAGENT_DONE, 'subagent_done');
   });
 
