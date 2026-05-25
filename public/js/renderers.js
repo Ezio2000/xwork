@@ -519,41 +519,6 @@ function renderFileWrite(block, collapsed = false) {
   `;
 }
 
-const TODO_STATUS_META = {
-  pending: { icon: '○', label: 'todo' },
-  in_progress: { icon: '◐', label: 'in progress' },
-  completed: { icon: '●', label: 'done' },
-  cancelled: { icon: '×', label: 'cancelled' },
-};
-
-function renderTodoList(block) {
-  const todos = Array.isArray(block.todos) ? block.todos : [];
-  if (!todos.length) return '';
-  const counts = block.counts || {};
-  const done = counts.completed || 0;
-  const total = block.total || todos.length;
-  const items = todos.map(todo => {
-    const meta = TODO_STATUS_META[todo.status] || TODO_STATUS_META.pending;
-    return `
-      <li class="todo-item todo-status-${escHtml(todo.status)}">
-        <span class="todo-bullet">${meta.icon}</span>
-        <span class="todo-content">${escHtml(todo.content || '')}</span>
-        <span class="todo-status-label">${escHtml(meta.label)}</span>
-      </li>
-    `;
-  }).join('');
-
-  return `
-    <div class="todo-block">
-      <div class="todo-header">
-        <span class="todo-title">Todos</span>
-        <span class="todo-progress">${done} / ${total}</span>
-      </div>
-      <ul class="todo-list">${items}</ul>
-    </div>
-  `;
-}
-
 const SYMBOL_KIND_ICON = {
   function: 'ƒ',
   class: '◇',
@@ -856,7 +821,6 @@ const blockRenderers = {
   'browser-action': (block, collapsed) => renderBrowserAction(block, block.collapsed ?? collapsed),
   'file-snippet': (block, collapsed) => renderFileSnippet(block, block.collapsed ?? collapsed),
   'file-write': (block, collapsed) => renderFileWrite(block, block.collapsed ?? collapsed),
-  'todo-list': (block) => renderTodoList(block),
   'symbol-list': (block, collapsed) => renderSymbolList(block, block.collapsed ?? collapsed),
   'grep-matches': (block, collapsed) => renderGrepMatches(block, block.collapsed ?? collapsed),
   'glob-list': (block, collapsed) => renderGlobList(block, block.collapsed ?? collapsed),

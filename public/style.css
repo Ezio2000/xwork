@@ -943,27 +943,7 @@ body {
 .ask-user-submit-note.ask-user-error { color: var(--danger, #c44); }
 .ask-user-answer-summary { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
 
-/* ===== Todo / Symbol blocks ===== */
-.todo-block {
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--bg-input); margin: 8px 0; padding: 12px 14px;
-}
-.todo-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
-.todo-title { font-family: var(--font); font-size: 13px; color: var(--text); }
-.todo-progress { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; font-family: var(--font-sans); }
-.todo-list { list-style: none; display: flex; flex-direction: column; gap: 3px; padding: 0; margin: 0; }
-.todo-item { display: grid; grid-template-columns: 16px 1fr auto; align-items: baseline; gap: 8px; padding: 4px 6px; border-radius: 4px; font-size: 13px; line-height: 1.5; }
-.todo-item .todo-bullet { font-size: 14px; text-align: center; color: var(--text-muted); }
-.todo-item .todo-content { color: var(--text); word-break: break-word; }
-.todo-item .todo-status-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; font-family: var(--font-sans); }
-.todo-item.todo-status-in_progress .todo-bullet { color: var(--accent); }
-.todo-item.todo-status-in_progress .todo-content { color: var(--text); font-weight: 500; }
-.todo-item.todo-status-in_progress { background: var(--accent-dim); }
-.todo-item.todo-status-completed .todo-bullet { color: var(--success); }
-.todo-item.todo-status-completed .todo-content { text-decoration: line-through; color: var(--text-muted); }
-.todo-item.todo-status-cancelled .todo-bullet { color: var(--text-muted); }
-.todo-item.todo-status-cancelled .todo-content { text-decoration: line-through; color: var(--text-muted); }
-
+/* ===== Symbol blocks ===== */
 .symbol-list { list-style: none; display: flex; flex-direction: column; gap: 2px; padding: 8px; margin: 0; font-family: var(--font-mono); }
 .symbol-item { display: grid; grid-template-columns: 18px 80px 1fr 60px; align-items: baseline; gap: 8px; padding: 3px 6px; font-size: 12px; border-radius: 3px; }
 .symbol-item:hover { background: var(--bg-hover); }
