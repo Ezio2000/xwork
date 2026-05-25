@@ -7,6 +7,7 @@ import {
   getChatRunSnapshot,
   publishChatRunEvent,
   startChatRun,
+  stopChatRun,
   subscribeResponseToRun,
 } from '../lib/chat-runs.mjs';
 
@@ -99,5 +100,39 @@ describe('chat run event store', () => {
 
     assert.equal(sawAbortedSignal, false);
     assert.equal(getChatRunSnapshot('run_close').status, 'completed');
+  });
+
+  it('stops a running chat run and closes subscribers', async () => {
+    let sawAbortedSignal = null;
+    let releaseExecution;
+    const executionReleased = new Promise(resolve => {
+      releaseExecution = resolve;
+    });
+    const run = startChatRun({ runId: 'run_stop', message: 'hi' }, {
+      execute: async ({ signal, emit }) => {
+        await executionReleased;
+        sawAbortedSignal = signal.aborted;
+        emit({ type: 'delta', text: 'late' });
+        emit({ type: 'done', stopReason: 'end_turn', usage: null });
+      },
+    });
+
+    const { res, writes } = fakeSseResponse();
+    subscribeResponseToRun(run, res);
+    const result = stopChatRun('run_stop');
+
+    assert.equal(result.ok, true);
+    assert.equal(result.stopped, true);
+    assert.equal(res.writableEnded, true);
+    assert.equal(getChatRunSnapshot('run_stop').status, 'completed');
+    assert.ok(writes.some(chunk => chunk.includes('"type":"done"')));
+    assert.ok(writes.some(chunk => chunk.includes('"stopReason":"user_stopped"')));
+
+    releaseExecution();
+    await run.promise;
+
+    assert.equal(sawAbortedSignal, true);
+    assert.equal(getChatRun('run_stop').events.filter(evt => evt.type === 'done').length, 1);
+    assert.ok(!getChatRun('run_stop').events.some(evt => evt.text === 'late'));
   });
 });

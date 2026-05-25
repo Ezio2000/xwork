@@ -451,6 +451,8 @@ body {
 
 .btn-send:hover { background: var(--accent-hover); }
 .btn-send:disabled { opacity: 0.4; cursor: default; }
+.btn-send.is-stop { background: var(--danger); }
+.btn-send.is-stop:hover { background: #b91c1c; }
 
 .input-hint {
   max-width: var(--content-max);

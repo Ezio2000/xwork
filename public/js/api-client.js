@@ -12,7 +12,9 @@ export async function api(method, url, body) {
     try {
       msg = JSON.parse(text).error || msg;
     } catch {}
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
   }
 
   return res.json();

@@ -9,8 +9,26 @@ import { state } from './state.js';
 import { getActiveStream } from './stores/app-store.js';
 import { addAssistantPlaceholder, addUserMessage, renderConvoList, renderMessages } from './views.js';
 
-function setSendDisabled() {
-  dom.btnSend.disabled = Boolean(getActiveStream());
+const SEND_ICON = `
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M8 14V2M8 2L3 7M8 2L13 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+`;
+
+const STOP_ICON = `
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/>
+  </svg>
+`;
+
+function setSendButtonState() {
+  const stream = getActiveStream();
+  const isStopping = Boolean(stream?.stopping);
+  dom.btnSend.disabled = isStopping;
+  dom.btnSend.classList.toggle('is-stop', Boolean(stream));
+  dom.btnSend.title = stream ? 'Stop' : 'Send';
+  dom.btnSend.setAttribute('aria-label', stream ? 'Stop current response' : 'Send message');
+  dom.btnSend.innerHTML = stream ? STOP_ICON : SEND_ICON;
 }
 
 async function ensureConversation(message) {
@@ -34,6 +52,8 @@ async function ensureConversation(message) {
 }
 
 function finalizeStreamingMessage(stream) {
+  if (stream.finalized) return;
+  stream.finalized = true;
   if (state.activeId === stream.conversationId) hideThinkingPopup();
   stream.renderer.flush({ rememberCollapseState: false });
   const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
@@ -70,10 +90,12 @@ function finalizeStreamingMessage(stream) {
     renderConvoList();
   }
 
-  setSendDisabled();
+  setSendButtonState();
 }
 
 function markStreamErrored(stream, err) {
+  if (stream.finalized) return;
+  stream.finalized = true;
   stream.status = 'error';
   stream.error = err.message || String(err);
   const contentEl = getStreamingContentEl(stream);
@@ -81,7 +103,7 @@ function markStreamErrored(stream, err) {
   const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
   if (streamingEl) streamingEl.classList.remove('streaming');
   state.streamingByConversationId.delete(stream.conversationId);
-  setSendDisabled();
+  setSendButtonState();
 }
 
 function createStream({ conversationId, runId, message, originalMessageCount, model }) {
@@ -96,6 +118,8 @@ function createStream({ conversationId, runId, message, originalMessageCount, mo
     lastSeq: 0,
     terminalEvent: null,
     renderer: null,
+    stopping: false,
+    finalized: false,
   };
   stream.renderer = createStreamRenderScheduler(stream);
   state.streamingByConversationId.set(conversationId, stream);
@@ -105,15 +129,38 @@ function createStream({ conversationId, runId, message, originalMessageCount, mo
 export function renderActiveStreamingMessage() {
   const stream = getActiveStream();
   if (!stream) {
-    setSendDisabled();
+    setSendButtonState();
     return false;
   }
 
   const hasPlaceholder = Boolean(dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`));
   if (!hasPlaceholder) addAssistantPlaceholder(stream);
   stream.renderer.flush({ rememberCollapseState: false });
-  setSendDisabled();
+  setSendButtonState();
   return true;
+}
+
+export async function stopActiveStream() {
+  const stream = getActiveStream();
+  if (!stream || stream.stopping) return;
+
+  stream.stopping = true;
+  setSendButtonState();
+  try {
+    await api('POST', `/api/v1/chat-runs/${encodeURIComponent(stream.runId)}/stop`, {
+      reason: 'user_stopped',
+    });
+  } catch (err) {
+    if (err.status === 404) {
+      stream.status = 'completed';
+      stream.terminalEvent = { type: 'done', stopReason: 'user_stopped' };
+      finalizeStreamingMessage(stream);
+      return;
+    }
+    stream.stopping = false;
+    setSendButtonState();
+    alert(err.message || String(err));
+  }
 }
 
 export async function sendMessage(text) {
@@ -144,6 +191,7 @@ export async function sendMessage(text) {
       model: dom.modelSelect.value,
     });
     addAssistantPlaceholder(stream);
+    setSendButtonState();
 
     attachChatStream(stream, fetch('/api/v1/chat', {
       method: 'POST',
@@ -161,6 +209,6 @@ export async function sendMessage(text) {
     });
   } catch (err) {
     alert(err.message || String(err));
-    setSendDisabled();
+    setSendButtonState();
   }
 }
