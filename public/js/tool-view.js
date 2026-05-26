@@ -8,7 +8,7 @@ function prettyJson(value) {
 
 function editableJsonConfig(tool, config = tool.config || {}) {
   const out = { ...(config && typeof config === 'object' && !Array.isArray(config) ? config : {}) };
-  if (tool.id === 'feishu_read' || tool.id === 'feishu_auth') {
+  if (tool.id === 'feishu_auth') {
     delete out.app_id;
     delete out.app_secret;
     delete out.appId;
@@ -19,6 +19,20 @@ function editableJsonConfig(tool, config = tool.config || {}) {
     delete out.refresh_token;
     delete out.refresh_token_expires_at;
   }
+  if (tool.id === 'feishu_read') {
+    delete out.app_id;
+    delete out.app_secret;
+    delete out.appId;
+    delete out.appSecret;
+    delete out.user_access_token;
+    delete out.userAccessToken;
+    delete out.user_access_token_expires_at;
+    delete out.refresh_token;
+    delete out.refresh_token_expires_at;
+    delete out.baseUrl;
+    delete out.authBaseUrl;
+    delete out.oauthScope;
+  }
   return out;
 }
 
@@ -28,11 +42,10 @@ function configValue(config, key, fallback = '') {
 }
 
 function renderDynamicConfigFields(tool) {
-  if (tool.id !== 'feishu_read' && tool.id !== 'feishu_auth') return '';
+  if (tool.id !== 'feishu_auth') return '';
   const config = tool.config || {};
   const appId = configValue(config, 'app_id', configValue(config, 'appId'));
   const appSecret = configValue(config, 'app_secret', configValue(config, 'appSecret'));
-  const userAccessToken = configValue(config, 'user_access_token', configValue(config, 'userAccessToken'));
 
   return `
     <div class="tool-config-dynamic">
@@ -45,10 +58,6 @@ function renderDynamicConfigFields(tool) {
         <label class="tool-config-field">
           <span>App Secret</span>
           <input type="password" data-config-key="app_secret" data-config-aliases="appSecret" value="${escHtml(appSecret)}" autocomplete="off" spellcheck="false" placeholder="app_secret">
-        </label>
-        <label class="tool-config-field wide">
-          <span>User Access Token</span>
-          <input type="password" data-config-key="user_access_token" data-config-aliases="userAccessToken" value="${escHtml(userAccessToken)}" autocomplete="off" spellcheck="false" placeholder="u-xxx，用于 get_current_user">
         </label>
       </div>
     </div>

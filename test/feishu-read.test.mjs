@@ -42,8 +42,10 @@ describe('feishu_read tool', () => {
     assert.ok(tool);
     assert.equal(tool.dangerLevel, 'low');
     assert.equal(feishuReadTool.defaultEnabled, false);
-    assert.equal(tool.defaultConfig.app_id, '');
-    assert.equal(tool.configSchema.properties.app_secret.type, 'string');
+    assert.equal(tool.defaultConfig.app_id, undefined);
+    assert.equal(tool.defaultConfig.defaultSheetRange, 'A1:Z100');
+    assert.equal(tool.configSchema.properties.app_secret, undefined);
+    assert.equal(tool.configSchema.properties.maxTextChars.type, 'number');
   });
 
   it('extracts tokens from Feishu document and sheet URLs', () => {
@@ -476,8 +478,9 @@ describe('feishu_read tool', () => {
         assert.equal(events[0].phase, 'feishu_auth_pending');
         assert.equal(events[0].deviceCode, 'device-code-1');
         assert.equal(events[1].phase, 'feishu_auth_complete');
-        const tool = (await listTools()).find(item => item.id === 'feishu_read');
-        assert.equal(tool.config.user_access_token, 'u-device-token');
+        const tools = await listTools();
+        assert.notEqual(tools.find(item => item.id === 'feishu_read').config.user_access_token, 'u-device-token');
+        assert.equal(tools.find(item => item.id === 'feishu_auth').config.user_access_token, 'u-device-token');
       });
     } finally {
       globalThis.fetch = previousFetch;
@@ -589,9 +592,11 @@ describe('feishu_read tool', () => {
 
         assert.equal(result.isError, false, String(result.output || ''));
         assert.equal(result.output.hasRefreshToken, true);
-        const tool = (await listTools()).find(item => item.id === 'feishu_read');
-        assert.equal(tool.config.user_access_token, 'u-device-token');
-        assert.equal(tool.config.refresh_token, 'refresh-device-token');
+        const tools = await listTools();
+        const authTool = tools.find(item => item.id === 'feishu_auth');
+        assert.equal(authTool.config.user_access_token, 'u-device-token');
+        assert.equal(authTool.config.refresh_token, 'refresh-device-token');
+        assert.notEqual(tools.find(item => item.id === 'feishu_read').config.user_access_token, 'u-device-token');
       });
     } finally {
       globalThis.fetch = previousFetch;

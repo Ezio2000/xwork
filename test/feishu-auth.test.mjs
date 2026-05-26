@@ -50,6 +50,8 @@ describe('feishu_auth tool', () => {
     assert.equal(tool.dangerLevel, 'low');
     assert.equal(feishuAuthTool.defaultEnabled, false);
     assert.equal(tool.defaultConfig.app_id, '');
+    assert.equal(tool.defaultConfig.baseUrl, undefined);
+    assert.equal(tool.defaultConfig.oauthScope, undefined);
     assert.equal(tool.configSchema.properties.app_secret.type, 'string');
   });
 
@@ -188,7 +190,7 @@ describe('feishu_auth tool', () => {
         assert.equal(events[1].phase, 'feishu_auth_complete');
         const tools = await listTools();
         assert.equal(tools.find(item => item.id === 'feishu_auth').config.user_access_token, 'u-device-token');
-        assert.equal(tools.find(item => item.id === 'feishu_read').config.user_access_token, 'u-device-token');
+        assert.notEqual(tools.find(item => item.id === 'feishu_read').config.user_access_token, 'u-device-token');
       });
     } finally {
       globalThis.fetch = previousFetch;
