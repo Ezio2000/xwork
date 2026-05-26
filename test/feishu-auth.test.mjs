@@ -51,13 +51,13 @@ async function withFeishuAuthEnabled(config, fn) {
 }
 
 describe('feishu_auth tool', () => {
-  it('is registered but disabled by default', async () => {
+  it('is registered and enabled by default', async () => {
     const tools = await listTools();
     const tool = tools.find(item => item.id === 'feishu_auth');
 
     assert.ok(tool);
     assert.equal(tool.dangerLevel, 'low');
-    assert.equal(feishuAuthTool.defaultEnabled, false);
+    assert.equal(feishuAuthTool.defaultEnabled, true);
     assert.equal(tool.defaultConfig.app_id, '');
     assert.equal(tool.defaultConfig.baseUrl, undefined);
     assert.equal(tool.defaultConfig.oauthScope, undefined);

@@ -40,12 +40,12 @@ describe('write_file tool', () => {
     await rm(FIXTURE_DIR, { recursive: true, force: true });
   });
 
-  it('is registered but disabled by default', async () => {
+  it('is registered and enabled by default', async () => {
     const tools = await listTools();
     const tool = tools.find(t => t.id === 'write_file');
     assert.ok(tool);
     assert.equal(tool.dangerLevel, 'high');
-    assert.equal(writeFileTool.defaultEnabled, false);
+    assert.equal(writeFileTool.defaultEnabled, true);
   });
 
   it('creates a new file in overwrite mode and returns file-write render data', async () => {

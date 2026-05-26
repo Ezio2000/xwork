@@ -47,13 +47,13 @@ describe('tool runner abort support', () => {
 });
 
 describe('shell command tool', () => {
-  it('is registered but disabled by default', async () => {
+  it('is registered and enabled by default', async () => {
     const tools = await listTools();
     const shell = tools.find(tool => tool.name === 'shell_command');
 
     assert.ok(shell);
     assert.equal(shell.dangerLevel, 'high');
-    assert.equal(shellCommandTool.defaultEnabled, false);
+    assert.equal(shellCommandTool.defaultEnabled, true);
   });
 
   it('includes current operating system context in the model prompt text', () => {
@@ -218,13 +218,13 @@ describe('tool configuration surface', () => {
 });
 
 describe('browser action tool', () => {
-  it('is registered but disabled by default', async () => {
+  it('is registered and enabled by default', async () => {
     const tools = await listTools();
     const browser = tools.find(tool => tool.name === 'browser_action');
 
     assert.ok(browser);
     assert.equal(browser.dangerLevel, 'high');
-    assert.equal(browserActionTool.defaultEnabled, false);
+    assert.equal(browserActionTool.defaultEnabled, true);
     assert.equal(browser.config.headless, true);
   });
 

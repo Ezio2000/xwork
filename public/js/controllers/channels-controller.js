@@ -50,21 +50,32 @@ async function saveChannel() {
     return;
   }
 
-  if (id) {
-    const updated = await api('PUT', `/api/v1/channels/${id}`, payload);
-    const idx = state.channels.findIndex(channel => channel.id === id);
-    if (idx !== -1) state.channels[idx] = updated;
-  } else {
-    const created = await api('POST', '/api/v1/channels', payload);
-    state.channels.push(created);
-  }
+  const previousLabel = dom.btnSaveChannel.textContent;
+  dom.btnSaveChannel.disabled = true;
+  dom.btnSaveChannel.textContent = 'Saving...';
 
-  const active = await api('GET', '/api/v1/active');
-  state.activeChannelId = active.activeChannelId;
-  state.activeModel = active.activeModel;
-  renderChannelList();
-  renderSelectors();
-  hideChannelEditor();
+  try {
+    if (id) {
+      const updated = await api('PUT', `/api/v1/channels/${id}`, payload);
+      const idx = state.channels.findIndex(channel => channel.id === id);
+      if (idx !== -1) state.channels[idx] = updated;
+    } else {
+      const created = await api('POST', '/api/v1/channels', payload);
+      state.channels.push(created);
+    }
+
+    const active = await api('GET', '/api/v1/active');
+    state.activeChannelId = active.activeChannelId;
+    state.activeModel = active.activeModel;
+    renderChannelList();
+    renderSelectors();
+    hideChannelEditor();
+  } catch (err) {
+    alert(err.message || String(err));
+  } finally {
+    dom.btnSaveChannel.disabled = false;
+    dom.btnSaveChannel.textContent = previousLabel;
+  }
 }
 
 async function deleteChannel(id) {

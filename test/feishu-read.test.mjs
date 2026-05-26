@@ -64,13 +64,13 @@ async function withFeishuAuthConfig(config, fn) {
 }
 
 describe('feishu_read tool', () => {
-  it('is registered but disabled by default', async () => {
+  it('is registered and enabled by default', async () => {
     const tools = await listTools();
     const tool = tools.find(item => item.id === 'feishu_read');
 
     assert.ok(tool);
     assert.equal(tool.dangerLevel, 'low');
-    assert.equal(feishuReadTool.defaultEnabled, false);
+    assert.equal(feishuReadTool.defaultEnabled, true);
     assert.equal(tool.defaultConfig.app_id, undefined);
     assert.equal(tool.defaultConfig.defaultSheetRange, 'A1:Z100');
     assert.equal(tool.configSchema.properties.maxTextChars.type, 'number');
