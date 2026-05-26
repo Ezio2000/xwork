@@ -73,6 +73,7 @@ describe('feishu_read tool', () => {
     assert.equal(feishuReadTool.defaultEnabled, true);
     assert.equal(tool.defaultConfig.app_id, undefined);
     assert.equal(tool.defaultConfig.defaultSheetRange, 'A1:Z100');
+    assert.equal(tool.defaultConfig.defaultSheetMode, 'all_preview');
     assert.equal(tool.configSchema.properties.maxTextChars.type, 'number');
   });
 
@@ -402,12 +403,92 @@ describe('feishu_read tool', () => {
 
         assert.equal(result.isError, false, String(result.output || ''));
         assert.equal(result.output.returnedCells, 4);
-        assert.match(result.output.content, /Name\tScore/);
-        assert.match(result.output.content, /Alice\t42/);
+        assert.match(result.output.content, /\| Name \| Score \|/);
+        assert.match(result.output.content, /\| Alice \| 42 \|/);
         assert.equal(calls.length, 1);
         assert.match(calls[0].url.pathname, /values_batch_get$/);
         assert.equal(calls[0].url.searchParams.get('ranges'), 'sheet1!A1:B2');
         assert.equal(calls[0].options.headers.Authorization, 'Bearer u-sheet-token');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('reads all sheet previews by default when no range is provided', async () => {
+    const previousFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(String(url)), options });
+      const path = calls[calls.length - 1].url.pathname;
+      if (path.includes('/metainfo')) {
+        return jsonResponse({
+          code: 0,
+          data: {
+            properties: { title: 'Pricing' },
+            sheets: [
+              { sheetId: 'sheet1', title: '按token计费' },
+              { sheetId: 'sheet2', title: '套餐价格' },
+            ],
+          },
+        });
+      }
+      if (path.includes('/values_batch_get')) {
+        return jsonResponse({
+          code: 0,
+          data: {
+            revision: 4,
+            valueRanges: [
+              {
+                range: 'sheet1!A1:Z100',
+                majorDimension: 'ROWS',
+                values: [
+                  ['模型', 'input ($/MTok)', '支持API'],
+                  ['deepseek-v4-flash', 0.14, true],
+                ],
+              },
+              {
+                range: 'sheet2!A1:Z100',
+                majorDimension: 'ROWS',
+                values: [
+                  ['套餐名', '价格'],
+                  ['Lite 周订阅', 5],
+                ],
+              },
+            ],
+          },
+        });
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    try {
+      await withFeishuReadEnabled({ user_access_token: 'u-sheet-token' }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_sheet_preview',
+            name: 'feishu_read',
+            input: {
+              action: 'read_sheet',
+              spreadsheetToken: 'spreadsheet_token',
+            },
+          },
+          { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.sheetMode, 'all_preview');
+        assert.equal(result.output.sheetCount, 2);
+        assert.equal(result.output.omittedSheets, 0);
+        assert.deepEqual(result.output.ranges, ['sheet1!A1:Z100', 'sheet2!A1:Z100']);
+        assert.match(result.output.content, /## 按token计费 \(sheet1!A1:Z100\)/);
+        assert.match(result.output.content, /\| 模型 \| input \(\$\/MTok\) \| 支持API \|/);
+        assert.match(result.output.content, /## 套餐价格 \(sheet2!A1:Z100\)/);
+        assert.match(result.output.content, /\| Lite 周订阅 \| 5 \|/);
+        assert.equal(calls.length, 2);
+        assert.match(calls[0].url.pathname, /metainfo$/);
+        assert.match(calls[1].url.pathname, /values_batch_get$/);
+        assert.deepEqual(calls[1].url.searchParams.getAll('ranges'), ['sheet1!A1:Z100', 'sheet2!A1:Z100']);
       });
     } finally {
       globalThis.fetch = previousFetch;

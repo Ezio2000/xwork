@@ -189,8 +189,45 @@ function replaceInlineMathNode(node) {
   node.parentNode.replaceChild(fragment, node);
 }
 
-function renderInlineMathInHtml(html) {
-  if (!String(html || '').includes('$')) return html;
+function residualStrongParts(text) {
+  const value = String(text || '');
+  const pattern = /\*\*([^\n]+?)\*\*/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(value))) {
+    const content = match[1];
+    if (!content.trim()) continue;
+    if (match.index > lastIndex) parts.push({ type: 'text', value: value.slice(lastIndex, match.index) });
+    parts.push({ type: 'strong', value: content });
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (!parts.length) return null;
+  if (lastIndex < value.length) parts.push({ type: 'text', value: value.slice(lastIndex) });
+  return parts;
+}
+
+function replaceResidualStrongNode(node) {
+  const parts = residualStrongParts(node.nodeValue);
+  if (!parts) return;
+
+  const fragment = document.createDocumentFragment();
+  for (const part of parts) {
+    if (part.type === 'text') {
+      fragment.append(document.createTextNode(part.value));
+    } else {
+      const strong = document.createElement('strong');
+      strong.textContent = part.value;
+      fragment.append(strong);
+    }
+  }
+  node.parentNode.replaceChild(fragment, node);
+}
+
+function transformTextNodesInHtml(html, marker, transformNode) {
+  if (!String(html || '').includes(marker)) return html;
   if (
     typeof document === 'undefined'
     || typeof document.createElement !== 'function'
@@ -205,16 +242,24 @@ function renderInlineMathInHtml(html) {
   const nodes = [];
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      if (!node.nodeValue.includes('$')) return NodeFilter.FILTER_REJECT;
+      if (!node.nodeValue.includes(marker)) return NodeFilter.FILTER_REJECT;
       if (shouldSkipInlineMathNode(node, template.content)) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
   });
 
   while (walker.nextNode()) nodes.push(walker.currentNode);
-  for (const node of nodes) replaceInlineMathNode(node);
+  for (const node of nodes) transformNode(node);
 
   return template.innerHTML;
+}
+
+function renderInlineMathInHtml(html) {
+  return transformTextNodesInHtml(html, '$', replaceInlineMathNode);
+}
+
+function renderResidualStrongInHtml(html) {
+  return transformTextNodesInHtml(html, '**', replaceResidualStrongNode);
 }
 
 function normalizeMarkdownForDisplay(text) {
@@ -229,6 +274,7 @@ export function renderContent(text) {
   const escaped = protectEscapedDollars(normalizeMarkdownForDisplay(text));
   const display = protectDisplayMath(escaped.value);
   let html = marked.parse(display.value);
+  html = renderResidualStrongInHtml(html);
   html = renderInlineMathInHtml(html);
   html = restorePlaceholders(html, 'DM', display.displayMath);
   html = restorePlaceholders(html, 'DL', escaped.escapedDollars);
@@ -839,6 +885,10 @@ function renderFileSnippet(block, collapsed = false) {
     block.size !== undefined ? `${Number(block.size)} bytes` : '',
   ].filter(Boolean).join(' · ');
   const content = block.content || block.contentPreview || '';
+  const isMarkdown = block.contentFormat === 'markdown' || String(path).startsWith('feishu:');
+  const contentHtml = isMarkdown
+    ? `<div class="file-snippet-markdown">${renderContent(content)}</div>`
+    : `<pre class="shell-command-output"><code>${escHtml(content)}</code></pre>`;
 
   return `
     <div class="shell-command-toggle file-snippet-toggle${collapsed ? ' collapsed' : ''}">
@@ -851,7 +901,7 @@ function renderFileSnippet(block, collapsed = false) {
         <span class="shell-command-toggle-arrow">&#9662;</span>
       </div>
       <div class="shell-command-toggle-body">
-        <pre class="shell-command-output"><code>${escHtml(content)}</code></pre>
+        ${contentHtml}
       </div>
     </div>
   `;
