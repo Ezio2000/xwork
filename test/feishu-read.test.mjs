@@ -334,6 +334,79 @@ describe('feishu_read tool', () => {
     }
   });
 
+  it('starts device authorization when configured user token is invalid', async () => {
+    const previousFetch = globalThis.fetch;
+    const events = [];
+    let userInfoCalls = 0;
+    globalThis.fetch = async (url, options) => {
+      const value = String(url);
+      if (value.includes('/open-apis/authen/v1/user_info')) {
+        userInfoCalls += 1;
+        if (userInfoCalls === 1) {
+          assert.equal(options.headers.Authorization, 'Bearer bad-token');
+          return jsonResponse({
+            code: 99991663,
+            msg: 'invalid access_token',
+          });
+        }
+        assert.equal(options.headers.Authorization, 'Bearer u-device-token');
+        return jsonResponse({
+          code: 0,
+          data: {
+            open_id: 'ou_current',
+            user_id: 'current_user',
+            name: 'Current User',
+          },
+        });
+      }
+      if (value.includes('/oauth/v1/device_authorization')) {
+        return jsonResponse({
+          device_code: 'device-code-1',
+          expires_in: 600,
+          interval: 2,
+          verification_url: 'https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=abc&user_code=ABCD-EFGH',
+        });
+      }
+      if (value.includes('/open-apis/authen/v2/oauth/token')) {
+        return jsonResponse({
+          access_token: 'u-device-token',
+          expires_in: 7200,
+        });
+      }
+      throw new Error(`unexpected URL ${value}`);
+    };
+
+    try {
+      await withFeishuReadEnabled({
+        app_id: 'cli_xxx',
+        app_secret: 'secret',
+        user_access_token: 'bad-token',
+      }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_invalid_token_auth',
+            name: 'feishu_read',
+            input: { action: 'get_current_user' },
+          },
+          {
+            conversationId: 'test-convo',
+            source: 'test',
+            environment: 'test',
+            persistToolRun: false,
+            emitToolEvent: event => events.push(event),
+          },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.user.name, 'Current User');
+        assert.equal(events[0].phase, 'feishu_auth_pending');
+        assert.equal(events[1].phase, 'feishu_auth_complete');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it('completes device authorization and saves the user access token', async () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (url, options) => {
