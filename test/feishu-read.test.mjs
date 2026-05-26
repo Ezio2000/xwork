@@ -17,6 +17,12 @@ function jsonResponse(payload, status = 200) {
 async function withFeishuReadEnabled(config, fn) {
   const tools = await listTools();
   const current = tools.find(tool => tool.id === 'feishu_read');
+  const currentAuth = tools.find(tool => tool.id === 'feishu_auth');
+  await updateToolConfig('feishu_auth', {
+    enabled: currentAuth?.enabled ?? false,
+    timeoutMs: currentAuth?.timeoutMs ?? 300000,
+    config: {},
+  });
   await updateToolConfig('feishu_read', {
     enabled: true,
     timeoutMs: feishuReadTool.timeoutMs,
@@ -30,7 +36,31 @@ async function withFeishuReadEnabled(config, fn) {
       timeoutMs: current?.timeoutMs ?? feishuReadTool.timeoutMs,
       config: current?.config || feishuReadTool.defaultConfig,
     });
+    await updateToolConfig('feishu_auth', {
+      enabled: currentAuth?.enabled ?? false,
+      timeoutMs: currentAuth?.timeoutMs ?? 300000,
+      config: currentAuth?.config || {},
+    });
     feishuReadTool.__test._resetTokenCache();
+  }
+}
+
+async function withFeishuAuthConfig(config, fn) {
+  const tools = await listTools();
+  const current = tools.find(tool => tool.id === 'feishu_auth');
+  await updateToolConfig('feishu_auth', {
+    enabled: current?.enabled ?? false,
+    timeoutMs: current?.timeoutMs ?? 300000,
+    config: { ...(current?.config || {}), ...config },
+  });
+  try {
+    return await fn();
+  } finally {
+    await updateToolConfig('feishu_auth', {
+      enabled: current?.enabled ?? false,
+      timeoutMs: current?.timeoutMs ?? 300000,
+      config: current?.config || {},
+    });
   }
 }
 
@@ -371,6 +401,44 @@ describe('feishu_read tool', () => {
         assert.match(calls[0].url.pathname, /\/authen\/v1\/user_info$/);
         assert.equal(calls[0].options.headers.Authorization, 'Bearer u-current');
         assert.match(result.render.data.content, /Current User/);
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('uses the token saved by feishu_auth over a stale feishu_read token', async () => {
+    const previousFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(String(url)), options });
+      assert.equal(options.headers.Authorization, 'Bearer u-auth-current');
+      return jsonResponse({
+        code: 0,
+        data: {
+          open_id: 'ou_current',
+          user_id: 'current_user',
+          name: 'Current User',
+        },
+      });
+    };
+
+    try {
+      await withFeishuReadEnabled({ user_access_token: 'bad-token' }, async () => {
+        await withFeishuAuthConfig({ user_access_token: 'u-auth-current' }, async () => {
+          const result = await runTool(
+            {
+              id: 'toolu_feishu_current_user_auth_token',
+              name: 'feishu_read',
+              input: { action: 'get_current_user' },
+            },
+            { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+          );
+
+          assert.equal(result.isError, false, String(result.output || ''));
+          assert.equal(result.output.user.name, 'Current User');
+          assert.equal(calls.length, 1);
+        });
       });
     } finally {
       globalThis.fetch = previousFetch;
