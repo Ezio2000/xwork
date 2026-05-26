@@ -38,6 +38,28 @@ npm run dev      # 开发模式 (文件变更自动重启)
 详见 [API.md](./API.md)。
 工具开发详见 [TOOL.md](./TOOL.md)。
 
+## 飞书文档 / 表格工具
+
+内置 `feishu_read` 工具可读取飞书新版文档、旧版文档和电子表格范围数据。该工具默认关闭，可在 Tools 页面展开 `Feishu Read` 的 Parameters，填写 `app_id` / `app_secret` 后保存并启用。
+
+也可以用环境变量配置飞书自建应用凭据：
+
+```powershell
+$env:FEISHU_APP_ID="cli_xxx"
+$env:FEISHU_APP_SECRET="xxx"
+npm start
+```
+
+还可以用工具配置里的 `accessToken` 直接提供 `tenant_access_token` 或 `user_access_token`。如果要用 `get_current_user` 查询当前授权用户，可以在页面配置 `user_access_token`，或设置 `FEISHU_USER_ACCESS_TOKEN`；未配置时工具会走飞书 Device Flow，返回 `verificationUrl` 和 `deviceCode`，用户授权后再用 `complete_current_user_authorization` 自动保存 token。启用后模型可用飞书 URL 或 token 调用：
+
+```json
+{ "action": "read_doc", "url": "https://xxx.feishu.cn/docx/..." }
+{ "action": "read_sheet", "url": "https://xxx.feishu.cn/sheets/...", "ranges": ["sheetId!A1:D20"] }
+{ "action": "get_current_user" }
+{ "action": "complete_current_user_authorization", "deviceCode": "xxx" }
+{ "action": "get_user", "userId": "ou_xxx", "userIdType": "open_id" }
+```
+
 ---
 
 # 自定义工具

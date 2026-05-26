@@ -1078,6 +1078,11 @@ body {
 .tool-config-field input:focus, .tool-config-field textarea:focus { border-color: var(--accent); }
 .tool-config-field input:disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.75; }
 
+.tool-config-dynamic { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; }
+.tool-config-dynamic-title { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; font-family: var(--font-sans); }
+.tool-config-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tool-config-grid .wide { grid-column: 1 / -1; }
+
 .tool-config-schema { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; }
 .tool-config-examples { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; }
 .tool-config-examples-title { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; font-family: var(--font-sans); }

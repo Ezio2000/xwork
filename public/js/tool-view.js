@@ -6,6 +6,55 @@ function prettyJson(value) {
   return JSON.stringify(value && typeof value === 'object' ? value : {}, null, 2);
 }
 
+function editableJsonConfig(tool, config = tool.config || {}) {
+  const out = { ...(config && typeof config === 'object' && !Array.isArray(config) ? config : {}) };
+  if (tool.id === 'feishu_read') {
+    delete out.app_id;
+    delete out.app_secret;
+    delete out.appId;
+    delete out.appSecret;
+    delete out.user_access_token;
+    delete out.userAccessToken;
+    delete out.user_access_token_expires_at;
+    delete out.refresh_token;
+    delete out.refresh_token_expires_at;
+  }
+  return out;
+}
+
+function configValue(config, key, fallback = '') {
+  const value = config && typeof config === 'object' ? config[key] : undefined;
+  return value === undefined || value === null ? fallback : String(value);
+}
+
+function renderDynamicConfigFields(tool) {
+  if (tool.id !== 'feishu_read') return '';
+  const config = tool.config || {};
+  const appId = configValue(config, 'app_id', configValue(config, 'appId'));
+  const appSecret = configValue(config, 'app_secret', configValue(config, 'appSecret'));
+  const userAccessToken = configValue(config, 'user_access_token', configValue(config, 'userAccessToken'));
+
+  return `
+    <div class="tool-config-dynamic">
+      <div class="tool-config-dynamic-title">Feishu App Credentials</div>
+      <div class="tool-config-grid">
+        <label class="tool-config-field">
+          <span>App ID</span>
+          <input type="text" data-config-key="app_id" data-config-aliases="appId" value="${escHtml(appId)}" autocomplete="off" spellcheck="false" placeholder="cli_xxx">
+        </label>
+        <label class="tool-config-field">
+          <span>App Secret</span>
+          <input type="password" data-config-key="app_secret" data-config-aliases="appSecret" value="${escHtml(appSecret)}" autocomplete="off" spellcheck="false" placeholder="app_secret">
+        </label>
+        <label class="tool-config-field wide">
+          <span>User Access Token</span>
+          <input type="password" data-config-key="user_access_token" data-config-aliases="userAccessToken" value="${escHtml(userAccessToken)}" autocomplete="off" spellcheck="false" placeholder="u-xxx，用于 get_current_user">
+        </label>
+      </div>
+    </div>
+  `;
+}
+
 function configSchemaRows(schema = {}) {
   const properties = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {};
   const entries = Object.entries(properties);
@@ -88,9 +137,10 @@ export function renderToolList() {
             <input type="number" name="timeoutMs" min="1" max="300000" step="1" value="${Number(tool.timeoutMs || 0)}" ${tool.adapter === 'anthropic_server' ? 'disabled' : ''}>
           </label>
           ${configExamples(tool)}
+          ${renderDynamicConfigFields(tool)}
           <label class="tool-config-field">
             <span>Config JSON</span>
-            <textarea name="config" rows="8" spellcheck="false">${escHtml(prettyJson(tool.config))}</textarea>
+            <textarea name="config" rows="8" spellcheck="false">${escHtml(prettyJson(editableJsonConfig(tool)))}</textarea>
           </label>
           <div class="tool-config-schema">
             <div class="tool-config-schema-title">Available Config Keys</div>

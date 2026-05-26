@@ -38,6 +38,12 @@ function replaceTool(updated) {
   if (idx !== -1) state.tools[idx] = updated;
 }
 
+function toolForForm(form) {
+  const card = form.closest('.tool-card');
+  if (!card) return null;
+  return state.tools.find(item => item.id === card.dataset.toolId) || null;
+}
+
 function setConfigError(form, message = '') {
   const error = form.querySelector('[data-role="tool-config-error"]');
   if (!error) return;
@@ -46,6 +52,7 @@ function setConfigError(form, message = '') {
 }
 
 function parseConfigForm(form) {
+  const tool = toolForForm(form);
   const timeoutInput = form.elements.timeoutMs;
   const rawConfig = form.elements.config?.value || '{}';
   let config;
@@ -56,6 +63,25 @@ function parseConfigForm(form) {
   }
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('Config JSON must be an object');
+  }
+  if (tool?.id === 'feishu_read') {
+    const currentConfig = tool.config && typeof tool.config === 'object' && !Array.isArray(tool.config) ? tool.config : {};
+    config = {
+      app_id: currentConfig.app_id ?? currentConfig.appId ?? '',
+      app_secret: currentConfig.app_secret ?? currentConfig.appSecret ?? '',
+      user_access_token: currentConfig.user_access_token ?? currentConfig.userAccessToken ?? '',
+      ...config,
+    };
+  }
+  for (const field of form.querySelectorAll('[data-config-key]')) {
+    const key = field.dataset.configKey;
+    if (!key) continue;
+    const aliases = String(field.dataset.configAliases || '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+    for (const alias of aliases) delete config[alias];
+    config[key] = field.value;
   }
   const payload = { config };
   if (timeoutInput && !timeoutInput.disabled) {
@@ -91,7 +117,26 @@ function applyToolConfigExample(card, index) {
   if (!example) return;
   const textarea = card.querySelector('textarea[name="config"]');
   if (!textarea) return;
-  textarea.value = JSON.stringify(example.config || {}, null, 2);
+  const config = example.config || {};
+  for (const field of card.querySelectorAll('[data-config-key]')) {
+    const key = field.dataset.configKey;
+    if (!key) continue;
+    const aliases = String(field.dataset.configAliases || '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+    const value = config[key] ?? aliases.map(alias => config[alias]).find(item => item !== undefined);
+    field.value = value === undefined || value === null ? '' : String(value);
+  }
+  const editableConfig = { ...config };
+  for (const field of card.querySelectorAll('[data-config-key]')) {
+    const key = field.dataset.configKey;
+    if (key) delete editableConfig[key];
+    for (const alias of String(field.dataset.configAliases || '').split(',').map(item => item.trim()).filter(Boolean)) {
+      delete editableConfig[alias];
+    }
+  }
+  textarea.value = JSON.stringify(editableConfig, null, 2);
   const form = textarea.closest('form');
   if (form) setConfigError(form);
 }
