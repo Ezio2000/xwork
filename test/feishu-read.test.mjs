@@ -41,7 +41,6 @@ async function withFeishuReadEnabled(config, fn) {
       timeoutMs: currentAuth?.timeoutMs ?? 300000,
       config: currentAuth?.config || {},
     });
-    feishuReadTool.__test._resetTokenCache();
   }
 }
 
@@ -74,7 +73,6 @@ describe('feishu_read tool', () => {
     assert.equal(feishuReadTool.defaultEnabled, false);
     assert.equal(tool.defaultConfig.app_id, undefined);
     assert.equal(tool.defaultConfig.defaultSheetRange, 'A1:Z100');
-    assert.equal(tool.configSchema.properties.app_secret, undefined);
     assert.equal(tool.configSchema.properties.maxTextChars.type, 'number');
   });
 
@@ -93,19 +91,16 @@ describe('feishu_read tool', () => {
     );
   });
 
-  it('reads docx raw content with tenant credentials', async () => {
+  it('reads docx raw content with user access token', async () => {
     const previousFetch = globalThis.fetch;
     const calls = [];
     globalThis.fetch = async (url, options) => {
       calls.push({ url: String(url), options });
-      if (String(url).includes('/auth/v3/tenant_access_token/internal')) {
-        return jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 });
-      }
       return jsonResponse({ code: 0, data: { content: '# Title\n\nBody' } });
     };
 
     try {
-      await withFeishuReadEnabled({ appId: 'cli_xxx', appSecret: 'secret' }, async () => {
+      await withFeishuReadEnabled({ user_access_token: 'u-docx-token' }, async () => {
         const result = await runTool(
           { id: 'toolu_feishu_doc', name: 'feishu_read', input: { action: 'read_doc', documentId: 'docx_token' } },
           { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
@@ -115,9 +110,9 @@ describe('feishu_read tool', () => {
         assert.equal(result.output.documentId, 'docx_token');
         assert.match(result.output.content, /Title/);
         assert.equal(result.render.renderType, 'file-snippet');
-        assert.match(calls[0].url, /tenant_access_token\/internal/);
-        assert.match(calls[1].url, /\/docx\/v1\/documents\/docx_token\/raw_content/);
-        assert.equal(calls[1].options.headers.Authorization, 'Bearer tenant-token');
+        assert.equal(calls.length, 1);
+        assert.match(calls[0].url, /\/docx\/v1\/documents\/docx_token\/raw_content/);
+        assert.equal(calls[0].options.headers.Authorization, 'Bearer u-docx-token');
       });
     } finally {
       globalThis.fetch = previousFetch;
@@ -130,9 +125,6 @@ describe('feishu_read tool', () => {
     globalThis.fetch = async (url, options) => {
       calls.push({ url: new URL(String(url)), options });
       const path = calls[calls.length - 1].url.pathname;
-      if (path.includes('/auth/v3/tenant_access_token/internal')) {
-        return jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 });
-      }
       if (path.includes('/wiki/v2/spaces/get_node')) {
         return jsonResponse({
           code: 0,
@@ -153,7 +145,7 @@ describe('feishu_read tool', () => {
     };
 
     try {
-      await withFeishuReadEnabled({ app_id: 'cli_xxx', app_secret: 'secret' }, async () => {
+      await withFeishuReadEnabled({ user_access_token: 'u-wiki-token' }, async () => {
         const result = await runTool(
           {
             id: 'toolu_feishu_wiki',
@@ -171,8 +163,10 @@ describe('feishu_read tool', () => {
         assert.equal(result.output.objToken, 'docx_obj_token');
         assert.equal(result.output.objType, 'docx');
         assert.match(result.output.content, /Wiki Doc/);
-        assert.equal(calls[1].url.searchParams.get('token'), 'wiki_node_token');
-        assert.match(calls[2].url.pathname, /docx_obj_token\/raw_content$/);
+        assert.equal(calls[0].url.searchParams.get('token'), 'wiki_node_token');
+        assert.equal(calls[0].options.headers.Authorization, 'Bearer u-wiki-token');
+        assert.match(calls[1].url.pathname, /docx_obj_token\/raw_content$/);
+        assert.equal(calls[1].options.headers.Authorization, 'Bearer u-wiki-token');
       });
     } finally {
       globalThis.fetch = previousFetch;
@@ -185,9 +179,6 @@ describe('feishu_read tool', () => {
     globalThis.fetch = async (url, options) => {
       calls.push({ url: new URL(String(url)), options });
       const path = calls[calls.length - 1].url.pathname;
-      if (path.includes('/auth/v3/tenant_access_token/internal')) {
-        return jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 });
-      }
       if (path.includes('/wiki/v2/spaces/get_node')) {
         return jsonResponse({
           code: 0,
@@ -208,7 +199,7 @@ describe('feishu_read tool', () => {
     };
 
     try {
-      await withFeishuReadEnabled({ app_id: 'cli_xxx', app_secret: 'secret' }, async () => {
+      await withFeishuReadEnabled({ user_access_token: 'u-wiki-token' }, async () => {
         const result = await runTool(
           {
             id: 'toolu_feishu_wiki_misrouted',
@@ -232,24 +223,32 @@ describe('feishu_read tool', () => {
     }
   });
 
-  it('authorizes wiki and docs scopes when tenant lacks wiki read permission', async () => {
+  it('starts Device Flow when user_access_token is missing and reads wiki', async () => {
     const previousFetch = globalThis.fetch;
     const calls = [];
     const events = [];
     globalThis.fetch = async (url, options) => {
       calls.push({ url: new URL(String(url)), options });
       const path = calls[calls.length - 1].url.pathname;
-      if (path.includes('/auth/v3/tenant_access_token/internal')) {
-        return jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 });
+      if (path.includes('/oauth/v1/device_authorization')) {
+        const body = JSON.parse(options.body);
+        assert.equal(body.client_id, 'cli_xxx');
+        assert.equal(body.client_secret, 'secret');
+        return jsonResponse({
+          device_code: 'device-code-1',
+          expires_in: 600,
+          interval: 2,
+          verification_url: 'https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=abc&user_code=ABCD-EFGH',
+        });
+      }
+      if (path.includes('/open-apis/authen/v2/oauth/token')) {
+        return jsonResponse({
+          access_token: 'u-device-token',
+          expires_in: 7200,
+        });
       }
       if (path.includes('/wiki/v2/spaces/get_node')) {
-        if (options.headers.Authorization === 'Bearer tenant-token') {
-          return jsonResponse({
-            code: 99991668,
-            msg: 'tenant needs read permission',
-          });
-        }
-        assert.equal(options.headers.Authorization, 'Bearer u-doc-token');
+        assert.equal(options.headers.Authorization, 'Bearer u-device-token');
         return jsonResponse({
           code: 0,
           data: {
@@ -262,26 +261,8 @@ describe('feishu_read tool', () => {
           },
         });
       }
-      if (path.includes('/oauth/v1/device_authorization')) {
-        const body = JSON.parse(options.body);
-        assert.match(body.scope, /auth:user\.id:read/);
-        assert.match(body.scope, /wiki:wiki:readonly/);
-        assert.match(body.scope, /wiki:node:read/);
-        return jsonResponse({
-          device_code: 'device-code-1',
-          expires_in: 600,
-          interval: 2,
-          verification_url: 'https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=abc&user_code=ABCD-EFGH',
-        });
-      }
-      if (path.includes('/open-apis/authen/v2/oauth/token')) {
-        return jsonResponse({
-          access_token: 'u-doc-token',
-          expires_in: 7200,
-        });
-      }
       if (path.includes('/docx/v1/documents/docx_obj_token/raw_content')) {
-        assert.equal(options.headers.Authorization, 'Bearer u-doc-token');
+        assert.equal(options.headers.Authorization, 'Bearer u-device-token');
         return jsonResponse({ code: 0, data: { content: '# Wiki Doc\n\nBody' } });
       }
       throw new Error(`unexpected path ${path}`);
@@ -323,7 +304,7 @@ describe('feishu_read tool', () => {
     }
   });
 
-  it('reads wiki with the token saved by feishu_auth over stale feishu_read app credentials', async () => {
+  it('reads wiki with the token saved by feishu_auth over stale feishu_read config', async () => {
     const previousFetch = globalThis.fetch;
     const calls = [];
     globalThis.fetch = async (url, options) => {
@@ -376,8 +357,6 @@ describe('feishu_read tool', () => {
           assert.equal(result.output.objToken, 'docx_obj_token');
           assert.match(result.output.content, /Wiki Doc/);
           assert.equal(calls.length, 2);
-          assert.equal(calls.some(call => call.url.pathname.includes('/auth/v3/tenant_access_token/internal')), false);
-          assert.equal(calls.some(call => call.url.pathname.includes('/oauth/v1/device_authorization')), false);
         });
       });
     } finally {
@@ -385,7 +364,7 @@ describe('feishu_read tool', () => {
     }
   });
 
-  it('reads spreadsheet ranges with a direct access token', async () => {
+  it('reads spreadsheet ranges with a user access token', async () => {
     const previousFetch = globalThis.fetch;
     const calls = [];
     globalThis.fetch = async (url, options) => {
@@ -407,7 +386,7 @@ describe('feishu_read tool', () => {
     };
 
     try {
-      await withFeishuReadEnabled({ accessToken: 'direct-token' }, async () => {
+      await withFeishuReadEnabled({ user_access_token: 'u-sheet-token' }, async () => {
         const result = await runTool(
           {
             id: 'toolu_feishu_sheet',
@@ -428,7 +407,7 @@ describe('feishu_read tool', () => {
         assert.equal(calls.length, 1);
         assert.match(calls[0].url.pathname, /values_batch_get$/);
         assert.equal(calls[0].url.searchParams.get('ranges'), 'sheet1!A1:B2');
-        assert.equal(calls[0].options.headers.Authorization, 'Bearer direct-token');
+        assert.equal(calls[0].options.headers.Authorization, 'Bearer u-sheet-token');
       });
     } finally {
       globalThis.fetch = previousFetch;
@@ -454,7 +433,7 @@ describe('feishu_read tool', () => {
     };
 
     try {
-      await withFeishuReadEnabled({ accessToken: 'direct-token' }, async () => {
+      await withFeishuReadEnabled({ user_access_token: 'u-user-token' }, async () => {
         const result = await runTool(
           {
             id: 'toolu_feishu_user',
@@ -474,7 +453,7 @@ describe('feishu_read tool', () => {
         assert.match(calls[0].url.pathname, /\/contact\/v3\/users\/ou_user$/);
         assert.equal(calls[0].url.searchParams.get('user_id_type'), 'open_id');
         assert.equal(calls[0].url.searchParams.get('department_id_type'), 'open_department_id');
-        assert.equal(calls[0].options.headers.Authorization, 'Bearer direct-token');
+        assert.equal(calls[0].options.headers.Authorization, 'Bearer u-user-token');
         assert.equal(result.render.renderType, 'file-snippet');
         assert.match(result.render.data.content, /Alice/);
       });
