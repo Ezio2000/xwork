@@ -15,6 +15,7 @@ import { CONVERSATION_CONTRACT_VERSION } from '../lib/conversations/contracts.mj
 import { PROVIDER_CONTRACT_VERSION } from '../lib/providers/provider-contract.mjs';
 import { RUN_EVENT_TYPES, AGENT_EVENT_TYPES } from '../lib/run-events.mjs';
 import { defaultToolScheduler, executeToolCalls } from '../lib/tools/scheduler.mjs';
+import { currentTimeTool } from '../lib/tools/builtin/current-time.mjs';
 import { workspaceExplorationSystemPrompt } from '../lib/tools/builtin/workspace-exploration-prompt.mjs';
 import { getWorkspaceInfo } from '../lib/workspace-root.mjs';
 
@@ -48,6 +49,13 @@ describe('architecture safety contracts', () => {
     assert.match(prompt, /Known file but unknown line\/section/);
     assert.match(prompt, /grep with path set to that file before read_file/);
     assert.match(prompt, /grep is not only for broad repo search/);
+  });
+
+  it('requires current time lookup before other work when exact time is needed', () => {
+    const system = buildSystemPrompt([], { tools: [currentTimeTool] });
+    assert.match(system, /Use the system prompt date\/time for ordinary relative-date interpretation/);
+    assert.match(system, /call it before any other tool or substantive work/);
+    assert.match(system, /Do not search, browse, inspect files, or delegate until the current time has been established/);
   });
 
   it('keeps tool scheduling strategy outside queryLoop', async () => {
@@ -315,6 +323,101 @@ describe('architecture safety contracts', () => {
     }
 
     assert.equal(receivedSignal, ac.signal);
+  });
+
+  it('filters leaked DSML web_search markup from streamed text deltas', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    const chunks = [
+      { type: 'message_start', message: { usage: { input_tokens: 1 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'before <||DSM' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'L||tool_calls>\n<||DSML||invoke name="web_search">' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hidden query</||DSML||invoke>\n</||DSML||tool_calls> after' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 2 } },
+    ].map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+
+    globalThis.fetch = async () => ({
+      ok: true,
+      body: {
+        getReader() {
+          let index = 0;
+          return {
+            async read() {
+              if (index >= chunks.length) return { done: true };
+              return { done: false, value: encoder.encode(chunks[index++]) };
+            },
+          };
+        },
+      },
+    });
+
+    const deltas = [];
+    let result;
+    try {
+      result = await streamChat(
+        { baseUrl: 'https://example.test', apiKey: 'sk-test', model: 'm', maxTokens: 1, tools: [] },
+        [{ role: 'user', content: 'hi' }],
+        (delta) => deltas.push(delta),
+        () => {},
+        () => {},
+        () => {},
+        () => {},
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(deltas.join(''), 'before  after');
+    assert.equal(result.text, 'before  after');
+    assert.equal(result.content[0].text, 'before  after');
+    assert.doesNotMatch(deltas.join(''), /DSML|tool_calls|web_search/);
+  });
+
+  it('flushes normal streamed text when no DSML marker appears', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    const chunks = [
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'short' } },
+      { type: 'content_block_stop', index: 0 },
+    ].map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+
+    globalThis.fetch = async () => ({
+      ok: true,
+      body: {
+        getReader() {
+          let index = 0;
+          return {
+            async read() {
+              if (index >= chunks.length) return { done: true };
+              return { done: false, value: encoder.encode(chunks[index++]) };
+            },
+          };
+        },
+      },
+    });
+
+    const deltas = [];
+    let result;
+    try {
+      result = await streamChat(
+        { baseUrl: 'https://example.test', apiKey: 'sk-test', model: 'm', maxTokens: 1, tools: [] },
+        [{ role: 'user', content: 'hi' }],
+        (delta) => deltas.push(delta),
+        () => {},
+        () => {},
+        () => {},
+        () => {},
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(deltas.join(''), 'short');
+    assert.equal(result.text, 'short');
+    assert.equal(result.content[0].text, 'short');
   });
 
   it('keeps audit trace with internal tool messages on assistant messages', () => {

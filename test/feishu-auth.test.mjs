@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { runTool } from '../lib/tools/runner.mjs';
 import { listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { feishuAuthTool } from '../lib/tools/builtin/feishu-auth.mjs';
+import { clearStoredUserTokens } from '../lib/feishu-auth.mjs';
 
 function jsonResponse(payload, status = 200) {
   return {
@@ -236,5 +237,62 @@ describe('feishu_auth tool', () => {
     } finally {
       globalThis.fetch = previousFetch;
     }
+  });
+
+  it('clears stored user tokens without clearing app credentials', async () => {
+    await withFeishuAuthEnabled({
+      app_id: 'cli_keep',
+      app_secret: 'secret_keep',
+      user_access_token: 'u-token',
+      userAccessToken: 'legacy-token',
+      user_access_token_expires_at: '2026-05-26T00:00:00.000Z',
+      refresh_token: 'refresh-token',
+      refresh_token_expires_at: '2026-06-26T00:00:00.000Z',
+    }, async () => {
+      await updateToolConfig('feishu_read', {
+        enabled: true,
+        timeoutMs: 30000,
+        config: {
+          user_access_token: 'read-token',
+          userAccessToken: 'legacy-read-token',
+          refresh_token: 'read-refresh',
+          defaultSheetRange: 'A1:B2',
+        },
+      });
+
+      const result = await runTool(
+        {
+          id: 'toolu_feishu_auth_logout',
+          name: 'feishu_auth',
+          input: { action: 'logout' },
+        },
+        { conversationId: 'test-convo', source: 'test', environment: 'test', persistToolRun: false },
+      );
+
+      assert.equal(result.isError, false, String(result.output || ''));
+      const tool = (await listTools()).find(item => item.id === 'feishu_auth');
+      assert.equal(tool.config.app_id, 'cli_keep');
+      assert.equal(tool.config.app_secret, 'secret_keep');
+      assert.equal(tool.config.user_access_token, '');
+      assert.equal(tool.config.userAccessToken, undefined);
+      assert.equal(tool.config.refresh_token, undefined);
+      assert.equal(tool.config.refresh_token_expires_at, undefined);
+
+      await updateToolConfig('feishu_read', {
+        config: {
+          user_access_token: 'read-token',
+          userAccessToken: 'legacy-read-token',
+          refresh_token: 'read-refresh',
+          defaultSheetRange: 'A1:B2',
+        },
+      });
+      await clearStoredUserTokens();
+      const tools = await listTools();
+      const readTool = tools.find(item => item.id === 'feishu_read');
+      assert.equal(readTool.config.defaultSheetRange, 'A1:B2');
+      assert.equal(readTool.config.user_access_token, '');
+      assert.equal(readTool.config.userAccessToken, undefined);
+      assert.equal(readTool.config.refresh_token, undefined);
+    });
   });
 });

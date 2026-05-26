@@ -170,6 +170,58 @@ describe('frontend module boundaries', () => {
     assert.equal(dom.btnClearFeishuToken.textContent, 'Clear Feishu Token');
   });
 
+  it('clears Feishu token through dedicated endpoint without sending config overwrite', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { dom } = await import('../public/js/dom.js');
+    const { bindChatHeaderController } = await import('../public/js/controllers/chat-header-controller.js');
+    const listeners = {};
+    dom.btnClearFeishuToken.addEventListener = (event, handler) => {
+      listeners[event] = handler;
+    };
+
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url: String(url), options });
+      assert.equal(String(url), '/api/v1/tools/feishu_auth/clear-token');
+      assert.equal(options.method, 'POST');
+      assert.equal(options.body, undefined);
+      return {
+        ok: true,
+        async json() {
+          return {
+            feishu_auth: {
+              id: 'feishu_auth',
+              enabled: true,
+              config: { app_id: 'cli_xxx', app_secret: 'secret', user_access_token: '' },
+            },
+            feishu_read: {
+              id: 'feishu_read',
+              enabled: true,
+              config: { user_access_token: '' },
+            },
+          };
+        },
+      };
+    };
+
+    try {
+      state.tools = [
+        { id: 'feishu_auth', enabled: true, config: { user_access_token: 'u-token' } },
+        { id: 'feishu_read', enabled: true, config: { user_access_token: 'read-token' } },
+      ];
+      bindChatHeaderController();
+      await listeners.click();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(calls.length, 1);
+    assert.equal(state.tools.find(tool => tool.id === 'feishu_auth').config.app_id, 'cli_xxx');
+    assert.equal(state.tools.find(tool => tool.id === 'feishu_auth').config.app_secret, 'secret');
+    assert.equal(state.tools.find(tool => tool.id === 'feishu_auth').config.user_access_token, '');
+  });
+
   it('shows shell command blocks while the command is still running', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
     let scheduled = 0;
@@ -542,6 +594,53 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.blocks[1].status, 'completed');
     assert.equal(stream.blocks[1].collapsed, true);
     assert.equal(flushed, 1);
+  });
+
+  it('marks generic current-time tool blocks completed after result', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [{ type: 'text', content: '' }],
+      renderer: {
+        schedule() {},
+        flush() {},
+        cancel() {},
+      },
+    };
+
+    appendStreamEvent({
+      type: 'tool_call',
+      seq: 1,
+      tools: [{
+        id: 'toolu_time_1',
+        name: 'get_current_time',
+        input: { timezone: 'Asia/Shanghai' },
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks[1].type, 'tool-running');
+    assert.equal(stream.blocks[1].status, 'running');
+
+    appendStreamEvent({
+      type: 'tool_result',
+      seq: 2,
+      tools: [{
+        id: 'toolu_time_1',
+        name: 'get_current_time',
+        isError: false,
+        durationMs: 2,
+        input: { timezone: 'Asia/Shanghai' },
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks[1].type, 'tool-running');
+    assert.equal(stream.blocks[1].status, 'completed');
+    assert.equal(stream.blocks[1].collapsed, true);
+
+    const html = renderBlocks([stream.blocks[1]], true);
+    assert.match(html, /completed/);
+    assert.doesNotMatch(html, /status-running">running/);
   });
 
   it('collapses browser tool blocks after errors', async () => {

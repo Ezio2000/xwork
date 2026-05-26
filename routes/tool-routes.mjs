@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+import { clearStoredUserTokens } from '../lib/feishu-auth.mjs';
 import { listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { listToolRuns } from '../lib/tools/runs.mjs';
 import { SchemaValidationError, validateSafeId } from '../lib/schema.mjs';
@@ -31,6 +32,15 @@ export function toolRoutes() {
     } catch (err) {
       return sendError(res, err);
     }
+  });
+
+  router.post('/tools/feishu_auth/clear-token', async (_req, res) => {
+    await clearStoredUserTokens();
+    const tools = await listTools();
+    return res.json({
+      feishu_auth: tools.find(tool => tool.id === 'feishu_auth') || null,
+      feishu_read: tools.find(tool => tool.id === 'feishu_read') || null,
+    });
   });
 
   router.post('/tools/:id/enable', async (req, res) => {

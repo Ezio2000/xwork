@@ -2,14 +2,6 @@ import { api } from '../api-client.js';
 import { dom } from '../dom.js';
 import { state } from '../state.js';
 
-const TOKEN_KEYS = [
-  'user_access_token',
-  'userAccessToken',
-  'user_access_token_expires_at',
-  'refresh_token',
-  'refresh_token_expires_at',
-];
-
 let resetTimer = null;
 
 function feishuAuthTool() {
@@ -27,13 +19,6 @@ export function renderChatHeaderActions() {
   if (!button.dataset.status) button.textContent = 'Clear Feishu Token';
 }
 
-function tokenClearedConfig(config = {}) {
-  const next = { ...(config && typeof config === 'object' && !Array.isArray(config) ? config : {}) };
-  for (const key of TOKEN_KEYS) delete next[key];
-  next.user_access_token = '';
-  return next;
-}
-
 async function clearFeishuToken() {
   const button = dom.btnClearFeishuToken;
   const tool = feishuAuthTool();
@@ -44,19 +29,12 @@ async function clearFeishuToken() {
   button.dataset.status = 'clearing';
   button.textContent = 'Clearing...';
   try {
-    const updatedAuth = await api('PUT', '/api/v1/tools/feishu_auth', {
-      config: tokenClearedConfig(tool.config),
-    });
-    const authIdx = state.tools.findIndex(item => item.id === 'feishu_auth');
-    if (authIdx !== -1) state.tools[authIdx] = updatedAuth;
-
-    const readTool = state.tools.find(item => item.id === 'feishu_read');
-    if (readTool?.config) {
-      const updatedRead = await api('PUT', '/api/v1/tools/feishu_read', {
-        config: tokenClearedConfig(readTool.config),
-      });
-      const readIdx = state.tools.findIndex(item => item.id === 'feishu_read');
-      if (readIdx !== -1) state.tools[readIdx] = updatedRead;
+    const updated = await api('POST', '/api/v1/tools/feishu_auth/clear-token');
+    for (const toolKey of ['feishu_auth', 'feishu_read']) {
+      const updatedTool = updated?.[toolKey];
+      if (!updatedTool) continue;
+      const idx = state.tools.findIndex(item => item.id === updatedTool.id);
+      if (idx !== -1) state.tools[idx] = updatedTool;
     }
     button.dataset.status = 'cleared';
     button.textContent = 'Cleared';

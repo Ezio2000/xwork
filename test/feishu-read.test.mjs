@@ -179,6 +179,59 @@ describe('feishu_read tool', () => {
     }
   });
 
+  it('routes wiki URLs to read_wiki even when the model chooses read_doc', async () => {
+    const previousFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(String(url)), options });
+      const path = calls[calls.length - 1].url.pathname;
+      if (path.includes('/auth/v3/tenant_access_token/internal')) {
+        return jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 });
+      }
+      if (path.includes('/wiki/v2/spaces/get_node')) {
+        return jsonResponse({
+          code: 0,
+          data: {
+            node: {
+              node_token: 'wiki_node_token',
+              obj_token: 'docx_obj_token',
+              obj_type: 'docx',
+              title: 'Wiki Doc',
+            },
+          },
+        });
+      }
+      if (path.includes('/docx/v1/documents/docx_obj_token/raw_content')) {
+        return jsonResponse({ code: 0, data: { content: '# Wiki Doc\n\nBody' } });
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    try {
+      await withFeishuReadEnabled({ app_id: 'cli_xxx', app_secret: 'secret' }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_wiki_misrouted',
+            name: 'feishu_read',
+            input: {
+              action: 'read_doc',
+              url: 'https://example.feishu.cn/wiki/wiki_node_token',
+            },
+          },
+          { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.action, 'read_wiki');
+        assert.equal(result.output.wikiToken, 'wiki_node_token');
+        assert.match(result.output.content, /Wiki Doc/);
+        assert.equal(calls.some(call => call.url.pathname.includes('/docx/v1/documents/wiki_node_token/raw_content')), false);
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it('authorizes wiki and docs scopes when tenant lacks wiki read permission', async () => {
     const previousFetch = globalThis.fetch;
     const calls = [];

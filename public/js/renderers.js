@@ -573,6 +573,12 @@ function renderGitOutput(block, collapsed = false) {
 function renderToolRunning(block, collapsed = false) {
   const label = block.label || block.toolName || 'tool';
   const isCollapsed = block.collapsed ?? collapsed;
+  const status = block.status || 'running';
+  const running = status === 'running';
+  const statusClass = running ? 'status-running' : status === 'error' ? 'status-error' : 'status-ok';
+  const body = running
+    ? '<div class="shell-terminal-running">running...</div>'
+    : `<div class="shell-terminal-running">${escHtml(status)}</div>`;
   return `
     <div class="shell-command-toggle tool-running-toggle${isCollapsed ? ' collapsed' : ''}">
       <div class="shell-command-toggle-header" data-toggle-parent>
@@ -580,11 +586,11 @@ function renderToolRunning(block, collapsed = false) {
           <span class="shell-command-icon">⚙</span>
           ${escHtml(label)}
         </span>
-        <span class="shell-command-meta status-running">running</span>
+        <span class="shell-command-meta ${escHtml(statusClass)}">${escHtml(status)}</span>
         <span class="shell-command-toggle-arrow">&#9662;</span>
       </div>
       <div class="shell-command-toggle-body">
-        <div class="shell-terminal-running">running...</div>
+        ${body}
       </div>
     </div>
   `;
