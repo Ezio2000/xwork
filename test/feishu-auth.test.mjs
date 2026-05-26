@@ -27,17 +27,25 @@ async function withFeishuAuthEnabled(config, fn) {
   try {
     return await fn();
   } finally {
-    await updateToolConfig('feishu_auth', {
-      enabled: currentAuth?.enabled ?? false,
-      timeoutMs: Math.min(Number(currentAuth?.timeoutMs) || feishuAuthTool.timeoutMs, feishuAuthTool.timeoutMs),
-      config: currentAuth?.config || feishuAuthTool.defaultConfig,
-    });
-    if (currentRead) {
-      await updateToolConfig('feishu_read', {
-        enabled: currentRead.enabled,
-        timeoutMs: currentRead.timeoutMs,
-        config: currentRead.config,
+    try {
+      await updateToolConfig('feishu_auth', {
+        enabled: currentAuth?.enabled ?? false,
+        timeoutMs: Math.min(Number(currentAuth?.timeoutMs) || feishuAuthTool.timeoutMs, feishuAuthTool.timeoutMs),
+        config: currentAuth?.config || feishuAuthTool.defaultConfig,
       });
+    } catch (err) {
+      console.error('[feishu-auth test] failed to restore feishu_auth config:', err.message);
+    }
+    if (currentRead) {
+      try {
+        await updateToolConfig('feishu_read', {
+          enabled: currentRead.enabled,
+          timeoutMs: currentRead.timeoutMs,
+          config: currentRead.config,
+        });
+      } catch (err) {
+        console.error('[feishu-auth test] failed to restore feishu_read config:', err.message);
+      }
     }
   }
 }
