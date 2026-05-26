@@ -50,7 +50,7 @@ $env:FEISHU_APP_SECRET="xxx"
 npm start
 ```
 
-还可以用工具配置里的 `accessToken` 直接提供 `tenant_access_token` 或 `user_access_token`。如果要用 `get_current_user` 查询当前授权用户，可以在页面配置 `user_access_token`，或设置 `FEISHU_USER_ACCESS_TOKEN`；未配置或已失效时 `feishu_read` 会自动委托同一套 `feishu_auth` Device Flow，前端弹出授权子页面，用户同意后工具继续执行。启用后模型可用飞书 URL 或 token 调用：
+还可以用工具配置里的 `accessToken` 直接提供 `tenant_access_token` 或 `user_access_token`。如果要用 `get_current_user` 查询当前授权用户，可以在页面配置 `user_access_token`，或设置 `FEISHU_USER_ACCESS_TOKEN`；未配置或已失效时 `feishu_read` 会自动委托同一套 `feishu_auth` Device Flow，前端弹出授权子页面，用户同意后工具继续执行。读取文档、知识库或表格遇到租户权限不足时，也会按资源类型追加 `docs` / `wiki` / `sheets` 读权限 scope 并用用户 token 重试。启用后模型可用飞书 URL 或 token 调用：
 
 ```json
 { "action": "login" }

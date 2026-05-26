@@ -96,6 +96,46 @@ describe('feishu_auth tool', () => {
     }
   });
 
+  it('starts device authorization with domain scopes', async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+      assert.match(String(url), /\/oauth\/v1\/device_authorization$/);
+      const body = JSON.parse(options.body);
+      assert.equal(body.client_id, 'cli_xxx');
+      assert.match(body.scope, /auth:user\.id:read/);
+      assert.match(body.scope, /docx:document:readonly/);
+      assert.match(body.scope, /wiki:node:read/);
+      return jsonResponse({
+        device_code: 'device-code-1',
+        expires_in: 600,
+        interval: 5,
+        verification_url: 'https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=abc&user_code=ABCD-EFGH',
+      });
+    };
+
+    try {
+      await withFeishuAuthEnabled({
+        app_id: 'cli_xxx',
+        app_secret: 'secret',
+        user_access_token: '',
+      }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_auth_start_domains',
+            name: 'feishu_auth',
+            input: { action: 'start', domains: ['docs', 'wiki'] },
+          },
+          { conversationId: 'test-convo', source: 'test', environment: 'test', persistToolRun: false },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.deviceCode, 'device-code-1');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it('logs in by opening authorization, polling, and saving token', async () => {
     const previousFetch = globalThis.fetch;
     const events = [];

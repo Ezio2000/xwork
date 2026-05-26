@@ -147,6 +147,97 @@ describe('feishu_read tool', () => {
     }
   });
 
+  it('authorizes wiki and docs scopes when tenant lacks wiki read permission', async () => {
+    const previousFetch = globalThis.fetch;
+    const calls = [];
+    const events = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(String(url)), options });
+      const path = calls[calls.length - 1].url.pathname;
+      if (path.includes('/auth/v3/tenant_access_token/internal')) {
+        return jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 });
+      }
+      if (path.includes('/wiki/v2/spaces/get_node')) {
+        if (options.headers.Authorization === 'Bearer tenant-token') {
+          return jsonResponse({
+            code: 99991668,
+            msg: 'tenant needs read permission',
+          });
+        }
+        assert.equal(options.headers.Authorization, 'Bearer u-doc-token');
+        return jsonResponse({
+          code: 0,
+          data: {
+            node: {
+              node_token: 'wiki_node_token',
+              obj_token: 'docx_obj_token',
+              obj_type: 'docx',
+              title: 'Wiki Doc',
+            },
+          },
+        });
+      }
+      if (path.includes('/oauth/v1/device_authorization')) {
+        const body = JSON.parse(options.body);
+        assert.match(body.scope, /auth:user\.id:read/);
+        assert.match(body.scope, /wiki:wiki:readonly/);
+        assert.match(body.scope, /wiki:node:read/);
+        return jsonResponse({
+          device_code: 'device-code-1',
+          expires_in: 600,
+          interval: 2,
+          verification_url: 'https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=abc&user_code=ABCD-EFGH',
+        });
+      }
+      if (path.includes('/open-apis/authen/v2/oauth/token')) {
+        return jsonResponse({
+          access_token: 'u-doc-token',
+          expires_in: 7200,
+        });
+      }
+      if (path.includes('/docx/v1/documents/docx_obj_token/raw_content')) {
+        assert.equal(options.headers.Authorization, 'Bearer u-doc-token');
+        return jsonResponse({ code: 0, data: { content: '# Wiki Doc\n\nBody' } });
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    try {
+      await withFeishuReadEnabled({
+        app_id: 'cli_xxx',
+        app_secret: 'secret',
+        user_access_token: '',
+      }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_wiki_auth',
+            name: 'feishu_read',
+            input: {
+              action: 'read_wiki',
+              url: 'https://example.feishu.cn/wiki/wiki_node_token',
+            },
+          },
+          {
+            conversationId: 'test',
+            source: 'test',
+            environment: 'test',
+            persistToolRun: false,
+            emitToolEvent: event => events.push(event),
+          },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.objToken, 'docx_obj_token');
+        assert.match(result.output.content, /Wiki Doc/);
+        assert.equal(events[0].phase, 'feishu_auth_pending');
+        assert.equal(events[0].action, 'get_wiki_node');
+        assert.equal(events[1].phase, 'feishu_auth_complete');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it('reads spreadsheet ranges with a direct access token', async () => {
     const previousFetch = globalThis.fetch;
     const calls = [];
