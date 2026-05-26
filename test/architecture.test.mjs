@@ -58,6 +58,15 @@ describe('architecture safety contracts', () => {
     assert.match(system, /Do not search, browse, inspect files, or delegate until the current time has been established/);
   });
 
+  it('asks models to prefer Mermaid for diagrams', () => {
+    const system = buildSystemPrompt([], {});
+    assert.match(system, /prefer Mermaid diagrams/);
+    assert.match(system, /```mermaid code blocks/);
+    assert.match(system, /flowcharts, sequence diagrams, state diagrams/);
+    assert.match(system, /quote labels that contain brackets/);
+    assert.match(system, /Do not HTML-escape operators inside Mermaid code fences/);
+  });
+
   it('keeps tool scheduling strategy outside queryLoop', async () => {
     const calls = [
       { id: 'a1', name: 'delegate_task', input: {} },

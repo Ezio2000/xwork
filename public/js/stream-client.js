@@ -27,7 +27,7 @@ export async function readChatStream(res, stream) {
     }
   }
 
-  stream.renderer.flush();
+  stream.renderer.flush({ renderMermaid: stream.status !== 'running' });
   return stream.blocks;
 }
 

@@ -414,6 +414,89 @@ body {
 .message .content em { font-style: italic; }
 .message .content del { text-decoration: line-through; opacity: 0.6; }
 
+.mermaid-block {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+.mermaid-render {
+  background: #fff;
+  min-height: 120px;
+  overflow-x: auto;
+  padding: 16px;
+  text-align: center;
+}
+
+.mermaid-status {
+  color: var(--text-muted);
+  display: inline-block;
+  font-size: 13px;
+  padding: 36px 0;
+}
+
+.mermaid-render svg {
+  height: auto;
+  max-width: 100%;
+}
+
+.mermaid-block[data-error="true"] .mermaid-render {
+  background: var(--bg-hover);
+  min-height: 0;
+}
+
+.mermaid-block[data-error="true"] .mermaid-status {
+  color: var(--danger);
+  padding: 10px 0;
+}
+
+.mermaid-error {
+  display: none;
+  border-top: 1px solid var(--border);
+}
+
+.mermaid-block[data-error="true"] .mermaid-error {
+  display: block;
+}
+
+.mermaid-error summary {
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.mermaid-error pre {
+  background: var(--bg-code);
+  border-radius: 0;
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0 !important;
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.mermaid-source {
+  border-top: 1px solid var(--border);
+}
+
+.mermaid-source summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.mermaid-source pre {
+  border-radius: 0;
+  margin: 0 !important;
+}
+
 /* PLACEHOLDER_SECTION_5 */
 
 /* ===== Input Area ===== */

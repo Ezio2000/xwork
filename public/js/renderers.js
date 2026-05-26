@@ -20,6 +20,9 @@ export {
 
 marked.setOptions({ breaks: true, gfm: true });
 
+let mermaidCounter = 0;
+let mermaidInitDone = false;
+
 export function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -262,6 +265,106 @@ function renderResidualStrongInHtml(html) {
   return transformTextNodesInHtml(html, '**', replaceResidualStrongNode);
 }
 
+function mermaidSourceFromCode(codeEl) {
+  return codeEl.textContent || '';
+}
+
+function createMermaidBlock(source) {
+  const id = `mermaid-${Date.now().toString(36)}-${mermaidCounter++}`;
+  const escapedSource = escHtml(source);
+  return `
+    <div class="mermaid-block" data-mermaid-id="${id}">
+      <div class="mermaid-render" id="${id}" aria-label="Mermaid diagram">
+        <span class="mermaid-status">Rendering diagram...</span>
+      </div>
+      <details class="mermaid-error">
+        <summary>Diagram could not be rendered</summary>
+        <pre></pre>
+      </details>
+      <details class="mermaid-source">
+        <summary>Source</summary>
+        <pre><code>${escapedSource}</code></pre>
+      </details>
+    </div>
+  `;
+}
+
+function replaceMermaidCodeBlocks(html) {
+  if (!String(html || '').includes('language-mermaid')) return html;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return html;
+  const template = document.createElement('template');
+  if (!template.content) return html;
+  template.innerHTML = html;
+
+  for (const code of template.content.querySelectorAll('pre > code.language-mermaid')) {
+    const pre = code.parentElement;
+    if (!pre) continue;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = createMermaidBlock(mermaidSourceFromCode(code));
+    pre.replaceWith(wrapper.firstElementChild);
+  }
+
+  return template.innerHTML;
+}
+
+function initializeMermaid() {
+  if (mermaidInitDone || typeof mermaid === 'undefined' || typeof mermaid.initialize !== 'function') return;
+  mermaid.initialize({
+    startOnLoad: false,
+    suppressErrorRendering: true,
+    securityLevel: 'strict',
+    theme: 'default',
+  });
+  mermaidInitDone = true;
+}
+
+function setMermaidError(block, message) {
+  const target = block.querySelector('.mermaid-render');
+  const error = block.querySelector('.mermaid-error');
+  if (target) target.innerHTML = '<span class="mermaid-status">Diagram could not be rendered.</span>';
+  if (error) {
+    const pre = error.querySelector('pre');
+    if (pre) pre.textContent = message || 'Failed to render Mermaid diagram.';
+  }
+  block.dataset.error = 'true';
+}
+
+function renderMermaidBlock(block) {
+  if (block.dataset.rendered === 'true' || block.dataset.rendering === 'true') return;
+  const target = block.querySelector('.mermaid-render');
+  const source = block.querySelector('.mermaid-source code')?.textContent || '';
+  if (!target || !source.trim()) return;
+  if (typeof mermaid === 'undefined' || typeof mermaid.render !== 'function') {
+    setMermaidError(block, 'Mermaid renderer is unavailable.');
+    return;
+  }
+
+  initializeMermaid();
+  block.dataset.rendering = 'true';
+  const id = target.id || `mermaid-${Date.now().toString(36)}-${mermaidCounter++}`;
+  mermaid.render(`${id}-svg`, source)
+    .then(({ svg }) => {
+      target.innerHTML = svg;
+      block.dataset.rendered = 'true';
+      delete block.dataset.error;
+    })
+    .catch((err) => {
+      setMermaidError(block, err?.message || 'Failed to render Mermaid diagram.');
+    })
+    .finally(() => {
+      delete block.dataset.rendering;
+    });
+}
+
+export function renderPendingMermaid(root, options = {}) {
+  if (options.defer) return;
+  const base = root || (typeof document !== 'undefined' ? document : null);
+  if (!base?.querySelectorAll) return;
+  for (const block of base.querySelectorAll('.mermaid-block')) {
+    renderMermaidBlock(block);
+  }
+}
+
 function normalizeMarkdownForDisplay(text) {
   let value = String(text || '').replace(/^\n+/, '');
   value = value.replace(/([一-鿿　-〿＀-￯])(\*{1,2})/g, '$1​$2');
@@ -274,6 +377,7 @@ export function renderContent(text) {
   const escaped = protectEscapedDollars(normalizeMarkdownForDisplay(text));
   const display = protectDisplayMath(escaped.value);
   let html = marked.parse(display.value);
+  html = replaceMermaidCodeBlocks(html);
   html = renderResidualStrongInHtml(html);
   html = renderInlineMathInHtml(html);
   html = restorePlaceholders(html, 'DM', display.displayMath);

@@ -77,7 +77,8 @@ globalThis.document = {
   createElement() {
     return fakeElement();
   },
-  querySelector() {
+  querySelector(selector) {
+    if (selector === '#messages' && globalThis.__fakeMessages) return globalThis.__fakeMessages;
     return fakeElement();
   },
 };
@@ -86,13 +87,21 @@ globalThis.window = { CSS: { escape: String } };
 globalThis.CSS = { escape: String };
 globalThis.marked = {
   parse(value) {
-    return String(value || '');
+    return String(value || '').replace(/```mermaid\n([\s\S]*?)\n```/g, (_match, source) => (
+      `<pre><code class="language-mermaid">${source}</code></pre>`
+    ));
   },
   setOptions() {},
 };
 globalThis.katex = {
   renderToString(value) {
     return String(value || '');
+  },
+};
+globalThis.mermaid = {
+  initialize() {},
+  render() {
+    return Promise.resolve({ svg: '<svg data-test="svg-rendered"></svg>' });
   },
 };
 
@@ -430,6 +439,32 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.blocks[0].content, 'hello');
     assert.equal(hidden, 1);
     assert.equal(scheduled, 1);
+  });
+
+  it('can defer Mermaid rendering until a message is ready', async () => {
+    const { renderPendingMermaid } = await import('../public/js/renderers.js');
+    const target = { id: 'mermaid-test', innerHTML: '' };
+    const source = { textContent: 'flowchart TD\n  A --> B' };
+    const block = {
+      dataset: {},
+      querySelector(selector) {
+        if (selector === '.mermaid-render') return target;
+        if (selector === '.mermaid-source code') return source;
+        return null;
+      },
+    };
+    const root = {
+      querySelectorAll(selector) {
+        return selector === '.mermaid-block' ? [block] : [];
+      },
+    };
+
+    renderPendingMermaid(root, { defer: true });
+    assert.equal(target.innerHTML, '');
+
+    renderPendingMermaid(root);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(target.innerHTML, /svg-rendered/);
   });
 
   it('renders shell command output with terminal-like structure', async () => {

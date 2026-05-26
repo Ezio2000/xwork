@@ -56,7 +56,7 @@ function finalizeStreamingMessage(stream) {
   if (stream.finalized) return;
   stream.finalized = true;
   if (state.activeId === stream.conversationId) hideThinkingPopup();
-  stream.renderer.flush({ rememberCollapseState: false });
+  stream.renderer.flush({ rememberCollapseState: false, renderMermaid: true });
   const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
   if (streamingEl) {
     streamingEl.classList.remove('streaming');
@@ -138,7 +138,7 @@ export function renderActiveStreamingMessage() {
 
   const hasPlaceholder = Boolean(dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`));
   if (!hasPlaceholder) addAssistantPlaceholder(stream);
-  stream.renderer.flush({ rememberCollapseState: false });
+  stream.renderer.flush({ rememberCollapseState: false, renderMermaid: stream.status !== 'running' });
   setSendButtonState();
   return true;
 }
