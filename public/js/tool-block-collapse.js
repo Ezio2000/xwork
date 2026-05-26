@@ -15,6 +15,7 @@ export const AUTO_COLLAPSE_TOOL_BLOCK_TYPES = new Set([
   'subagent-run',
   'ask-user',
   'tool-running',
+  'about-xwork',
 ]);
 
 const SPECIAL_TOOL_CALL_NAMES = new Set([
@@ -125,5 +126,6 @@ export function collapseToolToggleElements(rootEl) {
     '.web-fetch-toggle',
     '.subagent-toggle',
     '.uuid-toggle',
+    '.about-xwork-toggle',
   ].join(',')).forEach(toggle => toggle.classList.add('collapsed'));
 }

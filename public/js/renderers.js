@@ -961,6 +961,86 @@ function renderAskUser(block, collapsed = false) {
   `;
 }
 
+function formatAboutValue(value) {
+  if (value === null || value === undefined) return '<span class="about-nil">—</span>';
+  if (typeof value === 'boolean') return `<span class="about-bool">${value ? '✓' : '✗'}</span>`;
+  if (typeof value === 'number') return `<span class="about-number">${value}</span>`;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '<span class="about-nil">(empty)</span>';
+    const isSimple = value.every(v => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean');
+    if (isSimple) {
+      return `<span class="about-list">${value.map(v => `<span class="about-chip">${escHtml(String(v))}</span>`).join(' ')}</span>`;
+    }
+    return value.map((item, i) => {
+      if (typeof item === 'object' && item !== null) {
+        return `<div class="about-nested-card"><span class="about-index">#${i + 1}</span>${renderAboutPairs(item)}</div>`;
+      }
+      return `<div class="about-row"><span class="about-index">#${i + 1}</span><span class="about-value">${formatAboutValue(item)}</span></div>`;
+    }).join('');
+  }
+  if (typeof value === 'object') {
+    return renderAboutPairs(value);
+  }
+  return `<span class="about-string">${escHtml(String(value))}</span>`;
+}
+
+function renderAboutPairs(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+  const keys = Object.keys(obj);
+  if (keys.length === 0) return '<span class="about-nil">(empty)</span>';
+  return `<dl class="about-pairs">${keys.map(key => {
+    const val = obj[key];
+    return `<div class="about-row"><dt>${escHtml(key)}</dt><dd>${formatAboutValue(val)}</dd></div>`;
+  }).join('')}</dl>`;
+}
+
+function renderAboutXwork(block, collapsed = false) {
+  const query = block.query || '';
+  const title = block.title || block.name || 'xwork info';
+  const error = block.error || '';
+  const hint = block.hint || '';
+  const meta = [query, block.error ? 'error' : 'ok'].filter(Boolean).join(' · ');
+
+  if (error) {
+    return `
+      <div class="shell-command-toggle about-xwork-toggle${collapsed ? ' collapsed' : ''}">
+        <div class="shell-command-toggle-header" data-toggle-parent>
+          <span class="shell-command-toggle-label">
+            <span class="shell-command-icon">ℹ</span>
+            about_xwork ${escHtml(query)}
+          </span>
+          <span class="shell-command-meta status-error">${escHtml(error)}</span>
+          <span class="shell-command-toggle-arrow">&#9662;</span>
+        </div>
+        <div class="shell-command-toggle-body">
+          <pre class="shell-command-output"><code>${escHtml(JSON.stringify(block, null, 2))}</code></pre>
+        </div>
+      </div>
+    `;
+  }
+
+  const pairs = renderAboutPairs(block);
+
+  return `
+    <div class="shell-command-toggle about-xwork-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">ℹ</span>
+          ${escHtml(title)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <div class="about-xwork-body">
+          ${pairs}
+          ${hint ? `<div class="about-hint">${escHtml(hint)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 const blockRenderers = {
   'text': (block) => renderContent(stripLeadingNewlines(stripSearchQueryText(block.content || ''))),
   'source-cards': (block, collapsed) => renderSourceCards(block.sources || [], block.collapsed ?? collapsed, block.searchCount || 0),
@@ -980,6 +1060,7 @@ const blockRenderers = {
   'tool-running': (block, collapsed) => renderToolRunning(block, block.collapsed ?? collapsed),
   'shell-command': (block, collapsed) => renderShellCommand(block, block.collapsed ?? collapsed),
   'ask-user': (block, collapsed) => renderAskUser(block, block.collapsed ?? collapsed),
+  'about-xwork': (block, collapsed) => renderAboutXwork(block, block.collapsed ?? collapsed),
 };
 
 export function renderBlocks(blocks, collapsed) {
