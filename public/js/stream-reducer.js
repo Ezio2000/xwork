@@ -291,7 +291,7 @@ function applyToolCall(evt, stream, effects) {
 }
 
 function applyToolDelta(evt, stream, effects) {
-  if (evt.name === 'feishu_read' && evt.id) {
+  if ((evt.name === 'feishu_read' || evt.name === 'feishu_auth') && evt.id) {
     const existing = stream.blocks.find(item => item.type === 'feishu-auth' && item.toolCallId === evt.id);
     if (evt.phase === 'feishu_auth_pending') {
       const url = evt.verificationUrl || evt.authorizationUrl || '';

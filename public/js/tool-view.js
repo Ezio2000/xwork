@@ -8,7 +8,7 @@ function prettyJson(value) {
 
 function editableJsonConfig(tool, config = tool.config || {}) {
   const out = { ...(config && typeof config === 'object' && !Array.isArray(config) ? config : {}) };
-  if (tool.id === 'feishu_read') {
+  if (tool.id === 'feishu_read' || tool.id === 'feishu_auth') {
     delete out.app_id;
     delete out.app_secret;
     delete out.appId;
@@ -28,7 +28,7 @@ function configValue(config, key, fallback = '') {
 }
 
 function renderDynamicConfigFields(tool) {
-  if (tool.id !== 'feishu_read') return '';
+  if (tool.id !== 'feishu_read' && tool.id !== 'feishu_auth') return '';
   const config = tool.config || {};
   const appId = configValue(config, 'app_id', configValue(config, 'appId'));
   const appSecret = configValue(config, 'app_secret', configValue(config, 'appSecret'));

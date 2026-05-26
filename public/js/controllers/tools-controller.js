@@ -64,7 +64,7 @@ function parseConfigForm(form) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('Config JSON must be an object');
   }
-  if (tool?.id === 'feishu_read') {
+  if (tool?.id === 'feishu_read' || tool?.id === 'feishu_auth') {
     const currentConfig = tool.config && typeof tool.config === 'object' && !Array.isArray(tool.config) ? tool.config : {};
     config = {
       app_id: currentConfig.app_id ?? currentConfig.appId ?? '',

@@ -40,7 +40,7 @@ npm run dev      # 开发模式 (文件变更自动重启)
 
 ## 飞书文档 / 表格工具
 
-内置 `feishu_read` 工具可读取飞书新版文档、旧版文档和电子表格范围数据。该工具默认关闭，可在 Tools 页面展开 `Feishu Read` 的 Parameters，填写 `app_id` / `app_secret` 后保存并启用。
+内置 `feishu_read` 工具可读取飞书新版文档、旧版文档、知识库文档和电子表格范围数据。`feishu_auth` 工具负责当前用户授权，行为参考 `lark-cli auth login` 的 Device Flow：启动授权、弹出飞书授权页、轮询等待用户同意，然后保存 `user_access_token`。这两个工具默认关闭，可在 Tools 页面展开 Parameters，填写 `app_id` / `app_secret` 后保存并启用。
 
 也可以用环境变量配置飞书自建应用凭据：
 
@@ -50,13 +50,16 @@ $env:FEISHU_APP_SECRET="xxx"
 npm start
 ```
 
-还可以用工具配置里的 `accessToken` 直接提供 `tenant_access_token` 或 `user_access_token`。如果要用 `get_current_user` 查询当前授权用户，可以在页面配置 `user_access_token`，或设置 `FEISHU_USER_ACCESS_TOKEN`；未配置时工具会走飞书 Device Flow，返回 `verificationUrl` 和 `deviceCode`，用户授权后再用 `complete_current_user_authorization` 自动保存 token。启用后模型可用飞书 URL 或 token 调用：
+还可以用工具配置里的 `accessToken` 直接提供 `tenant_access_token` 或 `user_access_token`。如果要用 `get_current_user` 查询当前授权用户，可以在页面配置 `user_access_token`，或设置 `FEISHU_USER_ACCESS_TOKEN`；未配置或已失效时 `feishu_read` 会自动委托同一套 `feishu_auth` Device Flow，前端弹出授权子页面，用户同意后工具继续执行。启用后模型可用飞书 URL 或 token 调用：
 
 ```json
+{ "action": "login" }
+{ "action": "start" }
+{ "action": "complete", "deviceCode": "xxx" }
 { "action": "read_doc", "url": "https://xxx.feishu.cn/docx/..." }
+{ "action": "read_wiki", "url": "https://xxx.feishu.cn/wiki/..." }
 { "action": "read_sheet", "url": "https://xxx.feishu.cn/sheets/...", "ranges": ["sheetId!A1:D20"] }
 { "action": "get_current_user" }
-{ "action": "complete_current_user_authorization", "deviceCode": "xxx" }
 { "action": "get_user", "userId": "ou_xxx", "userIdType": "open_id" }
 ```
 
