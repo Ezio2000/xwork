@@ -225,7 +225,7 @@ describe('feishu_read tool', () => {
     }
   });
 
-  it('returns an authorization URL when current user token is missing', async () => {
+  it('starts device authorization explicitly', async () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (url, options) => {
       assert.match(String(url), /\/oauth\/v1\/device_authorization$/);
@@ -247,12 +247,12 @@ describe('feishu_read tool', () => {
       user_access_token: '',
     }, async () => {
       const result = await runTool(
-        {
-          id: 'toolu_feishu_authorize',
-          name: 'feishu_read',
-          input: { action: 'get_current_user' },
-        },
-        { conversationId: 'test-convo', source: 'test', environment: 'test', persistToolRun: false },
+          {
+            id: 'toolu_feishu_authorize',
+            name: 'feishu_read',
+            input: { action: 'authorize_current_user' },
+          },
+          { conversationId: 'test-convo', source: 'test', environment: 'test', persistToolRun: false },
       );
 
       assert.equal(result.isError, false, String(result.output || ''));
@@ -263,6 +263,75 @@ describe('feishu_read tool', () => {
       assert.match(result.render.data.content, /authorizationUrl/);
     });
     globalThis.fetch = previousFetch;
+  });
+
+  it('auto-opens device authorization, waits, saves token, and returns current user', async () => {
+    const previousFetch = globalThis.fetch;
+    const events = [];
+    globalThis.fetch = async (url, options) => {
+      const value = String(url);
+      if (value.includes('/oauth/v1/device_authorization')) {
+        return jsonResponse({
+          device_code: 'device-code-1',
+          expires_in: 600,
+          interval: 2,
+          verification_url: 'https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=abc&user_code=ABCD-EFGH',
+        });
+      }
+      if (value.includes('/open-apis/authen/v2/oauth/token')) {
+        return jsonResponse({
+          access_token: 'u-device-token',
+          expires_in: 7200,
+          refresh_token: 'refresh-device-token',
+          refresh_expires_in: 2592000,
+        });
+      }
+      if (value.includes('/open-apis/authen/v1/user_info')) {
+        assert.equal(options.headers.Authorization, 'Bearer u-device-token');
+        return jsonResponse({
+          code: 0,
+          data: {
+            open_id: 'ou_current',
+            user_id: 'current_user',
+            name: 'Current User',
+          },
+        });
+      }
+      throw new Error(`unexpected URL ${value}`);
+    };
+
+    try {
+      await withFeishuReadEnabled({
+        app_id: 'cli_xxx',
+        app_secret: 'secret',
+        user_access_token: '',
+      }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_auto_auth',
+            name: 'feishu_read',
+            input: { action: 'get_current_user' },
+          },
+          {
+            conversationId: 'test-convo',
+            source: 'test',
+            environment: 'test',
+            persistToolRun: false,
+            emitToolEvent: event => events.push(event),
+          },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.user.name, 'Current User');
+        assert.equal(events[0].phase, 'feishu_auth_pending');
+        assert.equal(events[0].deviceCode, 'device-code-1');
+        assert.equal(events[1].phase, 'feishu_auth_complete');
+        const tool = (await listTools()).find(item => item.id === 'feishu_read');
+        assert.equal(tool.config.user_access_token, 'u-device-token');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 
   it('completes device authorization and saves the user access token', async () => {
@@ -296,7 +365,7 @@ describe('feishu_read tool', () => {
         );
 
         assert.equal(result.isError, false, String(result.output || ''));
-        assert.equal(result.output.userAccessToken, 'u-device-token');
+        assert.equal(result.output.hasRefreshToken, true);
         const tool = (await listTools()).find(item => item.id === 'feishu_read');
         assert.equal(tool.config.user_access_token, 'u-device-token');
         assert.equal(tool.config.refresh_token, 'refresh-device-token');

@@ -709,6 +709,43 @@ function renderFileSnippet(block, collapsed = false) {
   `;
 }
 
+function renderFeishuAuth(block, collapsed = false) {
+  const waiting = block.status !== 'completed';
+  const url = block.verificationUrl || block.authorizationUrl || '';
+  const meta = waiting
+    ? [
+      'waiting for authorization',
+      block.popupOpened ? 'popup opened' : '',
+      block.popupBlocked ? 'popup blocked' : '',
+      block.expiresAt ? `expires ${formatDateTime(block.expiresAt)}` : '',
+    ].filter(Boolean).join(' · ')
+    : 'authorized';
+  const message = waiting
+    ? 'Complete Feishu authorization in the popup window. If it did not open, use the button below.'
+    : 'Feishu authorization completed.';
+
+  return `
+    <div class="shell-command-toggle feishu-auth-toggle${collapsed ? ' collapsed' : ''}">
+      <div class="shell-command-toggle-header" data-toggle-parent>
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">↗</span>
+          Feishu authorization
+        </span>
+        <span class="shell-command-meta ${waiting ? 'status-running' : 'status-ok'}">${escHtml(meta)}</span>
+        <span class="shell-command-toggle-arrow">&#9662;</span>
+      </div>
+      <div class="shell-command-toggle-body">
+        <div class="feishu-auth-body">
+          <p>${escHtml(message)}</p>
+          ${url && waiting ? `<button type="button" class="btn-primary small" data-feishu-auth-url="${escHtml(url)}">Open Feishu</button>` : ''}
+          ${block.popupBlocked && waiting ? '<p class="feishu-auth-warning">Your browser blocked the popup. Click Open Feishu to continue.</p>' : ''}
+          ${block.deviceCode && waiting ? `<code>${escHtml(block.deviceCode)}</code>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderShellCommand(block, collapsed = false) {
   const exitCode = block.exitCode;
   const timedOut = block.timedOut === true;
@@ -927,6 +964,7 @@ const blockRenderers = {
   'web-fetch': (block, collapsed) => renderWebFetch(block, block.collapsed ?? collapsed),
   'browser-action': (block, collapsed) => renderBrowserAction(block, block.collapsed ?? collapsed),
   'file-snippet': (block, collapsed) => renderFileSnippet(block, block.collapsed ?? collapsed),
+  'feishu-auth': (block, collapsed) => renderFeishuAuth(block, block.collapsed ?? collapsed),
   'file-write': (block, collapsed) => renderFileWrite(block, block.collapsed ?? collapsed),
   'symbol-list': (block, collapsed) => renderSymbolList(block, block.collapsed ?? collapsed),
   'grep-matches': (block, collapsed) => renderGrepMatches(block, block.collapsed ?? collapsed),
@@ -1004,6 +1042,14 @@ export function installRendererEventHandlers(root = document) {
     const toggle = event.target.closest('[data-toggle-parent]');
     if (toggle) {
       toggle.parentElement.classList.toggle('collapsed');
+      return;
+    }
+
+    const feishuAuth = event.target.closest('[data-feishu-auth-url]');
+    if (feishuAuth) {
+      event.preventDefault();
+      const url = feishuAuth.dataset.feishuAuthUrl;
+      if (url) window.open(url, `xwork-feishu-auth-manual`, 'popup,width=960,height=760,noopener,noreferrer');
       return;
     }
 

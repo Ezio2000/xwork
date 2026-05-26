@@ -291,6 +291,55 @@ function applyToolCall(evt, stream, effects) {
 }
 
 function applyToolDelta(evt, stream, effects) {
+  if (evt.name === 'feishu_read' && evt.id) {
+    const existing = stream.blocks.find(item => item.type === 'feishu-auth' && item.toolCallId === evt.id);
+    if (evt.phase === 'feishu_auth_pending') {
+      const url = evt.verificationUrl || evt.authorizationUrl || '';
+      const block = existing || {
+        type: 'feishu-auth',
+        toolCallId: evt.id,
+        status: 'waiting',
+        collapsed: false,
+      };
+      Object.assign(block, {
+        status: 'waiting',
+        verificationUrl: url,
+        authorizationUrl: url,
+        deviceCode: evt.deviceCode || block.deviceCode || '',
+        expiresAt: evt.expiresAt || block.expiresAt || '',
+        popupBlocked: block.popupBlocked === true,
+        popupOpened: block.popupOpened === true,
+      });
+      if (!existing) stream.blocks.push(block);
+      if (url && !block.popupAttempted && typeof window !== 'undefined') {
+        block.popupAttempted = true;
+        try {
+          const popup = window.open(url, `xwork-feishu-auth-${evt.id}`, 'popup,width=960,height=760,noopener,noreferrer');
+          block.popupOpened = Boolean(popup);
+          block.popupBlocked = !popup;
+        } catch {
+          block.popupBlocked = true;
+        }
+      }
+      effects.scheduleRender();
+      return;
+    }
+    if (evt.phase === 'feishu_auth_complete') {
+      const block = existing || {
+        type: 'feishu-auth',
+        toolCallId: evt.id,
+      };
+      Object.assign(block, {
+        status: 'completed',
+        collapsed: true,
+        popupBlocked: false,
+      });
+      if (!existing) stream.blocks.push(block);
+      effects.scheduleRender();
+      return;
+    }
+  }
+
   if (evt.name === 'browser_action' && evt.id) {
     const block = stream.blocks.find(item => item.type === 'browser-action' && item.toolCallId === evt.id);
     if (!block) return;
