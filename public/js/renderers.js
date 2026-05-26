@@ -52,29 +52,169 @@ export function formatDateTime(value) {
   return date.toLocaleString('zh-CN', { hour12: false });
 }
 
-function renderMath(text) {
+function renderDisplayMath(formula) {
+  try {
+    return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
+  } catch {
+    return `<code>$$${escHtml(formula)}$$</code>`;
+  }
+}
+
+function renderInlineMath(formula) {
+  try {
+    return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
+  } catch {
+    return `<code>$${escHtml(formula)}$</code>`;
+  }
+}
+
+function placeholder(prefix, index) {
+  return `⟦${prefix}${index}⟧`;
+}
+
+function restorePlaceholders(html, prefix, values) {
+  let out = html;
+  for (let i = 0; i < values.length; i += 1) {
+    out = out.split(placeholder(prefix, i)).join(values[i]);
+  }
+  return out;
+}
+
+function protectEscapedDollars(text) {
+  const escapedDollars = [];
+  const value = String(text || '').replace(/\\+\$/g, (match) => {
+    const slashCount = match.length - 1;
+    if (slashCount % 2 === 0) return match;
+    escapedDollars.push('$');
+    return `${'\\'.repeat(slashCount - 1)}${placeholder('DL', escapedDollars.length - 1)}`;
+  });
+  return { value, escapedDollars };
+}
+
+function protectDisplayMath(text) {
   let value = String(text || '');
   const displayMath = [];
   value = value.replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => {
-    try {
-      displayMath.push(katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false }));
-    } catch {
-      displayMath.push(`<code>$${escHtml(formula)}$$</code>`);
+    displayMath.push(renderDisplayMath(formula));
+    return placeholder('DM', displayMath.length - 1);
+  });
+  return { value, displayMath };
+}
+
+function isEscaped(value, index) {
+  let slashCount = 0;
+  for (let i = index - 1; i >= 0 && value[i] === '\\'; i -= 1) slashCount += 1;
+  return slashCount % 2 === 1;
+}
+
+function isWhitespace(value) {
+  return /\s/.test(value || '');
+}
+
+function isAsciiLetterOrDigit(value) {
+  return /[A-Za-z0-9]/.test(value || '');
+}
+
+function isInlineMathStart(value, index) {
+  if (value[index] !== '$' || isEscaped(value, index)) return false;
+  const next = value[index + 1];
+  if (!next || next === '$' || next === '/' || isWhitespace(next) || /[0-9]/.test(next)) return false;
+  const prev = value[index - 1];
+  return !(prev && isAsciiLetterOrDigit(prev));
+}
+
+function isInlineMathEnd(value, start, index) {
+  if (value[index] !== '$' || isEscaped(value, index) || index <= start + 1) return false;
+  const prev = value[index - 1];
+  const next = value[index + 1];
+  if (isWhitespace(prev)) return false;
+  return !(next && isAsciiLetterOrDigit(next));
+}
+
+function findInlineMathEnd(value, start) {
+  for (let i = start + 1; i < value.length; i += 1) {
+    if (value[i] === '\n') return -1;
+    if (isInlineMathEnd(value, start, i)) return i;
+  }
+  return -1;
+}
+
+function inlineMathParts(text) {
+  const value = String(text || '');
+  const parts = [];
+  let cursor = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    if (!isInlineMathStart(value, i)) continue;
+    const end = findInlineMathEnd(value, i);
+    if (end === -1) continue;
+    if (cursor < i) parts.push({ type: 'text', value: value.slice(cursor, i) });
+    parts.push({ type: 'math', value: value.slice(i + 1, end) });
+    cursor = end + 1;
+    i = end;
+  }
+
+  if (!parts.length) return null;
+  if (cursor < value.length) parts.push({ type: 'text', value: value.slice(cursor) });
+  return parts;
+}
+
+const INLINE_MATH_SKIP_TAGS = new Set(['A', 'BUTTON', 'CODE', 'KBD', 'PRE', 'SAMP', 'SCRIPT', 'STYLE', 'TEXTAREA']);
+
+function shouldSkipInlineMathNode(node, root) {
+  for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
+    if (INLINE_MATH_SKIP_TAGS.has(el.tagName)) return true;
+  }
+  return false;
+}
+
+function appendHtml(fragment, html) {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  fragment.append(...template.content.childNodes);
+}
+
+function replaceInlineMathNode(node) {
+  const parts = inlineMathParts(node.nodeValue);
+  if (!parts) return;
+
+  const fragment = document.createDocumentFragment();
+  for (const part of parts) {
+    if (part.type === 'text') {
+      fragment.append(document.createTextNode(part.value));
+    } else {
+      appendHtml(fragment, renderInlineMath(part.value));
     }
-    return `\x00DM${displayMath.length - 1}\x00`;
+  }
+  node.parentNode.replaceChild(fragment, node);
+}
+
+function renderInlineMathInHtml(html) {
+  if (!String(html || '').includes('$')) return html;
+  if (
+    typeof document === 'undefined'
+    || typeof document.createElement !== 'function'
+    || typeof document.createTreeWalker !== 'function'
+    || typeof NodeFilter === 'undefined'
+  ) return html;
+
+  const template = document.createElement('template');
+  if (!template.content) return html;
+  template.innerHTML = html;
+
+  const nodes = [];
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue.includes('$')) return NodeFilter.FILTER_REJECT;
+      if (shouldSkipInlineMathNode(node, template.content)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
   });
 
-  const inlineMath = [];
-  value = value.replace(/\$(.+?)\$/g, (_, formula) => {
-    try {
-      inlineMath.push(katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false }));
-    } catch {
-      inlineMath.push(`<code>$${escHtml(formula)}$</code>`);
-    }
-    return `\x00IM${inlineMath.length - 1}\x00`;
-  });
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) replaceInlineMathNode(node);
 
-  return { value, displayMath, inlineMath };
+  return template.innerHTML;
 }
 
 function normalizeMarkdownForDisplay(text) {
@@ -86,10 +226,12 @@ function normalizeMarkdownForDisplay(text) {
 }
 
 export function renderContent(text) {
-  const { value, displayMath, inlineMath } = renderMath(text);
-  let html = marked.parse(normalizeMarkdownForDisplay(value));
-  html = html.replace(/\x00DM(\d+)\x00/g, (_, i) => displayMath[+i]);
-  html = html.replace(/\x00IM(\d+)\x00/g, (_, i) => inlineMath[+i]);
+  const escaped = protectEscapedDollars(normalizeMarkdownForDisplay(text));
+  const display = protectDisplayMath(escaped.value);
+  let html = marked.parse(display.value);
+  html = renderInlineMathInHtml(html);
+  html = restorePlaceholders(html, 'DM', display.displayMath);
+  html = restorePlaceholders(html, 'DL', escaped.escapedDollars);
   return html;
 }
 

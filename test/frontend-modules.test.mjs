@@ -33,6 +33,7 @@ function fakeClassList() {
 }
 
 function fakeElement() {
+  const attributes = new Map();
   return {
     style: {},
     classList: fakeClassList(),
@@ -45,7 +46,19 @@ function fakeElement() {
     scrollTop: 0,
     scrollHeight: 0,
     addEventListener() {},
+    setAttribute(name, value) {
+      attributes.set(name, String(value));
+    },
+    getAttribute(name) {
+      return attributes.get(name) ?? null;
+    },
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
     appendChild() {},
+    contains(target) {
+      return target === this;
+    },
     closest() {
       return null;
     },
@@ -155,19 +168,19 @@ describe('frontend module boundaries', () => {
     assert.equal(typeof modules[7].showUsagePage, 'function');
   });
 
-  it('shows the Feishu token clear button only when feishu_auth is enabled', async () => {
+  it('shows the Feishu token menu only when feishu_auth is enabled', async () => {
     const { state } = await import('../public/js/state.js');
     const { dom } = await import('../public/js/dom.js');
     const { renderChatHeaderActions } = await import('../public/js/controllers/chat-header-controller.js');
 
     state.tools = [{ id: 'feishu_auth', enabled: false, config: {} }];
     renderChatHeaderActions();
-    assert.equal(dom.btnClearFeishuToken.classList.contains('hidden'), true);
+    assert.equal(dom.feishuTokenMenuWrap.classList.contains('hidden'), true);
 
     state.tools = [{ id: 'feishu_auth', enabled: true, config: { user_access_token: 'u-token' } }];
     renderChatHeaderActions();
-    assert.equal(dom.btnClearFeishuToken.classList.contains('hidden'), false);
-    assert.equal(dom.btnClearFeishuToken.textContent, 'Clear Feishu Token');
+    assert.equal(dom.feishuTokenMenuWrap.classList.contains('hidden'), false);
+    assert.equal(dom.btnFeishuTokenMenu.getAttribute('aria-label'), 'Feishu token actions');
   });
 
   it('clears Feishu token through dedicated endpoint without sending config overwrite', async () => {
@@ -175,8 +188,11 @@ describe('frontend module boundaries', () => {
     const { dom } = await import('../public/js/dom.js');
     const { bindChatHeaderController } = await import('../public/js/controllers/chat-header-controller.js');
     const listeners = {};
+    dom.btnFeishuTokenMenu.addEventListener = (event, handler) => {
+      listeners[`menu:${event}`] = handler;
+    };
     dom.btnClearFeishuToken.addEventListener = (event, handler) => {
-      listeners[event] = handler;
+      listeners[`clear:${event}`] = handler;
     };
 
     const calls = [];
@@ -211,7 +227,10 @@ describe('frontend module boundaries', () => {
         { id: 'feishu_read', enabled: true, config: { user_access_token: 'read-token' } },
       ];
       bindChatHeaderController();
-      await listeners.click();
+      dom.feishuTokenMenu.classList.add('hidden');
+      listeners['menu:click']({ stopPropagation() {} });
+      assert.equal(dom.feishuTokenMenu.classList.contains('hidden'), false);
+      await listeners['clear:click']();
     } finally {
       globalThis.fetch = originalFetch;
     }
