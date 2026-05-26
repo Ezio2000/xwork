@@ -60,7 +60,7 @@ export function createStreamRenderScheduler(stream) {
     }
   }
 
-  function renderNow({ rememberCollapseState = true, renderMermaid = false } = {}) {
+  function renderNow({ rememberCollapseState = true, renderMermaid = 'closed' } = {}) {
     timerId = 0;
     frameId = 0;
     lastRenderedAt = Date.now();
@@ -73,7 +73,10 @@ export function createStreamRenderScheduler(stream) {
         : block
     ));
     contentEl.innerHTML = renderBlocks(blocks, false);
-    renderPendingMermaid(contentEl, { defer: !renderMermaid });
+    renderPendingMermaid(contentEl, {
+      defer: renderMermaid === false,
+      closedOnly: renderMermaid === 'closed',
+    });
     scrollRunningSubagentsToBottom(contentEl);
     scrollBottom();
   }

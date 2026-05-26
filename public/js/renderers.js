@@ -22,6 +22,8 @@ marked.setOptions({ breaks: true, gfm: true });
 
 let mermaidCounter = 0;
 let mermaidInitDone = false;
+const mermaidRenderCache = new Map();
+const MERMAID_RENDER_CACHE_LIMIT = 80;
 
 export function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -269,17 +271,41 @@ function mermaidSourceFromCode(codeEl) {
   return codeEl.textContent || '';
 }
 
-function createMermaidBlock(source) {
+function mermaidCacheKey(source) {
+  return String(source || '').trim();
+}
+
+function setMermaidCache(key, value) {
+  if (!key) return;
+  if (mermaidRenderCache.has(key)) mermaidRenderCache.delete(key);
+  mermaidRenderCache.set(key, value);
+  while (mermaidRenderCache.size > MERMAID_RENDER_CACHE_LIMIT) {
+    const oldestKey = mermaidRenderCache.keys().next().value;
+    mermaidRenderCache.delete(oldestKey);
+  }
+}
+
+function createMermaidBlock(source, pending = false) {
   const id = `mermaid-${Date.now().toString(36)}-${mermaidCounter++}`;
   const escapedSource = escHtml(source);
+  const cached = !pending ? mermaidRenderCache.get(mermaidCacheKey(source)) : null;
+  const stateAttr = cached?.state === 'rendered'
+    ? ' data-rendered="true"'
+    : cached?.state === 'error'
+      ? ' data-error="true"'
+      : '';
+  const renderContent = cached?.state === 'rendered'
+    ? cached.svg
+    : `<span class="mermaid-status">${cached?.state === 'error' ? 'Diagram could not be rendered.' : 'Rendering diagram...'}</span>`;
+  const errorText = cached?.state === 'error' ? escHtml(cached.error) : '';
   return `
-    <div class="mermaid-block" data-mermaid-id="${id}">
+    <div class="mermaid-block" data-mermaid-id="${id}"${pending ? ' data-pending="true"' : ''}${stateAttr}>
       <div class="mermaid-render" id="${id}" aria-label="Mermaid diagram">
-        <span class="mermaid-status">Rendering diagram...</span>
+        ${renderContent}
       </div>
       <details class="mermaid-error">
         <summary>Diagram could not be rendered</summary>
-        <pre></pre>
+        <pre>${errorText}</pre>
       </details>
       <details class="mermaid-source">
         <summary>Source</summary>
@@ -287,6 +313,25 @@ function createMermaidBlock(source) {
       </details>
     </div>
   `;
+}
+
+function hasOpenTrailingMermaidFence(markdown) {
+  let inFence = false;
+  let inMermaidFence = false;
+
+  for (const line of String(markdown || '').split(/\r?\n/)) {
+    const fence = line.match(/^\s*```([^\s`]*)?.*$/);
+    if (!fence) continue;
+    if (!inFence) {
+      inFence = true;
+      inMermaidFence = /^mermaid$/i.test(fence[1] || '');
+    } else if (/^\s*```\s*$/.test(line)) {
+      inFence = false;
+      inMermaidFence = false;
+    }
+  }
+
+  return inFence && inMermaidFence;
 }
 
 function replaceMermaidCodeBlocks(html) {
@@ -307,6 +352,26 @@ function replaceMermaidCodeBlocks(html) {
   return template.innerHTML;
 }
 
+function markLastOpenMermaidBlockPending(html, markdown) {
+  if (!String(markdown || '').includes('```mermaid')) return html;
+  if (!String(html || '').includes('language-mermaid')) return html;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return html;
+  if (!hasOpenTrailingMermaidFence(markdown)) return html;
+
+  const template = document.createElement('template');
+  if (!template.content) return html;
+  template.innerHTML = html;
+  const codes = template.content.querySelectorAll('pre > code.language-mermaid');
+  const code = codes[codes.length - 1];
+  if (!code) return html;
+  const pre = code.parentElement;
+  if (!pre) return html;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = createMermaidBlock(mermaidSourceFromCode(code), true);
+  pre.replaceWith(wrapper.firstElementChild);
+  return template.innerHTML;
+}
+
 function initializeMermaid() {
   if (mermaidInitDone || typeof mermaid === 'undefined' || typeof mermaid.initialize !== 'function') return;
   mermaid.initialize({
@@ -321,12 +386,45 @@ function initializeMermaid() {
 function setMermaidError(block, message) {
   const target = block.querySelector('.mermaid-render');
   const error = block.querySelector('.mermaid-error');
+  const source = block.querySelector('.mermaid-source code')?.textContent || '';
+  const errorMessage = message || 'Failed to render Mermaid diagram.';
   if (target) target.innerHTML = '<span class="mermaid-status">Diagram could not be rendered.</span>';
   if (error) {
     const pre = error.querySelector('pre');
-    if (pre) pre.textContent = message || 'Failed to render Mermaid diagram.';
+    if (pre) pre.textContent = errorMessage;
   }
   block.dataset.error = 'true';
+  if (source.trim()) setMermaidCache(mermaidCacheKey(source), { state: 'error', error: errorMessage });
+}
+
+function applyCachedMermaid(block, target, source, cached) {
+  if (cached?.state === 'rendered') {
+    target.innerHTML = cached.svg;
+    block.dataset.rendered = 'true';
+    delete block.dataset.error;
+    return true;
+  }
+  if (cached?.state === 'error') {
+    setMermaidError(block, cached.error);
+    return true;
+  }
+  if (cached?.state !== 'rendering' || !cached.promise) return false;
+
+  block.dataset.rendering = 'true';
+  cached.promise
+    .then(({ svg }) => {
+      target.innerHTML = svg;
+      block.dataset.rendered = 'true';
+      setMermaidCache(mermaidCacheKey(source), { state: 'rendered', svg });
+      delete block.dataset.error;
+    })
+    .catch((err) => {
+      setMermaidError(block, err?.message || 'Failed to render Mermaid diagram.');
+    })
+    .finally(() => {
+      delete block.dataset.rendering;
+    });
+  return true;
 }
 
 function renderMermaidBlock(block) {
@@ -334,6 +432,8 @@ function renderMermaidBlock(block) {
   const target = block.querySelector('.mermaid-render');
   const source = block.querySelector('.mermaid-source code')?.textContent || '';
   if (!target || !source.trim()) return;
+  const cacheKey = mermaidCacheKey(source);
+  if (applyCachedMermaid(block, target, source, mermaidRenderCache.get(cacheKey))) return;
   if (typeof mermaid === 'undefined' || typeof mermaid.render !== 'function') {
     setMermaidError(block, 'Mermaid renderer is unavailable.');
     return;
@@ -342,10 +442,20 @@ function renderMermaidBlock(block) {
   initializeMermaid();
   block.dataset.rendering = 'true';
   const id = target.id || `mermaid-${Date.now().toString(36)}-${mermaidCounter++}`;
-  mermaid.render(`${id}-svg`, source)
+  let renderPromise;
+  try {
+    renderPromise = Promise.resolve(mermaid.render(`${id}-svg`, source));
+    setMermaidCache(cacheKey, { state: 'rendering', promise: renderPromise });
+  } catch (err) {
+    setMermaidError(block, err?.message || 'Failed to render Mermaid diagram.');
+    delete block.dataset.rendering;
+    return;
+  }
+  renderPromise
     .then(({ svg }) => {
       target.innerHTML = svg;
       block.dataset.rendered = 'true';
+      setMermaidCache(cacheKey, { state: 'rendered', svg });
       delete block.dataset.error;
     })
     .catch((err) => {
@@ -361,6 +471,7 @@ export function renderPendingMermaid(root, options = {}) {
   const base = root || (typeof document !== 'undefined' ? document : null);
   if (!base?.querySelectorAll) return;
   for (const block of base.querySelectorAll('.mermaid-block')) {
+    if (options.closedOnly && block.dataset.pending === 'true') continue;
     renderMermaidBlock(block);
   }
 }
@@ -377,6 +488,7 @@ export function renderContent(text) {
   const escaped = protectEscapedDollars(normalizeMarkdownForDisplay(text));
   const display = protectDisplayMath(escaped.value);
   let html = marked.parse(display.value);
+  html = markLastOpenMermaidBlockPending(html, display.value);
   html = replaceMermaidCodeBlocks(html);
   html = renderResidualStrongInHtml(html);
   html = renderInlineMathInHtml(html);

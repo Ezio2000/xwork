@@ -443,28 +443,44 @@ describe('frontend module boundaries', () => {
 
   it('can defer Mermaid rendering until a message is ready', async () => {
     const { renderPendingMermaid } = await import('../public/js/renderers.js');
-    const target = { id: 'mermaid-test', innerHTML: '' };
+    const pendingTarget = { id: 'mermaid-pending', innerHTML: '' };
+    const readyTarget = { id: 'mermaid-ready', innerHTML: '' };
     const source = { textContent: 'flowchart TD\n  A --> B' };
-    const block = {
+    const pendingBlock = {
+      dataset: { pending: 'true' },
+      querySelector(selector) {
+        if (selector === '.mermaid-render') return pendingTarget;
+        if (selector === '.mermaid-source code') return source;
+        return null;
+      },
+    };
+    const readyBlock = {
       dataset: {},
       querySelector(selector) {
-        if (selector === '.mermaid-render') return target;
+        if (selector === '.mermaid-render') return readyTarget;
         if (selector === '.mermaid-source code') return source;
         return null;
       },
     };
     const root = {
       querySelectorAll(selector) {
-        return selector === '.mermaid-block' ? [block] : [];
+        return selector === '.mermaid-block' ? [pendingBlock, readyBlock] : [];
       },
     };
 
     renderPendingMermaid(root, { defer: true });
-    assert.equal(target.innerHTML, '');
+    assert.equal(pendingTarget.innerHTML, '');
+    assert.equal(readyTarget.innerHTML, '');
 
+    renderPendingMermaid(root, { closedOnly: true });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(pendingTarget.innerHTML, '');
+    assert.match(readyTarget.innerHTML, /svg-rendered/);
+
+    pendingBlock.dataset.pending = 'false';
     renderPendingMermaid(root);
     await new Promise(resolve => setTimeout(resolve, 0));
-    assert.match(target.innerHTML, /svg-rendered/);
+    assert.match(pendingTarget.innerHTML, /svg-rendered/);
   });
 
   it('renders shell command output with terminal-like structure', async () => {

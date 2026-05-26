@@ -138,7 +138,7 @@ export function renderActiveStreamingMessage() {
 
   const hasPlaceholder = Boolean(dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`));
   if (!hasPlaceholder) addAssistantPlaceholder(stream);
-  stream.renderer.flush({ rememberCollapseState: false, renderMermaid: stream.status !== 'running' });
+  stream.renderer.flush({ rememberCollapseState: false, renderMermaid: stream.status !== 'running' ? true : 'closed' });
   setSendButtonState();
   return true;
 }
