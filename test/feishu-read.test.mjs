@@ -270,6 +270,68 @@ describe('feishu_read tool', () => {
     }
   });
 
+  it('reads wiki with the token saved by feishu_auth over stale feishu_read app credentials', async () => {
+    const previousFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(String(url)), options });
+      const path = calls[calls.length - 1].url.pathname;
+      assert.equal(options.headers.Authorization, 'Bearer u-auth-token');
+      if (path.includes('/wiki/v2/spaces/get_node')) {
+        return jsonResponse({
+          code: 0,
+          data: {
+            node: {
+              node_token: 'wiki_node_token',
+              obj_token: 'docx_obj_token',
+              obj_type: 'docx',
+              title: 'Wiki Doc',
+            },
+          },
+        });
+      }
+      if (path.includes('/docx/v1/documents/docx_obj_token/raw_content')) {
+        return jsonResponse({ code: 0, data: { content: '# Wiki Doc\n\nBody' } });
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    try {
+      await withFeishuReadEnabled({
+        app_id: 'cli_stale',
+        app_secret: 'stale-secret',
+        user_access_token: '',
+      }, async () => {
+        await withFeishuAuthConfig({
+          app_id: 'cli_current',
+          app_secret: 'current-secret',
+          user_access_token: 'u-auth-token',
+        }, async () => {
+          const result = await runTool(
+            {
+              id: 'toolu_feishu_wiki_saved_auth',
+              name: 'feishu_read',
+              input: {
+                action: 'read_wiki',
+                url: 'https://example.feishu.cn/wiki/wiki_node_token',
+              },
+            },
+            { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+          );
+
+          assert.equal(result.isError, false, String(result.output || ''));
+          assert.equal(result.output.objToken, 'docx_obj_token');
+          assert.match(result.output.content, /Wiki Doc/);
+          assert.equal(calls.length, 2);
+          assert.equal(calls.some(call => call.url.pathname.includes('/auth/v3/tenant_access_token/internal')), false);
+          assert.equal(calls.some(call => call.url.pathname.includes('/oauth/v1/device_authorization')), false);
+        });
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it('reads spreadsheet ranges with a direct access token', async () => {
     const previousFetch = globalThis.fetch;
     const calls = [];
