@@ -4,6 +4,7 @@ export const dom = {
   convList: $('#conv-list'),
   messages: $('#messages'),
   chatTitle: $('#chat-title'),
+  btnClearFeishuToken: $('#btn-clear-feishu-token'),
   msgInput: $('#msg-input'),
   fileMentionMenu: $('#file-mention-menu'),
   btnSend: $('#btn-send'),

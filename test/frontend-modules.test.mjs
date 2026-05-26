@@ -2,12 +2,32 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 function fakeClassList() {
+  const classes = new Set();
   return {
-    add() {},
-    remove() {},
-    toggle() {},
-    contains() {
-      return false;
+    add(value) {
+      classes.add(value);
+    },
+    remove(value) {
+      classes.delete(value);
+    },
+    toggle(value, force) {
+      if (force === true) {
+        classes.add(value);
+        return true;
+      }
+      if (force === false) {
+        classes.delete(value);
+        return false;
+      }
+      if (classes.has(value)) {
+        classes.delete(value);
+        return false;
+      }
+      classes.add(value);
+      return true;
+    },
+    contains(value) {
+      return classes.has(value);
     },
   };
 }
@@ -108,6 +128,7 @@ describe('frontend module boundaries', () => {
   it('loads split controller modules without missing imports', async () => {
     const modules = await Promise.all([
       import('../public/js/controllers/channels-controller.js'),
+      import('../public/js/controllers/chat-header-controller.js'),
       import('../public/js/controllers/chat-input-controller.js'),
       import('../public/js/controllers/conversations-controller.js'),
       import('../public/js/controllers/pricing-controller.js'),
@@ -118,18 +139,35 @@ describe('frontend module boundaries', () => {
 
     assert.equal(typeof modules[0].bindChannelsController, 'function');
     assert.equal(typeof modules[0].loadActive, 'function');
-    assert.equal(typeof modules[1].bindChatInputController, 'function');
-    assert.equal(typeof modules[2].bindConversationsController, 'function');
-    assert.equal(typeof modules[2].loadConversations, 'function');
-    assert.equal(typeof modules[2].selectConversation, 'function');
-    assert.equal(typeof modules[3].bindPricingController, 'function');
-    assert.equal(typeof modules[3].loadBasePricing, 'function');
-    assert.equal(typeof modules[3].showPricingPage, 'function');
-    assert.equal(typeof modules[4].bindSettingsController, 'function');
-    assert.equal(typeof modules[5].bindToolsController, 'function');
-    assert.equal(typeof modules[5].showToolsPage, 'function');
-    assert.equal(typeof modules[6].bindUsageController, 'function');
-    assert.equal(typeof modules[6].showUsagePage, 'function');
+    assert.equal(typeof modules[1].bindChatHeaderController, 'function');
+    assert.equal(typeof modules[1].renderChatHeaderActions, 'function');
+    assert.equal(typeof modules[2].bindChatInputController, 'function');
+    assert.equal(typeof modules[3].bindConversationsController, 'function');
+    assert.equal(typeof modules[3].loadConversations, 'function');
+    assert.equal(typeof modules[3].selectConversation, 'function');
+    assert.equal(typeof modules[4].bindPricingController, 'function');
+    assert.equal(typeof modules[4].loadBasePricing, 'function');
+    assert.equal(typeof modules[4].showPricingPage, 'function');
+    assert.equal(typeof modules[5].bindSettingsController, 'function');
+    assert.equal(typeof modules[6].bindToolsController, 'function');
+    assert.equal(typeof modules[6].showToolsPage, 'function');
+    assert.equal(typeof modules[7].bindUsageController, 'function');
+    assert.equal(typeof modules[7].showUsagePage, 'function');
+  });
+
+  it('shows the Feishu token clear button only when feishu_auth is enabled', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { dom } = await import('../public/js/dom.js');
+    const { renderChatHeaderActions } = await import('../public/js/controllers/chat-header-controller.js');
+
+    state.tools = [{ id: 'feishu_auth', enabled: false, config: {} }];
+    renderChatHeaderActions();
+    assert.equal(dom.btnClearFeishuToken.classList.contains('hidden'), true);
+
+    state.tools = [{ id: 'feishu_auth', enabled: true, config: { user_access_token: 'u-token' } }];
+    renderChatHeaderActions();
+    assert.equal(dom.btnClearFeishuToken.classList.contains('hidden'), false);
+    assert.equal(dom.btnClearFeishuToken.textContent, 'Clear Feishu Token');
   });
 
   it('shows shell command blocks while the command is still running', async () => {

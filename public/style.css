@@ -165,11 +165,20 @@ body {
 #model-select { max-width: 200px; }
 
 .chat-title {
+  flex: 1;
   font-size: 14px;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* ===== Messages ===== */

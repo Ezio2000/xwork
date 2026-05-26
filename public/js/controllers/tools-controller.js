@@ -2,6 +2,9 @@ import { api } from '../api-client.js';
 import { dom } from '../dom.js';
 import { state } from '../state.js';
 import {
+  renderChatHeaderActions,
+} from './chat-header-controller.js';
+import {
   hideToolRunDetail,
   renderToolList,
   renderToolRuns,
@@ -13,6 +16,7 @@ import {
 export async function loadTools() {
   state.tools = await api('GET', '/api/v1/tools');
   renderToolList();
+  renderChatHeaderActions();
 }
 
 export async function loadToolRuns() {
@@ -31,6 +35,7 @@ async function toggleTool(id, enabled) {
   const idx = state.tools.findIndex(tool => tool.id === id);
   if (idx !== -1) state.tools[idx] = updated;
   renderToolList();
+  renderChatHeaderActions();
 }
 
 function replaceTool(updated) {
@@ -99,6 +104,7 @@ async function saveToolConfig(card, form) {
   const updated = await api('PUT', `/api/v1/tools/${card.dataset.toolId}`, payload);
   replaceTool(updated);
   renderToolList();
+  renderChatHeaderActions();
 }
 
 async function resetToolConfig(card) {
@@ -109,6 +115,7 @@ async function resetToolConfig(card) {
   const updated = await api('PUT', `/api/v1/tools/${tool.id}`, payload);
   replaceTool(updated);
   renderToolList();
+  renderChatHeaderActions();
 }
 
 function applyToolConfigExample(card, index) {
