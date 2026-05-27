@@ -3,11 +3,58 @@ import { contentToBlocks, messageSources, messageText } from './message-blocks.j
 import { escHtml, renderBlocks, renderContent, renderPendingMermaid, renderPendingEcharts, renderSourceCards, renderUserMessage } from './renderers.js';
 import { state } from './state.js';
 
+const SCROLL_THRESHOLD = 80;
+
+let autoScrollEnabled = true;
+
+export function resetAutoScroll() {
+  autoScrollEnabled = true;
+  dom.scrollBottomBtn.hidden = true;
+}
+
 export function scrollBottom() {
+  if (!autoScrollEnabled) return;
   requestAnimationFrame(() => {
     dom.messages.scrollTop = dom.messages.scrollHeight;
   });
 }
+
+function updateScrollButton() {
+  const isStreaming = state.streamingByConversationId.size > 0;
+  dom.scrollBottomBtn.hidden = autoScrollEnabled || !isStreaming;
+}
+
+function installScrollListener() {
+  let ticking = false;
+  dom.messages.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      const el = dom.messages;
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distanceFromBottom < SCROLL_THRESHOLD) {
+        if (!autoScrollEnabled) {
+          autoScrollEnabled = true;
+          updateScrollButton();
+        }
+      } else {
+        if (autoScrollEnabled) {
+          autoScrollEnabled = false;
+          updateScrollButton();
+        }
+      }
+    });
+  }, { passive: true });
+
+  dom.scrollBottomBtn.addEventListener('click', () => {
+    autoScrollEnabled = true;
+    updateScrollButton();
+    dom.messages.scrollTo({ top: dom.messages.scrollHeight, behavior: 'smooth' });
+  });
+}
+
+installScrollListener();
 
 export function renderConvoList() {
   dom.convList.innerHTML = state.conversations.map(conversation =>

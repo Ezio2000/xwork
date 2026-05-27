@@ -27,7 +27,11 @@ export async function readChatStream(res, stream) {
     }
   }
 
-  stream.renderer.flush({ renderMermaid: stream.status !== 'running' ? true : 'closed' });
+  const renderDeferredCharts = stream.status !== 'running' ? true : 'closed';
+  stream.renderer.flush({
+    renderMermaid: renderDeferredCharts,
+    renderEcharts: renderDeferredCharts,
+  });
   return stream.blocks;
 }
 

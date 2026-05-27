@@ -13,6 +13,7 @@ export {
   isVisibleMessage,
   renderConvoList,
   renderMessages,
+  resetAutoScroll,
   scrollBottom,
 } from './conversation-view.js';
 export {

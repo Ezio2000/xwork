@@ -6,6 +6,7 @@ import {
   hydrateAssistantMessages,
   renderConvoList,
   renderMessages,
+  resetAutoScroll,
   scrollBottom,
   showChatPage,
 } from '../views.js';
@@ -23,6 +24,7 @@ export async function selectConversation(id) {
   renderMessages();
   renderActiveStreamingMessage();
   renderConvoList();
+  resetAutoScroll();
   scrollBottom();
 }
 

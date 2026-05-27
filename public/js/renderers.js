@@ -557,6 +557,16 @@ export function renderPendingEcharts(root, options = {}) {
   }
 }
 
+export function disposeEchartsIn(root) {
+  if (!root?.querySelectorAll) return;
+  for (const target of root.querySelectorAll('.echarts-render')) {
+    const chart = echartsInstances.get(target.id);
+    if (!chart) continue;
+    try { chart.dispose(); } catch {}
+    echartsInstances.delete(target.id);
+  }
+}
+
 // --- ECharts event delegation ---
 
 function bindEchartsEvents() {
@@ -1984,12 +1994,34 @@ const blockRenderers = {
   'about-xwork': (block, collapsed) => renderAboutXwork(block, block.collapsed ?? collapsed),
 };
 
-export function renderBlocks(blocks, collapsed) {
+export function renderBlocks(blocks, collapsed, options) {
   if (!blocks?.length) return '';
-  return blocks.map(block => {
+  const wrapBlocks = options?.wrapBlocks ?? false;
+  return blocks.map((block, i) => {
     const renderer = blockRenderers[block.type];
-    return renderer ? renderer(block, collapsed) : '';
+    if (!renderer) return '';
+    const html = renderer(block, collapsed);
+    if (!wrapBlocks) return html;
+    const id = getBlockStableId(block, i);
+    const hash = quickHash(html);
+    return `<div data-block-id="${escHtml(id)}" data-block-hash="${hash}">${html}</div>`;
   }).join('');
+}
+
+function getBlockStableId(block, index) {
+  if (block.toolCallId) return `tc-${block.toolCallId}`;
+  if (block.runId) return `run-${block.runId}`;
+  return `blk-${index}`;
+}
+
+function quickHash(str) {
+  let h = 0;
+  const len = str.length;
+  const step = Math.max(1, len >>> 5);
+  for (let i = 0; i < len; i += step) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
 }
 
 export function installRendererEventHandlers(root = document) {

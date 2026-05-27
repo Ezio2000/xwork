@@ -3,6 +3,7 @@ export const $ = (sel) => document.querySelector(sel);
 export const dom = {
   convList: $('#conv-list'),
   messages: $('#messages'),
+  scrollBottomBtn: $('#scroll-bottom-btn'),
   chatTitle: $('#chat-title'),
   feishuTokenMenuWrap: $('#feishu-token-menu-wrap'),
   btnFeishuTokenMenu: $('#btn-feishu-token-menu'),

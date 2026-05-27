@@ -8,7 +8,7 @@ import { hideThinkingPopup } from './thinking-popup.js';
 import { collapseFinishedToolBlocks, collapseToolToggleElements } from './tool-block-collapse.js';
 import { state } from './state.js';
 import { getActiveStream } from './stores/app-store.js';
-import { addAssistantPlaceholder, addUserMessage, renderConvoList, renderMessages } from './views.js';
+import { addAssistantPlaceholder, addUserMessage, renderConvoList, renderMessages, resetAutoScroll } from './views.js';
 
 const SEND_ICON = `
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -56,7 +56,7 @@ function finalizeStreamingMessage(stream) {
   if (stream.finalized) return;
   stream.finalized = true;
   if (state.activeId === stream.conversationId) hideThinkingPopup();
-  stream.renderer.flush({ rememberCollapseState: false, renderMermaid: true });
+  stream.renderer.flush({ rememberCollapseState: false, renderMermaid: true, renderEcharts: true });
   const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
   if (streamingEl) {
     streamingEl.classList.remove('streaming');
@@ -138,7 +138,12 @@ export function renderActiveStreamingMessage() {
 
   const hasPlaceholder = Boolean(dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`));
   if (!hasPlaceholder) addAssistantPlaceholder(stream);
-  stream.renderer.flush({ rememberCollapseState: false, renderMermaid: stream.status !== 'running' ? true : 'closed' });
+  const renderDeferredCharts = stream.status !== 'running' ? true : 'closed';
+  stream.renderer.flush({
+    rememberCollapseState: false,
+    renderMermaid: renderDeferredCharts,
+    renderEcharts: renderDeferredCharts,
+  });
   setSendButtonState();
   return true;
 }
@@ -178,6 +183,7 @@ export async function sendMessage(text) {
   dom.msgInput.value = '';
   dom.msgInput.style.height = 'auto';
   dom.btnSend.disabled = true;
+  resetAutoScroll();
 
   try {
     const conversationId = await ensureConversation(message);
