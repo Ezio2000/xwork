@@ -1096,7 +1096,8 @@ function isTerminalSubagentStatus(status) {
 
 function renderSubagentRun(block, collapsed) {
   const status = block.status || 'running';
-  const label = block.label || block.task || 'Subagent';
+  const expertTitle = block.expertAgent?.title || '';
+  const label = block.label || expertTitle || block.task || 'Expert Agent';
   const blocks = subagentFrameBlocks(block);
   const runCollapsed = typeof block.collapsed === 'boolean'
     ? block.collapsed
@@ -1121,6 +1122,7 @@ function renderSubagentRun(block, collapsed) {
 function subagentFrameBlocks(block) {
   const out = [];
   const meta = [
+    block.expertAgent?.title ? `expert ${block.expertAgent.title}` : '',
     block.durationMs !== undefined && block.durationMs !== null ? `${Number(block.durationMs || 0)}ms` : '',
     block.runId ? `run ${String(block.runId).slice(0, 8)}` : '',
   ].filter(Boolean).join(' · ');

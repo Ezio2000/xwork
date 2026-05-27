@@ -22,7 +22,7 @@ async function withFeishuAuthEnabled(config, fn) {
   await updateToolConfig('feishu_auth', {
     enabled: true,
     timeoutMs: feishuAuthTool.timeoutMs,
-    config: { ...(currentAuth?.config || {}), ...config },
+    config: { ...feishuAuthTool.defaultConfig, ...config },
   });
   try {
     return await fn();

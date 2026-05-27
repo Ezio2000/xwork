@@ -7,6 +7,7 @@ import {
   loadConversations,
   selectConversation,
 } from './js/controllers/conversations-controller.js';
+import { bindExpertAgentsController, showExpertAgentsPage } from './js/controllers/expert-agents-controller.js';
 import { bindPricingController, loadBasePricing, showPricingPage } from './js/controllers/pricing-controller.js';
 import { bindSettingsController } from './js/controllers/settings-controller.js';
 import { bindToolsController, loadTools, showToolsPage } from './js/controllers/tools-controller.js';
@@ -23,9 +24,10 @@ function bindEvents() {
   bindChatInputController();
   bindFileMentionController();
   bindConversationsController();
-  bindSettingsController({ showPricingPage, showToolsPage, showUsagePage, showWorkspacePage });
+  bindSettingsController({ showExpertAgentsPage, showPricingPage, showToolsPage, showUsagePage, showWorkspacePage });
   bindChannelsController();
   bindToolsController();
+  bindExpertAgentsController();
   bindUsageController();
   bindPricingController();
   bindWorkspaceController();

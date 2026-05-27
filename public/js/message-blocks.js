@@ -74,7 +74,7 @@ export function subagentEventToBlocks(event) {
   }
 
   if (type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DONE && event.error) {
-    return [{ type: 'text', content: `**Subagent error**\n\n${event.error}` }];
+    return [{ type: 'text', content: `**Expert agent error**\n\n${event.error}` }];
   }
 
   return [];

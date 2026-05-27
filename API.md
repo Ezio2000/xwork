@@ -171,7 +171,51 @@
 
 ---
 
-### 4. 工具执行记录 (Tool Runs)
+### 4. 专家智能体 (Expert Agents)
+
+#### GET `/expert-agents`
+
+返回所有专家智能体配置。`general_task_agent` 为内置默认专家，不可删除。
+
+#### POST `/expert-agents`
+
+创建自定义专家智能体。
+
+**请求体**
+```json
+{
+  "title": "Backend Review Expert",
+  "description": "Reviews backend code and API behavior",
+  "selectionPrompt": "Use for backend/API review tasks.",
+  "systemPrompt": "You are a backend reviewer...",
+  "outputContract": "Return concise findings.",
+  "allowedTools": ["grep", "read_file", "shell_command"],
+  "allowSubagents": false,
+  "maxDepth": 2,
+  "maxTurns": 3,
+  "timeoutMs": 90000,
+  "maxOutputChars": 2000,
+  "channelId": null,
+  "model": "",
+  "enabled": true
+}
+```
+
+#### PUT `/expert-agents/:id`
+
+更新专家智能体。字段均可选。
+
+#### DELETE `/expert-agents/:id`
+
+删除用户自定义专家。内置专家会返回 409。
+
+#### POST `/expert-agents/:id/reset`
+
+重置内置专家为默认配置。
+
+---
+
+### 5. 工具执行记录 (Tool Runs)
 
 #### GET `/tool-runs?limit=20`
 
@@ -196,7 +240,7 @@
 
 ---
 
-### 5. 对话管理 (Conversations)
+### 6. 对话管理 (Conversations)
 
 #### GET `/conversations`
 
@@ -277,7 +321,7 @@
 
 ---
 
-### 6. 聊天 (Chat) — SSE 流
+### 7. 聊天 (Chat) — SSE 流
 
 #### POST `/chat`
 

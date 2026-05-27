@@ -87,6 +87,7 @@ POST /api/v1/chat (SSE)
 | `routes/chat-routes.mjs` | `/chat`, `/chat-runs/:id/stream`, `/chat-runs/:id/status` | 聊天 SSE + 后台运行重连 + ask_user 响应 |
 | `routes/conversation-routes.mjs` | `/conversations` | 对话 CRUD |
 | `routes/tool-routes.mjs` | `/tools`, `/tool-runs` | 工具配置 + 运行记录查询 |
+| `routes/expert-agent-routes.mjs` | `/expert-agents` | 专家 agent 配置 CRUD + 内置专家 reset |
 | `routes/agent-routes.mjs` | `/agent-runs` | 代理运行记录查询 |
 | `routes/usage-routes.mjs` | `/usage` | Token 用量与费用报表 |
 | `routes/pricing-routes.mjs` | `/pricing` | 模型定价数据管理 |
@@ -112,13 +113,14 @@ POST /api/v1/chat (SSE)
   - 渲染：前端 `renderers.js` 的 `blockRenderers` 注册表按 type 匹配渲染函数
 新增具备自定义渲染的 tool 只需定义 `parseResult`/`parseStreamResult` + 在 `blockRenderers` 注册一行。
 
-### 子代理系统
+### 专家 agent / 子代理系统
 
+`lib/agents/profiles.mjs` 管理 Expert Agent profiles，内置 `general_task_agent`，用户可通过 `/expert-agents` 创建自定义专家。
 `lib/agents/subagent-runtime.mjs` 提供 `runSubagent()`：
-- 默认最大深度 2 层、3 轮、90s 超时、输出截断 2000 字符
-- 默认允许工具：web_search, get_current_time, calculator, uuid_gen, list_dir, git, code_outline, shell_command
-- 子代理调用 `queryLoop` 独立执行，结果通过 AGENT_EVENT_TYPES 事件通知根运行
-- 子代理输出截断后追加到父消息历史，避免上下文膨胀
+- 按 `expertAgentId` 加载专家 profile，合并默认工具、模型偏好、轮次、超时、输出限制
+- 默认通用专家最大深度 2 层、3 轮、90s 超时、输出截断 2000 字符
+- 专家 agent 调用 `queryLoop` 独立执行，结果通过 AGENT_EVENT_TYPES 事件通知根运行
+- 专家 agent 输出截断后追加到父消息历史，避免上下文膨胀
 
 ### 工作区系统
 

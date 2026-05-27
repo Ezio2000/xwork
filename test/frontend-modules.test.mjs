@@ -114,6 +114,7 @@ describe('frontend module boundaries', () => {
       'collectChannelPricingOverrides',
       'effectivePricingForChannelModel',
       'hideChannelEditor',
+      'hideExpertAgentEditor',
       'hidePricingEditor',
       'hideSettings',
       'hideToolRunDetail',
@@ -121,6 +122,7 @@ describe('frontend module boundaries', () => {
       'hydrateAssistantMessages',
       'isVisibleMessage',
       'pricingPayloadFromEditor',
+      'renderExpertAgentList',
       'renderBasePricing',
       'renderChannelList',
       'renderConvoList',
@@ -133,6 +135,8 @@ describe('frontend module boundaries', () => {
       'showChannelEditor',
       'showChannelsPage',
       'showChatPage',
+      'showExpertAgentEditor',
+      'showExpertAgentsPageFrame',
       'showPricingEditor',
       'showPricingPageFrame',
       'showSettings',
@@ -153,6 +157,7 @@ describe('frontend module boundaries', () => {
       import('../public/js/controllers/chat-header-controller.js'),
       import('../public/js/controllers/chat-input-controller.js'),
       import('../public/js/controllers/conversations-controller.js'),
+      import('../public/js/controllers/expert-agents-controller.js'),
       import('../public/js/controllers/pricing-controller.js'),
       import('../public/js/controllers/settings-controller.js'),
       import('../public/js/controllers/tools-controller.js'),
@@ -167,14 +172,17 @@ describe('frontend module boundaries', () => {
     assert.equal(typeof modules[3].bindConversationsController, 'function');
     assert.equal(typeof modules[3].loadConversations, 'function');
     assert.equal(typeof modules[3].selectConversation, 'function');
-    assert.equal(typeof modules[4].bindPricingController, 'function');
-    assert.equal(typeof modules[4].loadBasePricing, 'function');
-    assert.equal(typeof modules[4].showPricingPage, 'function');
-    assert.equal(typeof modules[5].bindSettingsController, 'function');
-    assert.equal(typeof modules[6].bindToolsController, 'function');
-    assert.equal(typeof modules[6].showToolsPage, 'function');
-    assert.equal(typeof modules[7].bindUsageController, 'function');
-    assert.equal(typeof modules[7].showUsagePage, 'function');
+    assert.equal(typeof modules[4].bindExpertAgentsController, 'function');
+    assert.equal(typeof modules[4].loadExpertAgents, 'function');
+    assert.equal(typeof modules[4].showExpertAgentsPage, 'function');
+    assert.equal(typeof modules[5].bindPricingController, 'function');
+    assert.equal(typeof modules[5].loadBasePricing, 'function');
+    assert.equal(typeof modules[5].showPricingPage, 'function');
+    assert.equal(typeof modules[6].bindSettingsController, 'function');
+    assert.equal(typeof modules[7].bindToolsController, 'function');
+    assert.equal(typeof modules[7].showToolsPage, 'function');
+    assert.equal(typeof modules[8].bindUsageController, 'function');
+    assert.equal(typeof modules[8].showUsagePage, 'function');
   });
 
   it('shows the Feishu token menu only when feishu_auth is enabled', async () => {

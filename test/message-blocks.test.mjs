@@ -68,7 +68,7 @@ describe('message block protocol', () => {
       eventType: 'subagent_tool_result',
       renderType: 'source-cards',
       data: { sources: [{ title: 'A', url: 'https://a.test' }] },
-    }), [{ type: 'source-cards', sources: [{ title: 'A', url: 'https://a.test' }] }]);
+    }), [{ type: 'source-cards', sources: [{ title: 'A', url: 'https://a.test' }], collapsed: true }]);
 
     const errorBlocks = subagentEventToBlocks({
       eventType: 'subagent_tool_result',

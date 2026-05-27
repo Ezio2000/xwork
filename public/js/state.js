@@ -8,6 +8,7 @@ export const state = {
   activeModel: null,
   tools: [],
   toolRuns: [],
+  expertAgents: [],
   usage: null,
   basePricing: [],
   pricingCurrency: 'USD',

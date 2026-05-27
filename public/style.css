@@ -1635,6 +1635,63 @@ body {
 
 /* PLACEHOLDER_SECTION_12 */
 
+/* ===== Expert Agents Page ===== */
+#expert-agents-page {
+  flex: 1;
+  height: 100vh;
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg);
+}
+
+#expert-agents-header {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+#expert-agents-header h2 { flex: 1; font-size: 20px; font-weight: 400; }
+#expert-agents-content { max-width: 1120px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 18px; }
+#expert-agent-list { display: flex; flex-direction: column; gap: 10px; }
+
+.expert-agent-card { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+.expert-agent-card.enabled { border-color: rgba(47, 158, 68, 0.35); }
+.expert-agent-card-main { display: flex; align-items: flex-start; gap: 12px; }
+.expert-agent-info { flex: 1; min-width: 0; }
+.expert-agent-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.expert-agent-title { font-size: 15px; font-weight: 600; }
+.expert-agent-badge, .expert-agent-status { border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); font-family: var(--font-sans); font-size: 11px; line-height: 1; padding: 4px 6px; }
+.expert-agent-status { color: var(--accent); border-color: var(--accent-dim); }
+.expert-agent-desc { color: var(--text-secondary); font-size: 13px; line-height: 1.45; margin-bottom: 8px; }
+.expert-agent-meta { color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--font-sans); font-size: 11px; }
+.expert-agent-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+
+.expert-agent-editor { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; }
+.expert-agent-editor h3 { font-size: 18px; font-weight: 500; margin-bottom: 14px; }
+.expert-agent-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.expert-agent-editor-grid label, .expert-agent-editor-grid .wide { display: flex; flex-direction: column; gap: 5px; }
+.expert-agent-editor-grid .wide { grid-column: 1 / -1; }
+.expert-agent-editor-grid span, .expert-agent-tools-header span:first-child { color: var(--text-secondary); font-family: var(--font-sans); font-size: 12px; }
+.expert-agent-editor-grid input, .expert-agent-editor-grid select, .expert-agent-editor-grid textarea { background: var(--bg-code); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-sans); font-size: 13px; padding: 8px 10px; }
+.expert-agent-editor-grid textarea { min-height: 72px; resize: vertical; }
+.expert-agent-check { align-items: center; flex-direction: row !important; gap: 8px !important; }
+.expert-agent-tools-header { align-items: center; display: flex; justify-content: space-between; margin-bottom: 6px; }
+.expert-agent-tools-header span:last-child { color: var(--text-muted); font-family: var(--font-sans); font-size: 11px; }
+.expert-agent-tools { border: 1px solid var(--border); border-radius: var(--radius-sm); display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); max-height: 260px; overflow: auto; padding: 8px; }
+.expert-agent-tool-option { background: var(--bg-code); border-radius: var(--radius-sm); display: grid !important; grid-template-columns: auto 1fr; gap: 2px 7px !important; padding: 7px; }
+.expert-agent-tool-option small { color: var(--text-muted); font-family: var(--font-sans); font-size: 10px; grid-column: 2; }
+
+@media (max-width: 900px) {
+  #expert-agents-content { grid-template-columns: 1fr; }
+}
+
 /* ===== Tools Page ===== */
 #tools-content { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
 

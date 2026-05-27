@@ -204,7 +204,8 @@ describe('subagent runtime', () => {
     assert.match(receivedMessages[0].content, /single delegated objective/);
     assert.match(receivedMessages[0].content, /3-6 bullets/);
     assert.match(receivedMessages[0].content, /Do not create subagents/);
-    assert.deepEqual(receivedMessages[1], { role: 'user', content: 'Objective:\nInvestigate one thing' });
+    assert.match(receivedMessages[1].content, /Objective:\nInvestigate one thing/);
+    assert.match(receivedMessages[1].content, /Output contract:/);
   });
 
   it('records subagent server tool results in tool runs context', async () => {
@@ -338,7 +339,7 @@ describe('subagent runtime', () => {
     });
 
     assert.equal(result.status, 'completed');
-    assert.deepEqual(receivedToolNames, ['web_search', 'list_dir', 'git', 'code_outline']);
+    assert.deepEqual(receivedToolNames, ['web_search', 'list_dir', 'git', 'code_outline', 'grep']);
     assert.deepEqual(result.allowedTools, [
       'web_search',
       'get_current_time',
@@ -347,6 +348,9 @@ describe('subagent runtime', () => {
       'list_dir',
       'git',
       'code_outline',
+      'grep',
+      'glob',
+      'read_file',
       'shell_command',
     ]);
   });
@@ -540,7 +544,7 @@ describe('subagent runtime', () => {
       tools: [delegateTaskTool, webSearchTool],
     });
 
-    assert.match(system, /# Subagent Delegation/);
+    assert.match(system, /# Expert Agent Delegation/);
     assert.match(system, /Strong delegation triggers/);
     assert.match(system, /3 or more independent topics/);
     assert.match(system, /launching multiple delegate_task calls in one assistant response/);

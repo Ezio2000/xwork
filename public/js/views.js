@@ -20,11 +20,19 @@ export {
   hideSettings,
   showChannelsPage,
   showChatPage,
+  showExpertAgentsPageFrame,
   showPricingPageFrame,
   showSettings,
   showToolsPageFrame,
   showUsagePageFrame,
 } from './navigation-view.js';
+export {
+  expertAgentPayloadFromEditor,
+  hideExpertAgentEditor,
+  renderExpertAgentList,
+  setExpertAgentEditorError,
+  showExpertAgentEditor,
+} from './expert-agent-view.js';
 export {
   hidePricingEditor,
   pricingPayloadFromEditor,

@@ -8,6 +8,7 @@ function hideAllPages() {
   dom.channelsPage.classList.add('hidden');
   if (dom.workspacePage) dom.workspacePage.classList.add('hidden');
   dom.toolsPage.classList.add('hidden');
+  if (dom.expertAgentsPage) dom.expertAgentsPage.classList.add('hidden');
   dom.usagePage.classList.add('hidden');
   dom.pricingPage.classList.add('hidden');
 }
@@ -31,6 +32,13 @@ export function showToolsPageFrame() {
   hideUsageRunDetail();
   hideAllPages();
   dom.toolsPage.classList.remove('hidden');
+}
+
+export function showExpertAgentsPageFrame() {
+  hideToolRunDetail();
+  hideUsageRunDetail();
+  hideAllPages();
+  if (dom.expertAgentsPage) dom.expertAgentsPage.classList.remove('hidden');
 }
 
 export function showUsagePageFrame() {

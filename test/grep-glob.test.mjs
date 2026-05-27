@@ -87,7 +87,7 @@ describe('glob tool', () => {
   it('returns glob-list render data', async () => {
     await withToolEnabled('glob', globTool, async () => {
       const result = await runTool(
-        { id: 'toolu_glob_ok', name: 'glob', input: { pattern: 'lib/tools/builtin/*.mjs', limit: 10 } },
+        { id: 'toolu_glob_ok', name: 'glob', input: { pattern: 'lib/tools/builtin/*.mjs', limit: 30 } },
         { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
       );
 

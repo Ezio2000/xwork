@@ -1,7 +1,7 @@
 import { dom } from '../dom.js';
 import { hideSettings, showChannelsPage, showChatPage, showSettings } from '../views.js';
 
-export function bindSettingsController({ showPricingPage, showToolsPage, showUsagePage, showWorkspacePage }) {
+export function bindSettingsController({ showExpertAgentsPage, showPricingPage, showToolsPage, showUsagePage, showWorkspacePage }) {
   dom.logo.addEventListener('click', showChatPage);
 
   dom.btnSettings.addEventListener('click', showSettings);
@@ -22,6 +22,12 @@ export function bindSettingsController({ showPricingPage, showToolsPage, showUsa
     hideSettings();
     showToolsPage();
   });
+  if (dom.settingExpertAgents && typeof showExpertAgentsPage === 'function') {
+    dom.settingExpertAgents.addEventListener('click', () => {
+      hideSettings();
+      showExpertAgentsPage();
+    });
+  }
   dom.settingUsage.addEventListener('click', () => {
     hideSettings();
     showUsagePage();

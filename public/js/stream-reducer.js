@@ -410,6 +410,7 @@ function applyAgentEvent(evt, stream, effects) {
         status: 'running',
         label: evt.label || 'Subagent',
         task: evt.task || '',
+        expertAgent: evt.expertAgent || null,
         text: '',
         events: [],
         timeline: [],
@@ -436,6 +437,7 @@ function applyAgentEvent(evt, stream, effects) {
       block.durationMs = evt.durationMs ?? block.durationMs;
       block.parentRunId = evt.parentRunId || block.parentRunId || null;
       block.rootRunId = evt.rootRunId || block.rootRunId || null;
+      block.expertAgent = evt.expertAgent || evt.result?.expertAgent || block.expertAgent || null;
       pushSubagentEvent(block, evt);
       collapseFinishedToolBlock(block);
     }
