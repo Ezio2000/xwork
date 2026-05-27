@@ -264,6 +264,75 @@ describe('subagent runtime', () => {
     assert.equal(toolRuns[0].context.agentDepth, 1);
   });
 
+  it('continues after subagent server-only web_search results and returns the summary text', async () => {
+    let callCount = 0;
+    let secondMessages;
+    const streamChat = async (_config, messages, onDelta, _onThink, onDone, _onError, onServerToolEvent) => {
+      callCount += 1;
+      if (callCount === 1) {
+        onServerToolEvent({
+          phase: 'call',
+          id: 'srv_1',
+          name: 'web_search',
+          input: { query: 'subagent search' },
+        });
+        onServerToolEvent({
+          phase: 'result',
+          id: 'srv_1',
+          name: 'web_search',
+          isError: false,
+          renderType: 'source-cards',
+          data: { sources: [{ title: 'Result', url: 'https://example.test' }] },
+        });
+        onDone('', 'end_turn', null);
+        return {
+          text: '',
+          content: [
+            { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'subagent search' } },
+            {
+              type: 'web_search_tool_result',
+              tool_use_id: 'srv_1',
+              content: [{ type: 'web_search_result', title: 'Result', url: 'https://example.test' }],
+            },
+          ],
+          stopReason: 'end_turn',
+          usage: { server_tool_use: { web_search_requests: 1 } },
+          toolCalls: [],
+          serverToolEvents: [],
+        };
+      }
+      secondMessages = messages;
+      onDelta('summary text');
+      onDone('summary text', 'end_turn', null);
+      return {
+        text: 'summary text',
+        content: [{ type: 'text', text: 'summary text' }],
+        stopReason: 'end_turn',
+        usage: null,
+        toolCalls: [],
+        serverToolEvents: [],
+      };
+    };
+
+    const result = await runSubagent({
+      task: 'Search and summarize one thing',
+      config: {
+        model: 'test-model',
+        tools: [{ name: 'web_search' }],
+        streamChat,
+      },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      maxTurns: 2,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(result.status, 'completed');
+    assert.equal(result.text, 'summary text');
+    assert.equal(secondMessages[2].role, 'assistant');
+    assert.equal(secondMessages[2].content[0].type, 'server_tool_use');
+    assert.equal(secondMessages[2].content[1].type, 'web_search_tool_result');
+  });
+
   it('uses fresh-context brief and output limits', async () => {
     let receivedMessages;
     const streamChat = async (_config, messages, onDelta, _onThink, onDone) => {

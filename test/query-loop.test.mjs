@@ -693,6 +693,57 @@ describe('queryLoop', () => {
       assert.equal(events[0].type, 'tool_call');
       assert.equal(events[1].type, 'tool_result');
     });
+
+    it('continues after a server-tool-only turn so the model can summarize results', async () => {
+      let callCount = 0;
+      let secondMessages;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return (fakeStreamChatThatReturns({
+            text: '',
+            content: [
+              { type: 'server_tool_use', id: 'stu_01', name: 'web_search', input: { query: 'today' } },
+              {
+                type: 'web_search_tool_result',
+                tool_use_id: 'stu_01',
+                content: [
+                  { type: 'web_search_result', title: 'Result', url: 'https://example.test', snippet: 'Found item' },
+                ],
+              },
+            ],
+            toolCalls: [],
+            serverToolEvents: [
+              { phase: 'call', id: 'stu_01', name: 'web_search', input: { query: 'today' } },
+              { phase: 'result', id: 'stu_01', name: 'web_search', isError: false, renderType: 'source-cards', data: { sources: [{ title: 'Result', url: 'https://example.test' }] } },
+            ],
+          }))(...args);
+        }
+        secondMessages = args[1];
+        return (fakeStreamChatThatReturns({
+          text: 'Summary from server search.',
+          content: [{ type: 'text', text: 'Summary from server search.' }],
+          toolCalls: [],
+        }))(...args);
+      };
+
+      const iterator = queryLoop({
+        config: baseConfig,
+        history: baseHistory,
+        streamChat,
+        runTool: fakeRunTool([]),
+        onServerToolEvent: (evt) => onServerToolCalls.push(evt),
+      });
+      await drain(iterator);
+
+      assert.equal(callCount, 2);
+      assert.equal(returnValue.reason, 'completed');
+      assert.equal(returnValue.text, 'Summary from server search.');
+      assert.equal(secondMessages[1].role, 'assistant');
+      assert.equal(secondMessages[1].content[0].type, 'server_tool_use');
+      assert.equal(secondMessages[1].content[1].type, 'web_search_tool_result');
+      assert.equal(onServerToolCalls.length, 2);
+    });
   });
 
   // =========================================================================
