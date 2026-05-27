@@ -253,6 +253,50 @@ describe('architecture safety contracts', () => {
     assert.ok(!writes.some(chunk => chunk.includes('"type":"chat_run_start"')));
   });
 
+  it('emits an error event when the provider turn fails', async () => {
+    const originalStreamChat = CHAT_SERVICE_TEST_HOOKS.streamChat;
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    CHAT_SERVICE_TEST_HOOKS.streamChat = async () => {
+      throw new Error('The model emitted DSML tool-call markup as visible text');
+    };
+
+    const writes = [];
+    const res = {
+      destroyed: false,
+      writableEnded: false,
+      writeHead(status, headers) {
+        this.status = status;
+        this.headers = headers;
+      },
+      write(chunk) {
+        writes.push(String(chunk));
+        return true;
+      },
+      end() {
+        this.writableEnded = true;
+      },
+      on() {},
+    };
+
+    try {
+      await handleChatRequest({
+        body: {
+          runId: 'run_provider_error_event',
+          message: 'hi',
+        },
+      }, res);
+      await wait(30);
+
+      const snapshot = getChatRunSnapshot('run_provider_error_event');
+      assert.equal(snapshot.status, 'error');
+      assert.match(snapshot.error, /DSML tool-call markup/);
+      assert.ok(writes.some(chunk => chunk.includes('"type":"error"')));
+    } finally {
+      CHAT_SERVICE_TEST_HOOKS.streamChat = originalStreamChat;
+    }
+  });
+
   it('validates tool config patches', () => {
     assert.deepEqual(validateToolConfigPatch({ enabled: 1, timeoutMs: 3000 }), {
       enabled: true,
@@ -382,6 +426,62 @@ describe('architecture safety contracts', () => {
     assert.equal(result.text, 'before  after');
     assert.equal(result.content[0].text, 'before  after');
     assert.doesNotMatch(deltas.join(''), /DSML|tool_calls|web_search/);
+  });
+
+  it('turns an unexecuted full-width DSML-only tool call into an explicit provider error', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    const chunks = [
+      { type: 'message_start', message: { usage: { input_tokens: 1 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'text_delta',
+          text: '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="web_search"><｜｜DSML｜｜parameter name="query" string="true">黄仁勋 台北 2026</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>',
+        },
+      },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 2 } },
+    ].map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+
+    globalThis.fetch = async () => ({
+      ok: true,
+      body: {
+        getReader() {
+          let index = 0;
+          return {
+            async read() {
+              if (index >= chunks.length) return { done: true };
+              return { done: false, value: encoder.encode(chunks[index++]) };
+            },
+          };
+        },
+      },
+    });
+
+    const deltas = [];
+    let error = null;
+    let result;
+    try {
+      result = await streamChat(
+        { baseUrl: 'https://example.test', apiKey: 'sk-test', model: 'm', maxTokens: 1, tools: [] },
+        [{ role: 'user', content: 'hi' }],
+        (delta) => deltas.push(delta),
+        () => {},
+        () => {},
+        (err) => { error = err; },
+        () => {},
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(deltas.join(''), '');
+    assert.match(error?.message || '', /DSML tool-call markup/);
+    assert.match(error?.message || '', /web_search/);
+    assert.equal(result.stopReason, 'error');
   });
 
   it('flushes normal streamed text when no DSML marker appears', async () => {

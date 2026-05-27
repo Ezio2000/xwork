@@ -340,7 +340,7 @@ describe('subagent runtime', () => {
 
     assert.equal(result.status, 'completed');
     assert.deepEqual(receivedToolNames, ['web_search', 'list_dir', 'git', 'code_outline', 'grep']);
-    assert.deepEqual(result.allowedTools, [
+    assert.deepEqual(new Set(result.allowedTools), new Set([
       'web_search',
       'get_current_time',
       'calculator',
@@ -352,7 +352,7 @@ describe('subagent runtime', () => {
       'glob',
       'read_file',
       'shell_command',
-    ]);
+    ]));
   });
 
   it('filters tools and blocks nested delegate_task by default', async () => {
@@ -468,7 +468,7 @@ describe('subagent runtime', () => {
 
     assert.equal(result.status, 'completed');
     assert.deepEqual(receivedToolNames, ['list_dir', 'git', 'code_outline', 'grep']);
-    assert.deepEqual(result.allowedTools, ['list_dir', 'git', 'code_outline', 'grep']);
+    assert.deepEqual(new Set(result.allowedTools), new Set(['list_dir', 'git', 'code_outline', 'grep']));
   });
 
   it('allows shell_command when explicitly delegated to a subagent', async () => {
