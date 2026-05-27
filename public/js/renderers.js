@@ -25,6 +25,15 @@ let mermaidInitDone = false;
 const mermaidRenderCache = new Map();
 const MERMAID_RENDER_CACHE_LIMIT = 80;
 
+// --- Mermaid toolbar SVG icons ---
+const ICON_COPY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/></svg>';
+const ICON_PREVIEW = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3"/></svg>';
+const ICON_CLOSE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+const ICON_ZOOM_IN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14M5 7h4M7 5v4"/></svg>';
+const ICON_ZOOM_OUT = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14M5 7h4"/></svg>';
+const ICON_RESET = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8a6 6 0 0 1 11.3-2.8M14 8a6 6 0 0 1-11.3 2.8"/><path d="M14 2v4h-4M2 14v-4h4"/></svg>';
+const ICON_DOWNLOAD = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3M3 12v1.5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5V12"/></svg>';
+
 export function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -300,6 +309,11 @@ function createMermaidBlock(source, pending = false) {
   const errorText = cached?.state === 'error' ? escHtml(cached.error) : '';
   return `
     <div class="mermaid-block" data-mermaid-id="${id}"${pending ? ' data-pending="true"' : ''}${stateAttr}>
+      <div class="mermaid-toolbar">
+        <span class="mermaid-toolbar-label">Mermaid</span>
+        <button class="mermaid-btn" data-action="copy-source" title="Copy source">${ICON_COPY}<span>Copy</span></button>
+        <button class="mermaid-btn" data-action="preview" title="Fullscreen preview">${ICON_PREVIEW}<span>Preview</span></button>
+      </div>
       <div class="mermaid-render" id="${id}" aria-label="Mermaid diagram">
         ${renderContent}
       </div>
@@ -378,9 +392,10 @@ function initializeMermaid() {
     startOnLoad: false,
     suppressErrorRendering: true,
     securityLevel: 'strict',
-    theme: 'default',
+    theme: 'neutral',
   });
   mermaidInitDone = true;
+  bindMermaidEvents();
 }
 
 function setMermaidError(block, message) {
@@ -474,6 +489,205 @@ export function renderPendingMermaid(root, options = {}) {
     if (options.closedOnly && block.dataset.pending === 'true') continue;
     renderMermaidBlock(block);
   }
+}
+
+// --- Mermaid Preview Modal ---
+let previewOverlay = null;
+let previewZoom = 1;
+let previewPanX = 0;
+let previewPanY = 0;
+
+function getOrCreatePreviewOverlay() {
+  if (previewOverlay) return previewOverlay;
+  const overlay = document.createElement('div');
+  overlay.className = 'mermaid-preview-overlay';
+  overlay.innerHTML = `
+    <div class="mermaid-preview-container">
+      <div class="mermaid-preview-header">
+        <span class="mermaid-toolbar-label">Mermaid Preview</span>
+        <div class="mermaid-zoom-controls">
+          <button class="mermaid-btn" data-zoom="out" title="Zoom out">${ICON_ZOOM_OUT}</button>
+          <span class="mermaid-zoom-label">100%</span>
+          <button class="mermaid-btn" data-zoom="in" title="Zoom in">${ICON_ZOOM_IN}</button>
+          <button class="mermaid-btn" data-zoom="reset" title="Reset zoom">${ICON_RESET}</button>
+        </div>
+        <button class="mermaid-btn" data-action="download-svg" title="Download SVG">${ICON_DOWNLOAD}<span>SVG</span></button>
+        <button class="mermaid-btn" data-action="close-preview" title="Close">${ICON_CLOSE}</button>
+      </div>
+      <div class="mermaid-preview-body"></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  previewOverlay = overlay;
+
+  // Close on overlay click (not container)
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeMermaidPreview();
+  });
+
+  // Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) {
+      closeMermaidPreview();
+    }
+  });
+
+  // Mouse wheel zoom on preview body
+  overlay.addEventListener('wheel', (e) => {
+    if (!overlay.classList.contains('open')) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    previewZoom = Math.min(Math.max(previewZoom + delta, 0.25), 5);
+    applyPreviewZoom();
+  }, { passive: false });
+
+  // Drag to pan
+  let dragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragPanStartX = 0;
+  let dragPanStartY = 0;
+
+  const body = overlay.querySelector('.mermaid-preview-body');
+  if (body) {
+    body.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragPanStartX = previewPanX;
+      dragPanStartY = previewPanY;
+      body.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    previewPanX = dragPanStartX + (e.clientX - dragStartX);
+    previewPanY = dragPanStartY + (e.clientY - dragStartY);
+    applyPreviewZoom();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    if (body) body.style.cursor = 'grab';
+  });
+
+  // Zoom and action buttons
+  overlay.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mermaid-btn');
+    if (!btn) return;
+    const zoomAction = btn.dataset.zoom;
+    const action = btn.dataset.action;
+    if (zoomAction) {
+      handlePreviewZoom(zoomAction);
+    } else if (action === 'download-svg') {
+      downloadPreviewSvg();
+    } else if (action === 'close-preview') {
+      closeMermaidPreview();
+    }
+  });
+
+  return overlay;
+}
+
+function handlePreviewZoom(action) {
+  if (action === 'in') previewZoom = Math.min(previewZoom + 0.25, 5);
+  else if (action === 'out') previewZoom = Math.max(previewZoom - 0.25, 0.25);
+  else { previewZoom = 1; previewPanX = 0; previewPanY = 0; }
+  applyPreviewZoom();
+}
+
+function applyPreviewZoom() {
+  if (!previewOverlay) return;
+  const svg = previewOverlay.querySelector('.mermaid-preview-body svg');
+  if (svg) svg.style.transform = `translate(${previewPanX}px, ${previewPanY}px) scale(${previewZoom})`;
+  const label = previewOverlay.querySelector('.mermaid-zoom-label');
+  if (label) label.textContent = `${Math.round(previewZoom * 100)}%`;
+}
+
+function downloadPreviewSvg() {
+  if (!previewOverlay) return;
+  const svg = previewOverlay.querySelector('.mermaid-preview-body svg');
+  if (!svg) return;
+  const svgData = new XMLSerializer().serializeToString(svg);
+  const blob = new Blob([svgData], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mermaid-diagram-${Date.now()}.svg`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function openMermaidPreview(svgHtml, source) {
+  const overlay = getOrCreatePreviewOverlay();
+  const body = overlay.querySelector('.mermaid-preview-body');
+  body.innerHTML = svgHtml || '<span class="mermaid-status">No diagram to preview.</span>';
+  body.classList.toggle('empty', !svgHtml);
+  previewZoom = 1;
+  previewPanX = 0;
+  previewPanY = 0;
+  applyPreviewZoom();
+  requestAnimationFrame(() => overlay.classList.add('open'));
+}
+
+function closeMermaidPreview() {
+  if (!previewOverlay) return;
+  previewOverlay.classList.remove('open');
+}
+
+// --- Mermaid toolbar & preview event delegation ---
+let mermaidEventsBound = false;
+
+function bindMermaidEvents() {
+  if (mermaidEventsBound || typeof document === 'undefined') return;
+  mermaidEventsBound = true;
+
+  document.addEventListener('click', (e) => {
+    // Toolbar buttons
+    const btn = e.target.closest('.mermaid-block .mermaid-btn');
+    if (btn) {
+      const block = btn.closest('.mermaid-block');
+      if (!block) return;
+      const action = btn.dataset.action;
+      if (action === 'copy-source') {
+        const source = block.querySelector('.mermaid-source code')?.textContent || '';
+        if (source) {
+          navigator.clipboard.writeText(source).then(() => {
+            btn.classList.add('copied');
+            const label = btn.querySelector('span');
+            const old = label?.textContent;
+            if (label) label.textContent = 'Copied!';
+            setTimeout(() => {
+              btn.classList.remove('copied');
+              if (label) label.textContent = old || 'Copy';
+            }, 1500);
+          });
+        }
+      } else if (action === 'preview') {
+        const svgHtml = block.querySelector('.mermaid-render')?.innerHTML || '';
+        const hasSvg = svgHtml.includes('<svg');
+        openMermaidPreview(hasSvg ? svgHtml : null, block.querySelector('.mermaid-source code')?.textContent || '');
+      }
+      e.stopPropagation();
+      return;
+    }
+
+    // Click on render area to open preview
+    const renderArea = e.target.closest('.mermaid-block .mermaid-render');
+    if (renderArea) {
+      const block = renderArea.closest('.mermaid-block');
+      if (!block || block.dataset.error === 'true') return;
+      const svgHtml = renderArea.innerHTML;
+      const hasSvg = svgHtml.includes('<svg');
+      if (hasSvg) {
+        openMermaidPreview(svgHtml, block.querySelector('.mermaid-source code')?.textContent || '');
+      }
+    }
+  });
 }
 
 function normalizeMarkdownForDisplay(text) {
