@@ -675,6 +675,203 @@ body {
   user-select: none;
 }
 
+/* ===== ECharts Block ===== */
+.echarts-block {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 12px 0;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow var(--transition);
+}
+
+.echarts-block:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+
+/* --- Toolbar --- */
+.echarts-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--bg-code);
+  border-bottom: 1px solid var(--border);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.echarts-block:hover .echarts-toolbar {
+  opacity: 1;
+}
+
+.echarts-toolbar-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: auto;
+  padding: 0 6px;
+  user-select: none;
+}
+
+.echarts-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+
+.echarts-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.echarts-btn:active {
+  background: var(--bg-active);
+}
+
+.echarts-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.echarts-btn.copied {
+  color: var(--success);
+}
+
+/* --- Render area --- */
+.echarts-render {
+  background: #fff;
+  min-height: 200px;
+  position: relative;
+}
+
+.echarts-status {
+  color: var(--text-muted);
+  display: inline-block;
+  font-size: 13px;
+  padding: 32px 0;
+  text-align: center;
+  width: 100%;
+}
+
+/* --- Error state --- */
+.echarts-block[data-error="true"] .echarts-render {
+  background: var(--bg-hover);
+  min-height: 0;
+}
+
+.echarts-block[data-error="true"] .echarts-status {
+  color: var(--danger);
+  padding: 10px 0;
+}
+
+.echarts-error {
+  display: none;
+  border-top: 1px solid var(--border);
+}
+
+.echarts-block[data-error="true"] .echarts-error {
+  display: block;
+}
+
+.echarts-error summary {
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.echarts-error pre {
+  background: var(--bg-code);
+  border-radius: 0;
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0 !important;
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+/* --- Source toggle --- */
+.echarts-source {
+  border-top: 1px solid var(--border);
+}
+
+.echarts-source summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.echarts-source pre {
+  border-radius: 0;
+  margin: 0 !important;
+}
+
+/* ===== ECharts Preview Modal ===== */
+.echarts-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+}
+
+.echarts-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-code);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.echarts-preview-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+.echarts-preview-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.echarts-preview-body {
+  flex: 1;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.echarts-preview-chart {
+  width: 90vw;
+  height: 80vh;
+}
+
 /* PLACEHOLDER_SECTION_5 */
 
 /* ===== Input Area ===== */

@@ -1,6 +1,6 @@
 import { dom } from './dom.js';
 import { contentToBlocks, messageSources, messageText } from './message-blocks.js';
-import { escHtml, renderBlocks, renderContent, renderPendingMermaid, renderSourceCards, renderUserMessage } from './renderers.js';
+import { escHtml, renderBlocks, renderContent, renderPendingMermaid, renderPendingEcharts, renderSourceCards, renderUserMessage } from './renderers.js';
 import { state } from './state.js';
 
 export function scrollBottom() {
@@ -125,6 +125,7 @@ export function renderMessages() {
       </div>`
     : html;
   renderPendingMermaid(dom.messages);
+  renderPendingEcharts(dom.messages);
 }
 
 export function addUserMessage(text) {
@@ -135,6 +136,7 @@ export function addUserMessage(text) {
   div.innerHTML = `<div class="content">${renderUserMessage(text)}</div>`;
   dom.messages.appendChild(div);
   renderPendingMermaid(div);
+  renderPendingEcharts(div);
   scrollBottom();
 }
 

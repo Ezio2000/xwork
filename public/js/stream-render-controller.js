@@ -1,6 +1,6 @@
 import { dom } from './dom.js';
 import { state } from './state.js';
-import { renderBlocks, renderPendingMermaid } from './renderers.js';
+import { renderBlocks, renderPendingMermaid, renderPendingEcharts } from './renderers.js';
 import { scrollBottom } from './views.js';
 
 const STREAM_RENDER_INTERVAL_MS = 80;
@@ -74,6 +74,10 @@ export function createStreamRenderScheduler(stream) {
     ));
     contentEl.innerHTML = renderBlocks(blocks, false);
     renderPendingMermaid(contentEl, {
+      defer: renderMermaid === false,
+      closedOnly: renderMermaid === 'closed',
+    });
+    renderPendingEcharts(contentEl, {
       defer: renderMermaid === false,
       closedOnly: renderMermaid === 'closed',
     });

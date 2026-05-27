@@ -25,6 +25,10 @@ let mermaidInitDone = false;
 const mermaidRenderCache = new Map();
 const MERMAID_RENDER_CACHE_LIMIT = 80;
 
+let echartsCounter = 0;
+let echartsEventsBound = false;
+const echartsInstances = new Map();
+
 // --- Mermaid toolbar SVG icons ---
 const ICON_COPY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/></svg>';
 const ICON_PREVIEW = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3"/></svg>';
@@ -386,6 +390,299 @@ function markLastOpenMermaidBlockPending(html, markdown) {
   return template.innerHTML;
 }
 
+// --- ECharts ---
+
+function echartsSourceFromCode(code) {
+  if (!code) return '';
+  return code.textContent || '';
+}
+
+function hasOpenTrailingEchartsFence(markdown) {
+  let inFence = false;
+  let inEchartsFence = false;
+
+  for (const line of String(markdown || '').split(/\r?\n/)) {
+    const fence = line.match(/^\s*```([^\s`]*)?.*$/);
+    if (!fence) continue;
+    if (!inFence) {
+      inFence = true;
+      inEchartsFence = /^echarts$/i.test(fence[1] || '');
+    } else if (/^\s*```\s*$/.test(line)) {
+      inFence = false;
+      inEchartsFence = false;
+    }
+  }
+
+  return inFence && inEchartsFence;
+}
+
+function replaceEchartsCodeBlocks(html) {
+  if (!String(html || '').includes('language-echarts')) return html;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return html;
+  const template = document.createElement('template');
+  if (!template.content) return html;
+  template.innerHTML = html;
+
+  for (const code of template.content.querySelectorAll('pre > code.language-echarts')) {
+    const pre = code.parentElement;
+    if (!pre) continue;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = createEchartsBlock(echartsSourceFromCode(code));
+    pre.replaceWith(wrapper.firstElementChild);
+  }
+
+  return template.innerHTML;
+}
+
+function markLastOpenEchartsBlockPending(html, markdown) {
+  if (!String(markdown || '').includes('```echarts')) return html;
+  if (!String(html || '').includes('language-echarts')) return html;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return html;
+  if (!hasOpenTrailingEchartsFence(markdown)) return html;
+
+  const template = document.createElement('template');
+  if (!template.content) return html;
+  template.innerHTML = html;
+  const codes = template.content.querySelectorAll('pre > code.language-echarts');
+  const code = codes[codes.length - 1];
+  if (!code) return html;
+  const pre = code.parentElement;
+  if (!pre) return html;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = createEchartsBlock(echartsSourceFromCode(code), true);
+  pre.replaceWith(wrapper.firstElementChild);
+  return template.innerHTML;
+}
+
+function createEchartsBlock(source, pending = false) {
+  const id = `echarts-${Date.now().toString(36)}-${echartsCounter++}`;
+  const escapedSource = escHtml(source);
+  return `
+    <div class="echarts-block" data-echarts-id="${id}"${pending ? ' data-pending="true"' : ''}>
+      <div class="echarts-toolbar">
+        <span class="echarts-toolbar-label">ECharts</span>
+        <button class="echarts-btn" data-action="copy-source" title="Copy source">${ICON_COPY}<span>Copy</span></button>
+        <button class="echarts-btn" data-action="download-png" title="Download as PNG">${ICON_DOWNLOAD}<span>PNG</span></button>
+        <button class="echarts-btn" data-action="preview" title="Fullscreen preview">${ICON_PREVIEW}<span>Preview</span></button>
+      </div>
+      <div class="echarts-render" id="${id}" style="width:100%;height:400px;">
+        <span class="echarts-status">Rendering chart...</span>
+      </div>
+      <details class="echarts-error">
+        <summary>Chart could not be rendered</summary>
+        <pre></pre>
+      </details>
+      <details class="echarts-source">
+        <summary>Source</summary>
+        <pre><code>${escapedSource}</code></pre>
+      </details>
+    </div>
+  `;
+}
+
+function setEchartsError(block, message) {
+  const target = block.querySelector('.echarts-render');
+  const error = block.querySelector('.echarts-error');
+  const errorMessage = message || 'Failed to render ECharts chart.';
+  if (target) target.innerHTML = '<span class="echarts-status">Chart could not be rendered.</span>';
+  if (error) {
+    const pre = error.querySelector('pre');
+    if (pre) pre.textContent = errorMessage;
+  }
+  block.dataset.error = 'true';
+}
+
+function renderEchartsBlock(block) {
+  if (block.dataset.rendered === 'true' || block.dataset.rendering === 'true') return;
+  const target = block.querySelector('.echarts-render');
+  const source = block.querySelector('.echarts-source code')?.textContent || '';
+  if (!target || !source.trim()) return;
+  if (typeof echarts === 'undefined' || typeof echarts.init !== 'function') {
+    setEchartsError(block, 'ECharts renderer is unavailable.');
+    return;
+  }
+
+  let option;
+  try {
+    option = JSON.parse(source);
+  } catch {
+    // JSON.parse fails when the option contains JavaScript functions (e.g. formatter).
+    // Fall back to evaluating as a JS expression.
+    try {
+      option = new Function(`return (${source})`)();
+    } catch (err) {
+      setEchartsError(block, `Invalid option: ${err?.message || 'parse error'}`);
+      return;
+    }
+  }
+
+  block.dataset.rendering = 'true';
+
+  // After innerHTML, the element may not have been laid out yet (offsetWidth/Height=0).
+  // Use requestAnimationFrame to wait for layout before initializing.
+  function tryInit() {
+    if (!target.isConnected) { delete block.dataset.rendering; return; }
+    const w = target.offsetWidth;
+    const h = target.offsetHeight;
+    if (!w || !h) { requestAnimationFrame(tryInit); return; }
+    // Remove loading placeholder
+    const status = target.querySelector('.echarts-status');
+    if (status) status.remove();
+    try {
+      // Dispose previous instance if re-rendering
+      const prev = echartsInstances.get(target.id);
+      if (prev) { try { prev.dispose(); } catch {} echartsInstances.delete(target.id); }
+      const chart = echarts.init(target);
+      chart.setOption(option);
+      echartsInstances.set(target.id, chart);
+      block.dataset.rendered = 'true';
+      block.dataset.error = 'false';
+      bindEchartsEvents();
+    } catch (err) {
+      setEchartsError(block, err?.message || 'Failed to render ECharts chart.');
+    } finally {
+      delete block.dataset.rendering;
+    }
+  }
+  requestAnimationFrame(tryInit);
+}
+
+export function renderPendingEcharts(root, options = {}) {
+  if (options.defer) return;
+  const base = root || (typeof document !== 'undefined' ? document : null);
+  if (!base?.querySelectorAll) return;
+  for (const block of base.querySelectorAll('.echarts-block')) {
+    if (options.closedOnly && block.dataset.pending === 'true') continue;
+    renderEchartsBlock(block);
+  }
+}
+
+// --- ECharts event delegation ---
+
+function bindEchartsEvents() {
+  if (echartsEventsBound || typeof document === 'undefined') return;
+  echartsEventsBound = true;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.echarts-block .echarts-btn');
+    if (!btn) return;
+    const block = btn.closest('.echarts-block');
+    if (!block) return;
+    const action = btn.dataset.action;
+
+    if (action === 'copy-source') {
+      const source = block.querySelector('.echarts-source code')?.textContent || '';
+      if (source) {
+        navigator.clipboard.writeText(source).then(() => {
+          btn.classList.add('copied');
+          const label = btn.querySelector('span');
+          const old = label?.textContent;
+          if (label) label.textContent = 'Copied!';
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            if (label) label.textContent = old || 'Copy';
+          }, 1500);
+        });
+      }
+    } else if (action === 'download-png') {
+      const renderEl = block.querySelector('.echarts-render');
+      const chart = renderEl ? echartsInstances.get(renderEl.id) : null;
+      if (chart) {
+        const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'echarts-chart.png';
+        a.click();
+      }
+    } else if (action === 'preview') {
+      const renderEl = block.querySelector('.echarts-render');
+      const chart = renderEl ? echartsInstances.get(renderEl.id) : null;
+      openEchartsPreview(chart, block.querySelector('.echarts-source code')?.textContent || '');
+    }
+
+    e.stopPropagation();
+  });
+}
+
+// --- ECharts Preview Modal ---
+let echartsPreviewOverlay = null;
+
+function openEchartsPreview(chart, source) {
+  closeEchartsPreview();
+  const overlay = document.createElement('div');
+  overlay.className = 'echarts-preview-overlay';
+  overlay.innerHTML = `
+    <div class="echarts-preview-header">
+      <span class="echarts-preview-title">ECharts Preview</span>
+      <div class="echarts-preview-actions">
+        <button class="echarts-btn" data-action="download-png">${ICON_DOWNLOAD}<span>PNG</span></button>
+        <button class="echarts-btn" data-action="close">${ICON_CLOSE}<span>Close</span></button>
+      </div>
+    </div>
+    <div class="echarts-preview-body">
+      <div class="echarts-preview-chart" id="echarts-preview-chart"></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  echartsPreviewOverlay = overlay;
+
+  overlay.querySelector('[data-action="close"]').addEventListener('click', closeEchartsPreview);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeEchartsPreview();
+  });
+
+  overlay.querySelector('[data-action="download-png"]').addEventListener('click', () => {
+    const previewChart = echartsInstances.get('echarts-preview-chart');
+    if (previewChart) {
+      const url = previewChart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'echarts-chart.png';
+      a.click();
+    }
+  });
+
+  if (typeof echarts !== 'undefined' && chart) {
+    try {
+      const option = chart.getOption();
+      const previewEl = overlay.querySelector('#echarts-preview-chart');
+      previewEl.style.width = '90vw';
+      previewEl.style.height = '80vh';
+      const previewChart = echarts.init(previewEl);
+      previewChart.setOption(option);
+      echartsInstances.set('echarts-preview-chart', previewChart);
+    } catch (err) {
+      const previewEl = overlay.querySelector('#echarts-preview-chart');
+      previewEl.innerHTML = `<span class="echarts-status">Preview failed: ${escHtml(err?.message || 'unknown error')}</span>`;
+    }
+  }
+}
+
+function closeEchartsPreview() {
+  if (!echartsPreviewOverlay) return;
+  const previewChart = echartsInstances.get('echarts-preview-chart');
+  if (previewChart) {
+    previewChart.dispose();
+    echartsInstances.delete('echarts-preview-chart');
+  }
+  echartsPreviewOverlay.remove();
+  echartsPreviewOverlay = null;
+}
+
+// Resize handler for ECharts instances
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  let echartsResizeTimer = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(echartsResizeTimer);
+    echartsResizeTimer = setTimeout(() => {
+      for (const [id, chart] of echartsInstances) {
+        if (id === 'echarts-preview-chart') continue;
+        try { chart.resize(); } catch {}
+      }
+    }, 200);
+  });
+}
+
 function initializeMermaid() {
   if (mermaidInitDone || typeof mermaid === 'undefined' || typeof mermaid.initialize !== 'function') return;
   mermaid.initialize({
@@ -704,6 +1001,8 @@ export function renderContent(text) {
   let html = marked.parse(display.value);
   html = markLastOpenMermaidBlockPending(html, display.value);
   html = replaceMermaidCodeBlocks(html);
+  html = markLastOpenEchartsBlockPending(html, display.value);
+  html = replaceEchartsCodeBlocks(html);
   html = renderResidualStrongInHtml(html);
   html = renderInlineMathInHtml(html);
   html = restorePlaceholders(html, 'DM', display.displayMath);
