@@ -619,7 +619,7 @@ describe('subagent runtime', () => {
     assert.match(system, /launching multiple delegate_task calls in one assistant response/);
     assert.match(system, /standard execution path/);
     assert.match(system, /It is not a last resort/);
-    assert.match(system, /Do not let web_search replace task decomposition/);
+    assert.match(system, /consider delegate_task to split work and then synthesize/);
     assert.match(system, /exactly one concrete objective/);
     assert.match(system, /fresh-context/);
     assert.match(system, /concise result/);
