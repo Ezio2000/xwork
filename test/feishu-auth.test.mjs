@@ -6,6 +6,10 @@ import { listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { feishuAuthTool } from '../lib/tools/builtin/feishu-auth.mjs';
 import { clearStoredUserTokens } from '../lib/feishu-auth.mjs';
 
+const WRITES_REAL_TOOL_DB_SKIP = {
+  skip: 'Skipped for now: this test writes persistent tool config in data/xwork.sqlite. Re-enable after test DB isolation is added.',
+};
+
 function jsonResponse(payload, status = 200) {
   return {
     ok: status >= 200 && status < 300,
@@ -51,7 +55,7 @@ async function withFeishuAuthEnabled(config, fn) {
 }
 
 describe('feishu_auth tool', () => {
-  it('is registered and enabled by default', async () => {
+  it('is registered and enabled by default', WRITES_REAL_TOOL_DB_SKIP, async () => {
     const tools = await listTools();
     const tool = tools.find(item => item.id === 'feishu_auth');
 
@@ -64,7 +68,7 @@ describe('feishu_auth tool', () => {
     assert.equal(tool.configSchema.properties.app_secret.type, 'string');
   });
 
-  it('starts device authorization without waiting', async () => {
+  it('starts device authorization without waiting', WRITES_REAL_TOOL_DB_SKIP, async () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (url, options) => {
       assert.match(String(url), /\/oauth\/v1\/device_authorization$/);
@@ -107,7 +111,7 @@ describe('feishu_auth tool', () => {
     }
   });
 
-  it('starts device authorization with domain scopes', async () => {
+  it('starts device authorization with domain scopes', WRITES_REAL_TOOL_DB_SKIP, async () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (url, options) => {
       assert.match(String(url), /\/oauth\/v1\/device_authorization$/);
@@ -147,7 +151,7 @@ describe('feishu_auth tool', () => {
     }
   });
 
-  it('logs in by opening authorization, polling, and saving token', async () => {
+  it('logs in by opening authorization, polling, and saving token', WRITES_REAL_TOOL_DB_SKIP, async () => {
     const previousFetch = globalThis.fetch;
     const events = [];
     globalThis.fetch = async (url) => {
@@ -206,7 +210,7 @@ describe('feishu_auth tool', () => {
     }
   });
 
-  it('completes device authorization with a device code', async () => {
+  it('completes device authorization with a device code', WRITES_REAL_TOOL_DB_SKIP, async () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (url, options) => {
       assert.match(String(url), /\/open-apis\/authen\/v2\/oauth\/token$/);
@@ -247,7 +251,7 @@ describe('feishu_auth tool', () => {
     }
   });
 
-  it('clears stored user tokens without clearing app credentials', async () => {
+  it('clears stored user tokens without clearing app credentials', WRITES_REAL_TOOL_DB_SKIP, async () => {
     await withFeishuAuthEnabled({
       app_id: 'cli_keep',
       app_secret: 'secret_keep',
