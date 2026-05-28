@@ -744,6 +744,51 @@ describe('queryLoop', () => {
       assert.equal(secondMessages[1].content[1].type, 'web_search_tool_result');
       assert.equal(onServerToolCalls.length, 2);
     });
+
+    it('treats search-preface text as non-final when server tool results already exist', async () => {
+      let callCount = 0;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return (fakeStreamChatThatReturns({
+            text: 'Let me search for the latest information about Jensen Huang\'s recent activities.',
+            content: [
+              { type: 'text', text: 'Let me search for the latest information about Jensen Huang\'s recent activities.' },
+              { type: 'server_tool_use', id: 'stu_01', name: 'web_search', input: { query: 'Jensen Huang Taiwan May 2026 schedule' } },
+              {
+                type: 'web_search_tool_result',
+                tool_use_id: 'stu_01',
+                content: [
+                  { type: 'web_search_result', title: 'Result', url: 'https://example.test', snippet: 'Found item' },
+                ],
+              },
+            ],
+            toolCalls: [],
+            serverToolEvents: [
+              { phase: 'call', id: 'stu_01', name: 'web_search', input: { query: 'Jensen Huang Taiwan May 2026 schedule' } },
+              { phase: 'result', id: 'stu_01', name: 'web_search', isError: false, renderType: 'source-cards', data: { sources: [{ title: 'Result', url: 'https://example.test' }] } },
+            ],
+          }))(...args);
+        }
+        return (fakeStreamChatThatReturns({
+          text: 'Summary of findings.',
+          content: [{ type: 'text', text: 'Summary of findings.' }],
+          toolCalls: [],
+        }))(...args);
+      };
+
+      const iterator = queryLoop({
+        config: baseConfig,
+        history: baseHistory,
+        streamChat,
+        runTool: fakeRunTool([]),
+      });
+      await drain(iterator);
+
+      assert.equal(callCount, 2);
+      assert.equal(returnValue.reason, 'completed');
+      assert.equal(returnValue.text, 'Let me search for the latest information about Jensen Huang\'s recent activities.Summary of findings.');
+    });
   });
 
   // =========================================================================

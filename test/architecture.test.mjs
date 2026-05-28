@@ -378,7 +378,7 @@ describe('architecture safety contracts', () => {
     assert.equal(receivedSignal, ac.signal);
   });
 
-  it('filters leaked DSML web_search markup from streamed text deltas', async () => {
+  it('turns leaked DSML web_search markup inside text into an explicit provider error', async () => {
     const originalFetch = globalThis.fetch;
     const encoder = new TextEncoder();
     const chunks = [
@@ -407,6 +407,7 @@ describe('architecture safety contracts', () => {
     });
 
     const deltas = [];
+    let error = null;
     let result;
     try {
       result = await streamChat(
@@ -415,7 +416,7 @@ describe('architecture safety contracts', () => {
         (delta) => deltas.push(delta),
         () => {},
         () => {},
-        () => {},
+        (err) => { error = err; },
         () => {},
       );
     } finally {
@@ -423,8 +424,8 @@ describe('architecture safety contracts', () => {
     }
 
     assert.equal(deltas.join(''), 'before  after');
-    assert.equal(result.text, 'before  after');
-    assert.equal(result.content[0].text, 'before  after');
+    assert.match(error?.message || '', /DSML tool-call markup/);
+    assert.equal(result.stopReason, 'error');
     assert.doesNotMatch(deltas.join(''), /DSML|tool_calls|web_search/);
   });
 
