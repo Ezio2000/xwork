@@ -11,7 +11,7 @@ const DEFAULT_PROFILE = {
   allowedTools: ['web_search', 'get_current_time', 'calculator', 'uuid_gen', 'list_dir', 'git', 'code_outline', 'grep', 'glob', 'read_file', 'shell_command'],
   allowSubagents: false,
   maxDepth: 2,
-  maxTurns: 3,
+  maxTurns: 30,
   timeoutMs: 90000,
   maxOutputChars: 2000,
   channelId: '',
@@ -101,7 +101,7 @@ export function showExpertAgentEditor(agent = null) {
   dom.editExpertAgentOutput.value = profile.outputContract || '';
   dom.editExpertAgentChannel.innerHTML = renderChannelOptions(profile);
   dom.editExpertAgentModel.value = profile.model || '';
-  dom.editExpertAgentMaxTurns.value = profile.maxTurns || 3;
+  dom.editExpertAgentMaxTurns.value = profile.maxTurns || 30;
   dom.editExpertAgentTimeout.value = profile.timeoutMs || 90000;
   dom.editExpertAgentOutputChars.value = profile.maxOutputChars || 2000;
   dom.editExpertAgentMaxDepth.value = profile.maxDepth || 2;
@@ -134,7 +134,7 @@ export function expertAgentPayloadFromEditor() {
     outputContract: dom.editExpertAgentOutput.value.trim(),
     channelId: dom.editExpertAgentChannel.value || null,
     model: dom.editExpertAgentModel.value.trim(),
-    maxTurns: numberValue(dom.editExpertAgentMaxTurns, 3),
+    maxTurns: numberValue(dom.editExpertAgentMaxTurns, 30),
     timeoutMs: numberValue(dom.editExpertAgentTimeout, 90000),
     maxOutputChars: numberValue(dom.editExpertAgentOutputChars, 2000),
     maxDepth: numberValue(dom.editExpertAgentMaxDepth, 2),

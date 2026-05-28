@@ -4,6 +4,7 @@ import {
   buildRunningToolBlock,
   collapseFinishedToolBlock,
   isTerminalSubagentBlock,
+  shouldKeepToolBlockExpanded,
   shouldCreateRunningToolBlock,
 } from './tool-block-collapse.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
@@ -29,6 +30,11 @@ function currentTextBlock(blocks) {
   return block;
 }
 
+function currentBlockTextBlock(block) {
+  block.blocks = Array.isArray(block.blocks) ? block.blocks : [];
+  return currentTextBlock(block.blocks);
+}
+
 function pushSubagentEvent(block, evt) {
   const eventType = streamAgentEventType(evt);
   if (eventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DELTA || eventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_THINKING) return;
@@ -39,7 +45,7 @@ function pushSubagentEvent(block, evt) {
   block.timeline.push({ kind: 'event', event: { ...evt } });
   if (block.timeline.length > 160) block.timeline = block.timeline.slice(-160);
   block.blocks = Array.isArray(block.blocks) ? block.blocks : [];
-  block.blocks.push(...subagentEventToBlocks(evt));
+  applySubagentEventBlocks(block, evt);
 }
 
 function appendSubagentText(block, text) {
@@ -105,6 +111,121 @@ function replaceToolBlock(existing, next) {
   Object.keys(existing).forEach(key => { delete existing[key]; });
   Object.assign(existing, next, toolCallId ? { toolCallId } : {});
   return existing;
+}
+
+function findNestedToolBlockByCallId(block, toolCallId) {
+  if (!toolCallId || !Array.isArray(block?.blocks)) return null;
+  return block.blocks.find(item => item.toolCallId === toolCallId && item.type !== 'text') || null;
+}
+
+function applyToolCallBlock(blocks, tool) {
+  if (!Array.isArray(blocks) || !tool?.id) return;
+  if (tool.name === 'shell_command') {
+    const existing = blocks.find(item => item.type === 'shell-command' && item.toolCallId === tool.id);
+    const next = {
+      type: 'shell-command',
+      toolCallId: tool.id,
+      status: 'running',
+      command: tool.input?.command || existing?.command || 'shell command',
+      cwd: tool.input?.cwd || existing?.cwd || '',
+      stdout: existing?.stdout || '',
+      stderr: existing?.stderr || '',
+      collapsed: false,
+      startedAt: Date.now(),
+    };
+    if (existing) Object.assign(existing, next);
+    else blocks.push(next);
+    return;
+  }
+
+  if (shouldCreateRunningToolBlock(tool) && !blocks.some(item => item.toolCallId === tool.id && item.type !== 'text')) {
+    blocks.push(buildRunningToolBlock(tool));
+  }
+}
+
+function applyToolResultBlock(block, tool) {
+  block.blocks = Array.isArray(block.blocks) ? block.blocks : [];
+  const existing = findNestedToolBlockByCallId(block, tool.id);
+  const renderType = tool.renderType;
+
+  if (!renderType) {
+    if (existing) {
+      existing.status = tool.isError ? 'error' : 'completed';
+      existing.durationMs = tool.durationMs;
+      if (tool.isError) existing.error = String(tool.output || 'Tool failed');
+      collapseFinishedToolBlock(existing);
+    } else if (tool.isError) {
+      currentBlockTextBlock(block).content += `\n\n_Tool error: ${tool.name || 'tool'}_`;
+    }
+    return;
+  }
+
+  if (!tool.data && !tool.isError) return;
+
+  const nextBlock = {
+    type: renderType,
+    ...(tool.data || {}),
+    status: tool.isError ? 'error' : 'completed',
+    toolCallId: tool.id,
+  };
+  if (renderType === 'feishu-media') {
+    nextBlock.collapsed = false;
+    nextBlock.fixedOpen = true;
+  }
+
+  const target = existing
+    ? (existing.type === 'tool-running' || existing.type !== renderType ? replaceToolBlock(existing, nextBlock) : Object.assign(existing, nextBlock))
+    : nextBlock;
+
+  if (!existing) block.blocks.push(target);
+  if (!shouldKeepToolBlockExpanded(target)) collapseFinishedToolBlock(target);
+}
+
+function applySubagentEventBlocks(block, evt) {
+  const eventType = streamAgentEventType(evt);
+  if (eventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_CALL) {
+    applyToolCallBlock(block.blocks, {
+      id: evt.toolCallId,
+      name: evt.name,
+      input: evt.input || {},
+    });
+    return;
+  }
+  if (eventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_RESULT) {
+    applyToolResultBlock(block, {
+      id: evt.toolCallId,
+      name: evt.name,
+      isError: evt.isError,
+      durationMs: evt.durationMs,
+      output: evt.output,
+      renderType: evt.renderType,
+      data: evt.data,
+    });
+    return;
+  }
+  if (eventType === STREAM_AGENT_EVENT_TYPES.SUBAGENT_SERVER_TOOL) {
+    const serverEvent = evt.event || {};
+    if (serverEvent.phase === 'call') {
+      applyToolCallBlock(block.blocks, {
+        id: serverEvent.id,
+        name: serverEvent.name || evt.name,
+        input: serverEvent.input || {},
+      });
+      return;
+    }
+    if (serverEvent.phase === 'result') {
+      applyToolResultBlock(block, {
+        id: serverEvent.id,
+        name: serverEvent.name || evt.name,
+        isError: serverEvent.isError,
+        output: serverEvent.data || serverEvent.errorCode || {},
+        renderType: serverEvent.renderType,
+        data: serverEvent.data,
+      });
+      return;
+    }
+  }
+  block.blocks.push(...subagentEventToBlocks(evt));
 }
 
 function applyAskUserPending(evt, stream, effects) {

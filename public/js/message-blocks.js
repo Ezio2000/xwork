@@ -1,4 +1,5 @@
 import { STREAM_AGENT_EVENT_TYPES, streamAgentEventType } from './stream-events.js';
+import { buildRunningToolBlock } from './tool-block-collapse.js';
 
 export function stripSearchQueryText(text) {
   return String(text || '').replace(/^Search results for query: .*/gm, '').replace(/\n{3,}/g, '\n\n');
@@ -50,8 +51,15 @@ export function subagentEventToBlocks(event) {
     type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_DELTA
     || type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_THINKING
     || type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_START
-    || type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_CALL
   ) return [];
+
+  if (type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_CALL) {
+    return [buildRunningToolBlock({
+      id: event.toolCallId,
+      name: event.name,
+      input: event.input || {},
+    })];
+  }
 
   if (type === STREAM_AGENT_EVENT_TYPES.SUBAGENT_TOOL_RESULT) {
     const rendered = renderBlockFromResult(event.renderType, event.data) || renderBlockFromOutput(event.output);
@@ -65,7 +73,11 @@ export function subagentEventToBlocks(event) {
     const serverEvent = event.event || {};
     const name = serverEvent.name || event.name || 'server tool';
     if (serverEvent.phase === 'call') {
-      return [];
+      return [buildRunningToolBlock({
+        id: serverEvent.id,
+        name,
+        input: serverEvent.input || {},
+      })];
     }
     if (serverEvent.phase === 'result') {
       const rendered = renderBlockFromResult(serverEvent.renderType, serverEvent.data) || renderBlockFromOutput(serverEvent.data);

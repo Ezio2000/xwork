@@ -1097,14 +1097,14 @@ function isTerminalSubagentStatus(status) {
 function renderSubagentRun(block, collapsed) {
   const status = block.status || 'running';
   const expertTitle = block.expertAgent?.title || '';
-  const label = block.label || expertTitle || block.task || 'Expert Agent';
+  const label = expertTitle || block.label || block.task || 'Expert Agent';
   const blocks = subagentFrameBlocks(block);
   const runCollapsed = typeof block.collapsed === 'boolean'
     ? block.collapsed
     : Boolean(collapsed && isTerminalSubagentStatus(status));
   const nestedCollapsed = collapsed || runCollapsed;
-  const runningClass = status === 'running' ? ' running' : '';
-  const statusLabel = block.thinking && status === 'running' ? 'thinking...' : status;
+  const runningClass = !isTerminalSubagentStatus(status) ? ' running' : '';
+  const statusLabel = block.thinking && !isTerminalSubagentStatus(status) ? 'thinking...' : status;
   return `
     <div class="subagent-toggle${runningClass}${runCollapsed ? ' collapsed' : ''}" data-agent-run-id="${escHtml(block.runId || '')}">
       <div class="subagent-toggle-header" data-toggle-parent>

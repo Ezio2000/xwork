@@ -21,6 +21,7 @@ describe('expert agent profiles', () => {
     assert.equal(general.builtin, true);
     assert.equal(general.isDefault, true);
     assert.equal(general.enabled, true);
+    assert.equal(general.maxTurns, 30);
     assert.ok(general.allowedTools.includes('web_search'));
   });
 
@@ -44,9 +45,9 @@ describe('expert agent profiles', () => {
       assert.equal(created.builtin, false);
       assert.deepEqual(created.allowedTools, ['calculator']);
 
-      const updated = await updateExpertAgent(id, { enabled: false, maxTurns: 3 });
+      const updated = await updateExpertAgent(id, { enabled: false, maxTurns: 100 });
       assert.equal(updated.enabled, false);
-      assert.equal(updated.maxTurns, 3);
+      assert.equal(updated.maxTurns, 100);
     } finally {
       const deleted = await deleteExpertAgent(id);
       assert.equal(deleted.ok, true);
@@ -83,7 +84,7 @@ describe('expert agent profiles', () => {
       const result = await runSubagent({
         task: 'Compute one thing',
         expertAgentId: created.id,
-        config: { model: 'test-model', tools: [{ name: 'calculator' }, { name: 'shell_command' }] },
+        config: { model: 'test-model', maxTurns: 5, tools: [{ name: 'calculator' }, { name: 'shell_command' }] },
         context: { conversationId: 'conv1', channelId: 'ch1', model: 'test-model', source: 'test', environment: 'test' },
         streamChat: async (config, _messages, onDelta, _onThink, onDone) => {
           receivedConfig = config;

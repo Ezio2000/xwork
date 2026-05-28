@@ -81,6 +81,41 @@ describe('message block protocol', () => {
     assert.match(errorBlocks[0].content, /bad expression/);
   });
 
+  it('maps subagent tool call events to running display blocks', () => {
+    assert.deepEqual(subagentEventToBlocks({
+      eventType: 'subagent_tool_call',
+      toolCallId: 'toolu_search_1',
+      name: 'web_search',
+      input: { query: 'current news' },
+    }), [{
+      type: 'tool-running',
+      toolCallId: 'toolu_search_1',
+      toolName: 'web_search',
+      status: 'running',
+      label: 'search current news',
+      input: { query: 'current news' },
+      collapsed: false,
+    }]);
+
+    assert.deepEqual(subagentEventToBlocks({
+      eventType: 'subagent_server_tool',
+      event: {
+        phase: 'call',
+        id: 'srv_search_1',
+        name: 'web_search',
+        input: { query: 'server search' },
+      },
+    }), [{
+      type: 'tool-running',
+      toolCallId: 'srv_search_1',
+      toolName: 'web_search',
+      status: 'running',
+      label: 'search server search',
+      input: { query: 'server search' },
+      collapsed: false,
+    }]);
+  });
+
   it('deduplicates message sources by URL or source identity', () => {
     const merged = mergeSources(
       [{ title: 'A', url: 'https://a.test' }],

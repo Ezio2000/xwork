@@ -5,8 +5,11 @@ import { spawnSync } from 'node:child_process';
 
 import { runTool } from '../lib/tools/runner.mjs';
 import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/tools/registry.mjs';
+import { readToolConfigs, writeToolConfigs } from '../lib/tools/store.mjs';
+import { loadBuiltinTools } from '../lib/tools/builtin/index.mjs';
 import { shellCommandTool } from '../lib/tools/builtin/shell-command.mjs';
 import { browserActionTool } from '../lib/tools/builtin/browser-action.mjs';
+import { webFetchTool } from '../lib/tools/builtin/web-fetch.mjs';
 
 function hasCommand(command) {
   const result = process.platform === 'win32' ? spawnSync('where', [command], {
@@ -162,13 +165,14 @@ describe('shell command tool', () => {
 });
 
 describe('tool configuration surface', () => {
-  it('exposes delegate_task defaultMaxTurns config metadata', async () => {
+  it('exposes delegate_task maxTurns as a per-call expert override but not global tool config', async () => {
     const tools = await listTools();
     const delegateTask = tools.find(tool => tool.id === 'delegate_task');
 
     assert.ok(delegateTask);
-    assert.deepEqual(delegateTask.defaultConfig, { defaultMaxTurns: 3 });
-    assert.equal(delegateTask.configSchema.properties.defaultMaxTurns.type, 'number');
+    assert.deepEqual(delegateTask.defaultConfig, {});
+    assert.deepEqual(delegateTask.configSchema.properties, {});
+    assert.equal(delegateTask.inputSchema.properties.maxTurns.type, 'number');
   });
 
   it('exposes config metadata and applies server-tool config overrides', async () => {
@@ -181,14 +185,19 @@ describe('tool configuration surface', () => {
       allowedDomains: [],
       blockedDomains: [],
     });
-    assert.equal(webSearch.config.maxUses, 4);
     assert.equal(webSearch.configSchema.properties.maxUses.type, 'number');
 
     const previous = webSearch.config;
     try {
+      const baseline = await updateToolConfig('web_search', {
+        config: webSearch.defaultConfig,
+      });
+      assert.equal(baseline.config.maxUses, 4);
+      assert.equal(baseline.maxUses, 4);
+
       const updated = await updateToolConfig('web_search', {
         config: {
-          ...previous,
+          ...webSearch.defaultConfig,
           maxUses: 2,
           allowedDomains: ['example.com'],
           blockedDomains: [],
@@ -203,7 +212,7 @@ describe('tool configuration surface', () => {
 
       await updateToolConfig('web_search', {
         config: {
-          ...previous,
+          ...webSearch.defaultConfig,
           maxUses: 'bad',
           allowedDomains: 'example.com',
         },
@@ -213,6 +222,45 @@ describe('tool configuration surface', () => {
       assert.deepEqual(fallbackDefinition.allowedDomains, []);
     } finally {
       await updateToolConfig('web_search', { config: previous });
+    }
+  });
+
+  it('uses a configurable 60s default timeout for web_search and migrates the old 10s default', async () => {
+    const tools = await loadBuiltinTools();
+    const previousConfigs = await readToolConfigs(tools);
+    const previousWebSearch = previousConfigs.find(tool => tool.id === 'web_search');
+
+    try {
+      await writeToolConfigs(previousConfigs.map(config => (
+        config.id === 'web_search'
+          ? {
+              ...config,
+              timeoutMs: 10000,
+              defaultTimeoutMs: 10000,
+              config: {
+                maxUses: 4,
+                allowedDomains: [],
+                blockedDomains: [],
+              },
+            }
+          : config
+      )));
+
+      const migrated = await listTools();
+      const webSearch = migrated.find(tool => tool.id === 'web_search');
+      assert.equal(webSearch.timeoutMs, 60000);
+      assert.equal(webSearch.defaultTimeoutMs, 60000);
+
+      const custom = await updateToolConfig('web_search', { timeoutMs: 10000 });
+      assert.equal(custom.timeoutMs, 10000);
+
+      const reread = (await listTools()).find(tool => tool.id === 'web_search');
+      assert.equal(reread.timeoutMs, 10000);
+      assert.equal(reread.defaultTimeoutMs, 60000);
+    } finally {
+      if (previousWebSearch) {
+        await writeToolConfigs(previousConfigs);
+      }
     }
   });
 });
@@ -284,5 +332,19 @@ describe('browser action tool', () => {
 
     assert.equal(render.data.textQuery, '仙童数学');
     assert.equal(render.data.count, 1);
+  });
+});
+
+describe('web fetch tool', () => {
+  it('validates proxy configuration before attempting fetch', async () => {
+    await assert.rejects(
+      () => webFetchTool.handler(
+        { url: 'https://example.com/' },
+        { config: { proxy: 'httt://localhost:7890' } },
+      ),
+      /Invalid web_fetch proxy URL protocol: httt:/,
+    );
+
+    assert.equal(webFetchTool.defaultConfig.proxy, '');
   });
 });

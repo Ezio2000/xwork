@@ -721,6 +721,128 @@ describe('frontend module boundaries', () => {
     assert.doesNotMatch(html, /status-running">running/);
   });
 
+  it('shows subagent thinking state and nested tool blocks while running', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: {
+        schedule() {},
+        flush() {},
+        cancel() {},
+      },
+    };
+
+    appendStreamEvent({
+      type: 'agent_event',
+      seq: 1,
+      eventType: 'subagent_start',
+      runId: 'sub_run_1',
+      status: 'running',
+      label: 'Lookup',
+      task: 'Search current event',
+      expertAgent: { id: 'researcher', title: 'Research Expert' },
+    }, stream);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      seq: 2,
+      eventType: 'subagent_thinking',
+      runId: 'sub_run_1',
+      text: 'Planning search',
+    }, stream);
+
+    assert.equal(stream.blocks[0].thinking, true);
+    let html = renderBlocks(stream.blocks, false);
+    assert.match(html, /Research Expert/);
+    assert.match(html, /thinking\.\.\./);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      seq: 3,
+      eventType: 'subagent_tool_call',
+      runId: 'sub_run_1',
+      toolCallId: 'toolu_search_1',
+      name: 'web_search',
+      input: { query: 'Jensen Huang May 2026' },
+    }, stream);
+
+    assert.equal(stream.blocks[0].thinking, false);
+    assert.equal(stream.blocks[0].blocks.at(-1).type, 'tool-running');
+    assert.equal(stream.blocks[0].blocks.at(-1).toolCallId, 'toolu_search_1');
+    assert.match(stream.blocks[0].blocks.at(-1).label, /Jensen Huang/);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      seq: 4,
+      eventType: 'subagent_tool_result',
+      runId: 'sub_run_1',
+      toolCallId: 'toolu_search_1',
+      name: 'web_search',
+      isError: false,
+      renderType: 'source-cards',
+      data: { sources: [{ title: 'Result', url: 'https://example.test' }], searchCount: 1 },
+    }, stream);
+
+    const nested = stream.blocks[0].blocks.at(-1);
+    assert.equal(nested.type, 'source-cards');
+    assert.equal(nested.status, 'completed');
+    assert.equal(nested.toolCallId, 'toolu_search_1');
+    assert.equal(nested.collapsed, true);
+  });
+
+  it('shows subagent server web_search as a nested running tool block', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: { schedule() {}, flush() {}, cancel() {} },
+    };
+
+    appendStreamEvent({
+      type: 'agent_event',
+      eventType: 'subagent_start',
+      runId: 'sub_run_server',
+      task: 'Search with server tool',
+      expertAgent: { id: 'general_task_agent', title: 'General Task Agent' },
+    }, stream);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      eventType: 'subagent_server_tool',
+      runId: 'sub_run_server',
+      event: {
+        phase: 'call',
+        id: 'srv_search_1',
+        name: 'web_search',
+        input: { query: 'server search query' },
+      },
+    }, stream);
+
+    assert.equal(stream.blocks[0].blocks.at(-1).type, 'tool-running');
+    assert.equal(stream.blocks[0].blocks.at(-1).toolCallId, 'srv_search_1');
+    assert.match(stream.blocks[0].blocks.at(-1).label, /server search query/);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      eventType: 'subagent_server_tool',
+      runId: 'sub_run_server',
+      event: {
+        phase: 'result',
+        id: 'srv_search_1',
+        name: 'web_search',
+        isError: false,
+        renderType: 'source-cards',
+        data: { sources: [{ title: 'Server Result', url: 'https://example.test/server' }], searchCount: 1 },
+      },
+    }, stream);
+
+    assert.equal(stream.blocks[0].blocks.at(-1).type, 'source-cards');
+    assert.equal(stream.blocks[0].blocks.at(-1).toolCallId, 'srv_search_1');
+    assert.equal(stream.blocks[0].blocks.at(-1).sources[0].title, 'Server Result');
+  });
+
   it('collapses browser tool blocks after errors', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
     const stream = {

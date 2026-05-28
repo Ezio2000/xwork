@@ -475,6 +475,44 @@ describe('queryLoop', () => {
 
   });
 
+  describe('beforeToolCall 守卫', () => {
+    it('should skip tool execution when the guard rejects a call', async () => {
+      const streamChat = fakeStreamChatThatReturns({
+        text: 'calling',
+        content: [
+          { type: 'text', text: 'calling' },
+          { type: 'tool_use', id: 'toolu_blocked', name: 'web_search', input: { query: 'blocked' } },
+        ],
+        toolCalls: [
+          { id: 'toolu_blocked', name: 'web_search', input: { query: 'blocked' } },
+        ],
+      });
+
+      let executed = false;
+      const iterator = queryLoop({
+        config: baseConfig,
+        history: baseHistory,
+        maxTurns: 1,
+        streamChat,
+        runTool: async () => {
+          executed = true;
+          return { id: 'toolu_blocked', name: 'web_search', isError: false, output: 'should not run', durationMs: 1 };
+        },
+        beforeToolCall: () => ({ skip: true, output: 'blocked by guard' }),
+      });
+
+      await drain(iterator);
+
+      assert.equal(executed, false);
+      assert.equal(events.length, 2);
+      assert.equal(events[0].type, 'tool_call');
+      assert.equal(events[1].type, 'tool_result');
+      assert.equal(events[1].isError, true);
+      assert.equal(events[1].output, 'blocked by guard');
+      assert.equal(returnValue.reason, 'max_turns');
+    });
+  });
+
   // =========================================================================
   // 6. Abort 中断
   // =========================================================================

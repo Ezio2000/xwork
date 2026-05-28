@@ -22,32 +22,32 @@ describe('subagent runtime', () => {
     }));
   });
 
-  it('uses delegate_task tool config defaultMaxTurns when input omits maxTurns', async () => {
+  it('omits delegate_task maxTurns when no call override is configured', async () => {
     let captured;
     const runSubagent = async (opts) => {
       captured = opts;
       return {
-        runId: 'run_cfg',
+        runId: 'run_profile_default',
         status: 'completed',
         text: 'ok',
         label: '',
         task: opts.task,
         parentRunId: null,
-        rootRunId: 'run_cfg',
+        rootRunId: 'run_profile_default',
         reason: 'completed',
         durationMs: 1,
       };
     };
 
     await delegateTaskTool.handler(
-      { objective: 'Configured default turns' },
-      { config: { defaultMaxTurns: 5 }, context: { runSubagent, agentDepth: 0 } },
+      { objective: 'Profile default turns' },
+      { config: {}, context: { runSubagent, agentDepth: 0 } },
     );
 
-    assert.equal(captured.maxTurns, 5);
+    assert.equal(captured.maxTurns, undefined);
   });
 
-  it('prefers delegate_task input maxTurns over tool config defaultMaxTurns', async () => {
+  it('passes delegate_task input maxTurns as a per-call expert override', async () => {
     let captured;
     const runSubagent = async (opts) => {
       captured = opts;
@@ -66,75 +66,18 @@ describe('subagent runtime', () => {
 
     await delegateTaskTool.handler(
       { objective: 'Override turns', maxTurns: 2 },
-      { config: { defaultMaxTurns: 5 }, context: { runSubagent, agentDepth: 0 } },
+      { config: {}, context: { runSubagent, agentDepth: 0 } },
     );
 
     assert.equal(captured.maxTurns, 2);
   });
 
-  it('accepts maxTurns up to 10 and rejects above the hard cap', () => {
-    assert.doesNotThrow(() => delegateTaskTool.validate({
-      objective: 'Six turns',
-      maxTurns: 6,
-    }));
-    assert.doesNotThrow(() => delegateTaskTool.validate({
-      objective: 'Ten turns',
-      maxTurns: 10,
-    }));
+  it('accepts delegate_task maxTurns up to 100 and rejects above the hard cap', () => {
+    assert.doesNotThrow(() => delegateTaskTool.validate({ objective: 'Hundred turns', maxTurns: 100 }));
     assert.throws(
-      () => delegateTaskTool.validate({ objective: 'Too many turns', maxTurns: 11 }),
-      /maxTurns must be between 1 and 10/,
+      () => delegateTaskTool.validate({ objective: 'Too many turns', maxTurns: 101 }),
+      /maxTurns must be between 1 and 100/,
     );
-  });
-
-  it('clamps tool config defaultMaxTurns to the hard cap of 10', async () => {
-    let captured;
-    const runSubagent = async (opts) => {
-      captured = opts;
-      return {
-        runId: 'run_cap',
-        status: 'completed',
-        text: 'ok',
-        label: '',
-        task: opts.task,
-        parentRunId: null,
-        rootRunId: 'run_cap',
-        reason: 'completed',
-        durationMs: 1,
-      };
-    };
-
-    await delegateTaskTool.handler(
-      { objective: 'Use configured cap' },
-      { config: { defaultMaxTurns: 100 }, context: { runSubagent, agentDepth: 0 } },
-    );
-
-    assert.equal(captured.maxTurns, 10);
-  });
-
-  it('falls back to runtime default when tool config defaultMaxTurns is invalid', async () => {
-    let captured;
-    const runSubagent = async (opts) => {
-      captured = opts;
-      return {
-        runId: 'run_fallback',
-        status: 'completed',
-        text: 'ok',
-        label: '',
-        task: opts.task,
-        parentRunId: null,
-        rootRunId: 'run_fallback',
-        reason: 'completed',
-        durationMs: 1,
-      };
-    };
-
-    await delegateTaskTool.handler(
-      { objective: 'Invalid config default' },
-      { config: { defaultMaxTurns: 'bad' }, context: { runSubagent, agentDepth: 0 } },
-    );
-
-    assert.equal(captured.maxTurns, undefined);
   });
 
   it('does not block agent creation on run-store persistence', async () => {
@@ -177,7 +120,6 @@ describe('subagent runtime', () => {
       config: { model: 'test-model', tools: [], streamChat },
       context: { conversationId: 'conv1', channelId: 'ch1', model: 'test-model', source: 'test', environment: 'test' },
       emitEvent: (event) => events.push(event),
-      maxTurns: 1,
     });
 
     const stored = await getAgentRun(result.runId);
@@ -252,7 +194,6 @@ describe('subagent runtime', () => {
         source: 'test',
         environment: 'test',
       },
-      maxTurns: 1,
     });
 
     assert.equal(result.status, 'completed');
@@ -333,6 +274,244 @@ describe('subagent runtime', () => {
     assert.equal(secondMessages[2].content[1].type, 'web_search_tool_result');
   });
 
+  it('uses independent maxTurns budgets for separate subagent runs', async () => {
+    let firstCalls = 0;
+    let secondCalls = 0;
+
+    const first = await runSubagent({
+      task: 'Use both independent turns',
+      config: {
+        model: 'test-model',
+        tools: [],
+        streamChat: async (_config, _messages, onDelta, _onThink, onDone, _onError, onServerToolEvent) => {
+          firstCalls += 1;
+          if (firstCalls === 1) {
+            onServerToolEvent?.({ phase: 'call', id: 'srv_independent', name: 'web_search', input: { query: 'independent' } });
+            onServerToolEvent?.({ phase: 'result', id: 'srv_independent', name: 'web_search', isError: false, data: { resultCount: 1 } });
+            onDone('', 'end_turn', null);
+            return {
+              text: '',
+              content: [{ type: 'server_tool_use', id: 'srv_independent', name: 'web_search', input: { query: 'independent' } }],
+              stopReason: 'end_turn',
+              usage: null,
+              toolCalls: [],
+              serverToolEvents: [],
+            };
+          }
+          onDelta('done');
+          onDone('done', 'end_turn', null);
+          return {
+            text: 'done',
+            content: [{ type: 'text', text: 'done' }],
+            stopReason: 'end_turn',
+            usage: null,
+            toolCalls: [],
+            serverToolEvents: [],
+          };
+        },
+      },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      maxTurns: 2,
+    });
+
+    const second = await runSubagent({
+      task: 'Has its own turns',
+      config: {
+        model: 'test-model',
+        tools: [],
+        streamChat: async (_config, _messages, onDelta, _onThink, onDone) => {
+          secondCalls += 1;
+          onDelta('should not run');
+          onDone('should not run', 'end_turn', null);
+          return {
+            text: 'should not run',
+            content: [{ type: 'text', text: 'should not run' }],
+            stopReason: 'end_turn',
+            usage: null,
+            toolCalls: [],
+            serverToolEvents: [],
+          };
+        },
+      },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      maxTurns: 2,
+    });
+
+    assert.equal(first.status, 'completed');
+    assert.equal(firstCalls, 2);
+    assert.equal(second.status, 'completed');
+    assert.equal(secondCalls, 1);
+    assert.equal(first.limits.maxTurns, 2);
+    assert.equal(second.limits.maxTurns, 2);
+  });
+
+  it('stops executing subagent web_search from the configured tool maxUses', async () => {
+    let callCount = 0;
+    const executedSearches = [];
+    let finalMessages;
+    const streamChat = async (_config, messages, onDelta, _onThink, onDone) => {
+      callCount += 1;
+      if (callCount === 1) {
+        onDelta('collecting ');
+        onDone('collecting ', 'tool_use', null);
+        const calls = Array.from({ length: 4 }, (_, index) => ({
+          id: `search_${index + 1}`,
+          name: 'web_search',
+          input: { query: `query ${index + 1}` },
+        }));
+        return {
+          text: 'collecting ',
+          content: [
+            { type: 'text', text: 'collecting ' },
+            ...calls.map(call => ({ type: 'tool_use', id: call.id, name: call.name, input: call.input })),
+          ],
+          stopReason: 'tool_use',
+          usage: null,
+          toolCalls: calls,
+          serverToolEvents: [],
+        };
+      }
+      if (callCount === 2) {
+        onDelta('checking one more ');
+        onDone('checking one more ', 'tool_use', null);
+        const call = { id: 'search_5', name: 'web_search', input: { query: 'query 5' } };
+        return {
+          text: 'checking one more ',
+          content: [
+            { type: 'text', text: 'checking one more ' },
+            { type: 'tool_use', id: call.id, name: call.name, input: call.input },
+          ],
+          stopReason: 'tool_use',
+          usage: null,
+          toolCalls: [call],
+          serverToolEvents: [],
+        };
+      }
+      finalMessages = [...messages];
+      onDelta('summary after budget');
+      onDone('summary after budget', 'end_turn', null);
+      return {
+        text: 'summary after budget',
+        content: [{ type: 'text', text: 'summary after budget' }],
+        stopReason: 'end_turn',
+        usage: null,
+        toolCalls: [],
+        serverToolEvents: [],
+      };
+    };
+
+    const result = await runSubagent({
+      task: 'Search with a bounded budget',
+      config: {
+        model: 'test-model',
+        tools: [{ name: 'web_search', maxUses: 2 }],
+        streamChat,
+      },
+      runTool: async (call) => {
+        executedSearches.push(call.id);
+        return {
+          id: call.id,
+          name: call.name,
+          isError: false,
+          output: { sources: [{ title: call.input.query, url: `https://example.test/${call.id}` }], searchCount: 1 },
+          durationMs: 1,
+          render: {
+            renderType: 'source-cards',
+            data: { sources: [{ title: call.input.query, url: `https://example.test/${call.id}` }], resultCount: 1, searchCount: 1 },
+          },
+        };
+      },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      maxTurns: 4,
+    });
+
+    const stored = await getAgentRun(result.runId);
+    const budgetEvent = stored.events.find(event => event.type === 'subagent_tool_result' && event.toolCallId === 'search_5');
+
+    assert.equal(callCount, 3);
+    assert.deepEqual(executedSearches, ['search_1', 'search_2']);
+    assert.equal(result.status, 'completed');
+    assert.match(result.text, /summary after budget/);
+    assert.equal(budgetEvent.isError, true);
+    assert.match(budgetEvent.output, /Tool budget reached for web_search: maximum 2 uses per agent run/);
+    assert.equal(finalMessages.at(-1).role, 'user');
+    assert.match(finalMessages.at(-1).content[0].content, /Tool budget reached for web_search: maximum 2 uses per agent run/);
+  });
+
+  it('uses shared tool config with independent maxUses counters per subagent run', async () => {
+    const runOnce = async (label) => {
+      const executed = [];
+      const streamChat = async (_config, _messages, onDelta, _onThink, onDone) => {
+        onDelta(label);
+        onDone(label, 'tool_use', null);
+        const calls = [
+          { id: `${label}_search_1`, name: 'web_search', input: { query: `${label} 1` } },
+          { id: `${label}_search_2`, name: 'web_search', input: { query: `${label} 2` } },
+        ];
+        return {
+          text: label,
+          content: [
+            { type: 'text', text: label },
+            ...calls.map(call => ({ type: 'tool_use', id: call.id, name: call.name, input: call.input })),
+          ],
+          stopReason: 'tool_use',
+          usage: null,
+          toolCalls: calls,
+          serverToolEvents: [],
+        };
+      };
+
+      const result = await runSubagent({
+        task: `Search ${label}`,
+        config: {
+          model: 'test-model',
+          tools: [{ name: 'web_search', maxUses: 2 }],
+          streamChat,
+        },
+        runTool: async (call) => {
+          executed.push(call.id);
+          return { id: call.id, name: call.name, isError: false, output: { ok: true }, durationMs: 1 };
+        },
+        context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+        maxTurns: 1,
+      });
+      return { result, executed };
+    };
+
+    const first = await runOnce('first');
+    const second = await runOnce('second');
+
+    assert.equal(first.result.status, 'max_turns');
+    assert.equal(second.result.status, 'max_turns');
+    assert.deepEqual(first.executed, ['first_search_1', 'first_search_2']);
+    assert.deepEqual(second.executed, ['second_search_1', 'second_search_2']);
+  });
+
+  it('persists api_error details for failed subagent model calls', async () => {
+    const events = [];
+    const streamChat = async (_config, _messages, onDelta) => {
+      onDelta('partial text');
+      throw new Error('Provider rejected replay after web search');
+    };
+
+    const result = await runSubagent({
+      task: 'Fail with API error',
+      config: { model: 'test-model', tools: [], streamChat },
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      emitEvent: event => events.push(event),
+      maxTurns: 1,
+    });
+
+    const stored = await getAgentRun(result.runId);
+    const doneEvent = events.find(event => event.eventType === 'subagent_done');
+
+    assert.equal(result.status, 'api_error');
+    assert.match(result.error, /Provider rejected replay/);
+    assert.match(stored.error, /Provider rejected replay/);
+    assert.match(stored.result.error, /Provider rejected replay/);
+    assert.match(doneEvent.error, /Provider rejected replay/);
+  });
+
   it('uses fresh-context brief and output limits', async () => {
     let receivedMessages;
     const streamChat = async (_config, messages, onDelta, _onThink, onDone) => {
@@ -376,8 +555,10 @@ describe('subagent runtime', () => {
 
   it('includes list_dir, git, and code_outline in the default subagent tool set', async () => {
     let receivedToolNames;
-    const streamChat = async (config, _messages, _onDelta, _onThink, onDone) => {
+    let receivedMessages;
+    const streamChat = async (config, messages, _onDelta, _onThink, onDone) => {
       receivedToolNames = config.tools.map(tool => tool.name);
+      receivedMessages = messages;
       onDone('done', 'end_turn', null);
       return {
         text: 'done',
@@ -409,6 +590,7 @@ describe('subagent runtime', () => {
 
     assert.equal(result.status, 'completed');
     assert.deepEqual(receivedToolNames, ['web_search', 'list_dir', 'git', 'code_outline', 'grep']);
+    assert.doesNotMatch(receivedMessages[0].content, /use web_search at most 4 times total/);
     assert.deepEqual(new Set(result.allowedTools), new Set([
       'web_search',
       'get_current_time',

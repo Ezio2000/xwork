@@ -1441,7 +1441,7 @@ body {
 .subagent-status.error, .subagent-status.aborted { color: var(--danger); border-color: var(--danger); }
 
 .subagent-toggle-body { padding: 10px 12px; }
-.subagent-toggle.running .subagent-content { height: calc(5 * 22px); overflow: hidden; line-height: 22px; }
+.subagent-toggle.running .subagent-content { height: calc(9 * 22px); overflow: hidden; line-height: 22px; }
 .subagent-toggle.running .subagent-content * { line-height: 22px; }
 .subagent-toggle.running .subagent-content p,
 .subagent-toggle.running .subagent-content ul,
