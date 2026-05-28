@@ -50,13 +50,26 @@ $env:FEISHU_APP_SECRET="xxx"
 npm start
 ```
 
-也可以通过环境变量提供 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`。`feishu_auth` 负责保存 `user_access_token`；`feishu_read` 只配置读取范围、输出大小等读取行为参数。未授权或 token 已失效时，`feishu_read` 会自动委托同一套 `feishu_auth` Device Flow，前端弹出授权子页面，用户同意后工具继续执行。读取文档、知识库或表格遇到租户权限不足时，也会按资源类型追加 `docs` / `wiki` / `sheets` 读权限 scope 并用用户 token 重试。启用后模型可用飞书 URL 或 token 调用：
+也可以通过环境变量提供 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`。`feishu_auth` 负责保存 `user_access_token`；`feishu_read` 只配置读取范围、输出大小等读取行为参数。未授权或 token 已失效时，`feishu_read` 会自动委托同一套 `feishu_auth` Device Flow，前端弹出授权子页面，用户同意后工具继续执行。读取文档、知识库、表格或文档图片/附件遇到租户权限不足时，也会按资源类型追加读权限 scope 并用用户 token 重试。
+
+飞书授权 scope 按工具动作自动追加：
+
+- `read_doc` / `get_doc_blocks` / `read_doc_rich`：需要 `docx:document:readonly`、`space:document:retrieve`
+- `read_wiki`：需要 `wiki:wiki:readonly`、`wiki:node:read`，并会按实际节点类型追加文档或表格读取权限
+- `read_sheet` / `get_sheet_meta`：需要 `sheets:spreadsheet:read`、`sheets:spreadsheet.meta:read`
+- `download_media`：需要文档读取权限以及 `docs:document.media:download`
+- `get_user`：需要 `contact:user.base:readonly`、`contact:user.basic_profile:readonly`
+
+启用后模型可用飞书 URL 或 token 调用：
 
 ```json
 { "action": "login" }
 { "action": "start" }
 { "action": "complete", "deviceCode": "xxx" }
 { "action": "read_doc", "url": "https://xxx.feishu.cn/docx/..." }
+{ "action": "get_doc_blocks", "url": "https://xxx.feishu.cn/docx/..." }
+{ "action": "read_doc_rich", "url": "https://xxx.feishu.cn/docx/..." }
+{ "action": "download_media", "fileToken": "boxcn..." }
 { "action": "read_wiki", "url": "https://xxx.feishu.cn/wiki/..." }
 { "action": "read_sheet", "url": "https://xxx.feishu.cn/sheets/...", "ranges": ["sheetId!A1:D20"] }
 { "action": "get_current_user" }

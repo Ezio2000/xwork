@@ -752,4 +752,42 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.blocks[0].collapsed, true);
   });
 
+  it('keeps Feishu media previews expanded and non-collapsible', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: { schedule() {}, flush() {}, cancel() {} },
+    };
+
+    appendStreamEvent({
+      type: 'tool_result',
+      tools: [{
+        id: 'toolu_feishu_media',
+        name: 'feishu_read',
+        renderType: 'feishu-media',
+        isError: false,
+        data: {
+          path: 'feishu:media:image.png',
+          filename: 'image.png',
+          previewUrl: '/api/v1/tool-assets/feishu-media/image.png',
+          contentType: 'image/png',
+          size: 425007,
+        },
+      }],
+    }, stream);
+
+    assert.equal(stream.blocks[0].type, 'feishu-media');
+    assert.equal(stream.blocks[0].collapsed, false);
+    assert.equal(stream.blocks[0].fixedOpen, true);
+
+    const html = renderBlocks([stream.blocks[0]], true);
+    assert.match(html, /feishu-media-toggle/);
+    assert.match(html, /<img src="\/api\/v1\/tool-assets\/feishu-media\/image\.png"/);
+    assert.doesNotMatch(html, /collapsed/);
+    assert.doesNotMatch(html, /data-toggle-parent/);
+    assert.doesNotMatch(html, /shell-command-toggle-arrow/);
+  });
+
 });

@@ -184,6 +184,10 @@ function applyToolResult(evt, stream, effects) {
       status,
       toolCallId: tool.id,
     };
+    if (renderType === 'feishu-media') {
+      nextBlock.collapsed = false;
+      nextBlock.fixedOpen = true;
+    }
 
     if (existing) {
       if (existing.type === 'tool-running' || existing.type !== renderType) {
@@ -191,12 +195,17 @@ function applyToolResult(evt, stream, effects) {
       } else {
         Object.assign(existing, nextBlock);
       }
+      if (renderType === 'feishu-media') {
+        existing.collapsed = false;
+        existing.fixedOpen = true;
+        continue;
+      }
       collapseFinishedToolBlock(existing);
       continue;
     }
 
     const block = { ...nextBlock };
-    collapseFinishedToolBlock(block);
+    if (renderType !== 'feishu-media') collapseFinishedToolBlock(block);
     stream.blocks.push(block);
   }
   const errored = evt.tools.filter(tool => tool.isError).map(tool => tool.name).join(', ');

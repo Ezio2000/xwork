@@ -1382,6 +1382,54 @@ body {
 .file-snippet-markdown th { background: var(--bg-hover); font-weight: 600; }
 .file-snippet-markdown code { background: var(--bg-code); border-radius: 4px; font-family: var(--font-mono); font-size: 0.9em; padding: 2px 5px; }
 
+.feishu-media-toggle {
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fafc;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+.feishu-media-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #dbe3ee;
+  background: #eef4fb;
+}
+.feishu-media-header .shell-command-icon { color: #2563eb; }
+.feishu-media-body { padding: 12px; }
+.feishu-media-preview {
+  max-height: 620px;
+  overflow: auto;
+  padding: 0;
+}
+.feishu-media-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid #d7dee8;
+  border-radius: 6px;
+  background: #fff;
+}
+.feishu-media-file {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  font-size: 13px;
+}
+.feishu-media-file a { color: var(--accent); text-decoration: none; }
+.feishu-media-file a:hover { text-decoration: underline; }
+.feishu-media-file code {
+  background: var(--bg-code);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  padding: 6px 8px;
+  word-break: break-all;
+}
+
 /* Subagent */
 .subagent-status {
   border: 1px solid var(--border); border-radius: 999px;

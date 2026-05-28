@@ -29,6 +29,7 @@ function codeBlock(label, value) {
 
 function renderBlockFromResult(renderType, data) {
   if (!renderType || !data) return null;
+  if (renderType === 'feishu-media') return { type: renderType, ...data, collapsed: false, fixedOpen: true };
   return { type: renderType, ...data, collapsed: true };
 }
 

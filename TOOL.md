@@ -568,7 +568,7 @@ if (
 ## 常见注意点
 
 - `browser_action` 基于 Playwright Chromium，默认禁用。它适合跨平台网页 UI 验证，截图写入 workspace 内的 `data/browser-screenshots`。建议优先配置 `allowedHosts`，例如只允许 `localhost` 和 `127.0.0.1`。
-- `feishu_read` 默认禁用。它通过飞书 OpenAPI 只读获取新版文档、旧版文档、电子表格元数据和范围值；建议用 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 环境变量提供凭据，或在工具配置中提供 `accessToken`。
+- `feishu_read` 默认禁用。它通过飞书 OpenAPI 只读获取新版文档、Docx block tree、文档图片/附件素材、旧版文档、电子表格元数据和范围值；建议用 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 环境变量提供凭据，或在工具配置中提供 `accessToken`。授权域映射在 `lib/feishu-auth.mjs`：`docs` 包含 `docx:document:readonly`、`space:document:retrieve`，`media` 包含 `docs:document.media:download`，`wiki` 包含 `wiki:wiki:readonly`、`wiki:node:read`，`sheets` 包含 `sheets:spreadsheet:read`、`sheets:spreadsheet.meta:read`，`contact` 包含用户基础资料读取权限。
 - `anthropic_server` 工具不会由 `runTool()` 执行；它们只会被传给 provider。
 - `anthropic_server` 工具会被转换为 Anthropic 工具格式：`apiToolType/type` → `type`，`maxUses` → `max_uses`，`allowedDomains/blockedDomains` → `allowed_domains/blocked_domains`。
 - `systemPrompt()` 不会随工具定义直接发送，而是在 `message-normalizer.mjs` 的 `buildSystemPrompt()` 中拼接进系统提示。

@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile, rm } from 'node:fs/promises';
 
-import { runTool } from '../lib/tools/runner.mjs';
+import { formatToolOutput, runTool } from '../lib/tools/runner.mjs';
 import { listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { feishuReadTool } from '../lib/tools/builtin/feishu-read.mjs';
 
@@ -121,6 +122,162 @@ describe('feishu_read tool', () => {
       });
     } finally {
       globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('reads docx blocks with media assets and tree structure', WRITES_REAL_TOOL_DB_SKIP, async () => {
+    const previousFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(String(url)), options });
+      return jsonResponse({
+        code: 0,
+        data: {
+          has_more: false,
+          items: [
+            {
+              block_id: 'heading_1',
+              block_type: 3,
+              children: ['image_1'],
+              heading1: { elements: [{ text_run: { content: 'Overview' } }] },
+            },
+            {
+              block_id: 'image_1',
+              parent_id: 'heading_1',
+              block_type: 27,
+              image: { token: 'img_token_1', width: 640, height: 320 },
+            },
+          ],
+        },
+      });
+    };
+
+    try {
+      await withFeishuReadEnabled({ user_access_token: 'u-docx-token' }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_blocks',
+            name: 'feishu_read',
+            input: { action: 'get_doc_blocks', documentId: 'docx_token', pageSize: 50 },
+          },
+          { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.documentId, 'docx_token');
+        assert.equal(result.output.blockCount, 2);
+        assert.equal(result.output.assets[0].token, 'img_token_1');
+        assert.equal(result.output.tree[0].children[0].block_id, 'image_1');
+        assert.match(calls[0].url.pathname, /\/docx\/v1\/documents\/docx_token\/blocks$/);
+        assert.equal(calls[0].url.searchParams.get('page_size'), '50');
+        assert.equal(calls[0].options.headers.Authorization, 'Bearer u-docx-token');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('reads docx rich content as markdown with media references', WRITES_REAL_TOOL_DB_SKIP, async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => jsonResponse({
+      code: 0,
+      data: {
+        has_more: false,
+        items: [
+          {
+            block_id: 'heading_1',
+            block_type: 3,
+            heading1: { elements: [{ text_run: { content: 'Overview' } }] },
+          },
+          {
+            block_id: 'paragraph_1',
+            block_type: 2,
+            text: { elements: [{ text_run: { content: 'Body text' } }] },
+          },
+          {
+            block_id: 'image_1',
+            block_type: 27,
+            image: { token: 'img_token_1', name: 'diagram.png' },
+          },
+        ],
+      },
+    });
+
+    try {
+      await withFeishuReadEnabled({ user_access_token: 'u-docx-token' }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_rich',
+            name: 'feishu_read',
+            input: { action: 'read_doc_rich', documentId: 'docx_token' },
+          },
+          { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.action, 'read_doc_rich');
+        assert.match(result.output.content, /^# Overview/);
+        assert.match(result.output.content, /Body text/);
+        assert.match(result.output.content, /!\[diagram\.png\]\(feishu-media:img_token_1\)/);
+        assert.equal(result.output.assets[0].token, 'img_token_1');
+        assert.equal(result.render.data.contentFormat, 'markdown');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('downloads Feishu media to a local preview file', WRITES_REAL_TOOL_DB_SKIP, async () => {
+    const previousFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(String(url)), options });
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers({
+          'content-type': 'image/png',
+          'content-disposition': 'attachment; filename="image.png"',
+        }),
+        arrayBuffer: async () => Buffer.from('png-bytes').buffer.slice(
+          Buffer.from('png-bytes').byteOffset,
+          Buffer.from('png-bytes').byteOffset + Buffer.from('png-bytes').byteLength,
+        ),
+      };
+    };
+
+    try {
+      await withFeishuReadEnabled({ user_access_token: 'u-media-token' }, async () => {
+        const result = await runTool(
+          {
+            id: 'toolu_feishu_media',
+            name: 'feishu_read',
+            input: { action: 'download_media', fileToken: 'img_token_1' },
+          },
+          { conversationId: 'test', source: 'test', environment: 'test', persistToolRun: false },
+        );
+
+        assert.equal(result.isError, false, String(result.output || ''));
+        assert.equal(result.output.fileToken, 'img_token_1');
+        assert.equal(result.output.contentType, 'image/png');
+        assert.equal(result.output.encoding, 'binary-file');
+        assert.equal(result.output.contentBase64, undefined);
+        assert.match(result.output.filename, /^img_token_1-[a-f0-9]{12}\.png$/);
+        assert.equal(result.output.previewUrl, `/api/v1/tool-assets/feishu-media/${result.output.filename}`);
+        assert.equal(await readFile(result.output.filePath, 'utf8'), 'png-bytes');
+        assert.equal(result.render.renderType, 'feishu-media');
+        assert.equal(result.render.data.previewUrl, result.output.previewUrl);
+        const modelVisible = formatToolOutput(result.output);
+        assert.doesNotMatch(modelVisible, /png-bytes|contentBase64|filePath/);
+        assert.match(modelVisible, /displayedInUi/);
+        assert.match(modelVisible, /Do not call browser_action/);
+        assert.match(calls[0].url.pathname, /\/drive\/v1\/medias\/img_token_1\/download$/);
+        assert.equal(calls[0].options.headers.Authorization, 'Bearer u-media-token');
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+      await rm('data/feishu-media', { recursive: true, force: true });
     }
   });
 

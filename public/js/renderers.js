@@ -1648,6 +1648,38 @@ function renderFileSnippet(block, collapsed = false) {
   `;
 }
 
+function renderFeishuMedia(block) {
+  const path = block.path || block.filename || 'feishu media';
+  const previewUrl = block.previewUrl || block.url || '';
+  const contentType = block.contentType || '';
+  const isImage = /^image\//i.test(contentType);
+  const meta = [
+    contentType,
+    block.size !== undefined ? `${Number(block.size)} bytes` : '',
+  ].filter(Boolean).join(' · ');
+  const body = isImage && previewUrl
+    ? `<div class="feishu-media-preview"><img src="${escHtml(previewUrl)}" alt="${escHtml(block.filename || 'Feishu media')}" loading="lazy"></div>`
+    : `<div class="feishu-media-file">
+        ${previewUrl ? `<a href="${escHtml(previewUrl)}" target="_blank" rel="noopener noreferrer">Open media file</a>` : ''}
+        ${block.filePath ? `<code>${escHtml(block.filePath)}</code>` : ''}
+      </div>`;
+
+  return `
+    <div class="feishu-media-toggle">
+      <div class="feishu-media-header">
+        <span class="shell-command-toggle-label">
+          <span class="shell-command-icon">▧</span>
+          ${escHtml(path)}
+        </span>
+        <span class="shell-command-meta">${escHtml(meta)}</span>
+      </div>
+      <div class="feishu-media-body">
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
 function renderFeishuAuth(block, collapsed = false) {
   const waiting = block.status !== 'completed';
   const url = block.verificationUrl || block.authorizationUrl || '';
@@ -1983,6 +2015,7 @@ const blockRenderers = {
   'web-fetch': (block, collapsed) => renderWebFetch(block, block.collapsed ?? collapsed),
   'browser-action': (block, collapsed) => renderBrowserAction(block, block.collapsed ?? collapsed),
   'file-snippet': (block, collapsed) => renderFileSnippet(block, block.collapsed ?? collapsed),
+  'feishu-media': (block) => renderFeishuMedia(block),
   'feishu-auth': (block, collapsed) => renderFeishuAuth(block, block.collapsed ?? collapsed),
   'file-write': (block, collapsed) => renderFileWrite(block, block.collapsed ?? collapsed),
   'symbol-list': (block, collapsed) => renderSymbolList(block, block.collapsed ?? collapsed),
