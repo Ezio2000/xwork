@@ -2190,6 +2190,54 @@ body {
 .modal-header h2 { font-family: var(--font); font-size: 22px; font-weight: 400; color: var(--text); }
 .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 4px; }
 
+.sensitive-setup-panel { max-width: 92vw; }
+.sensitive-setup-body { gap: 14px; }
+.sensitive-setup-intro, .sensitive-setup-note {
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.sensitive-setup-status { display: grid; gap: 10px; }
+.sensitive-setup-summary {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 9px 10px;
+}
+.sensitive-setup-summary.missing { border-color: rgba(217, 74, 74, 0.35); color: var(--danger); }
+.sensitive-setup-summary.ready { border-color: rgba(47, 158, 68, 0.35); color: var(--success); }
+.sensitive-setup-list { display: grid; gap: 8px; }
+.sensitive-setup-item {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 12px;
+}
+.sensitive-setup-item.missing { background: var(--accent-dim); }
+.sensitive-setup-item-title { color: var(--text); font-size: 14px; font-weight: 600; }
+.sensitive-setup-item-desc {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+.sensitive-setup-item-side { align-items: center; display: flex; gap: 8px; }
+.sensitive-setup-item-side span {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.sensitive-setup-item.missing .sensitive-setup-item-side span { color: var(--danger); }
+.sensitive-setup-item-side button:disabled { cursor: default; opacity: 0.45; }
+.sensitive-setup-actions { display: flex; justify-content: flex-end; }
+
 .setting-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; }
 .setting-item + .setting-item { border-top: 1px solid var(--border); }
 .setting-item.clickable { cursor: pointer; border-radius: var(--radius); padding: 10px 12px; margin: 0 -12px; }
@@ -2212,6 +2260,8 @@ body {
   .message { max-width: 100%; }
   .input-wrapper { max-width: 100%; }
   .modal-panel { width: 95vw; }
+  .sensitive-setup-item { grid-template-columns: 1fr; }
+  .sensitive-setup-item-side { justify-content: space-between; }
   #tools-content { grid-template-columns: 1fr; }
   #pricing-content { grid-template-columns: 1fr; }
   .vision-config-panel { grid-template-columns: 1fr; }

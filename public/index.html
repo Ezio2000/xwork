@@ -473,6 +473,12 @@
           <span class="setting-desc">Manage API providers and models</span>
         </div>
       </div>
+      <div id="setting-sensitive-setup" class="setting-item clickable">
+        <div class="setting-info">
+          <span class="setting-label">First Use</span>
+          <span class="setting-desc">Guide for local API keys and OAuth secrets</span>
+        </div>
+      </div>
       <div id="setting-workspace" class="setting-item clickable">
         <div class="setting-info">
           <span class="setting-label">Workspace</span>
@@ -502,6 +508,26 @@
           <span class="setting-label">Model Pricing</span>
           <span class="setting-desc">Manage base model prices and channel overrides</span>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- First Use Guide -->
+<div id="sensitive-setup-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel wide sensitive-setup-panel">
+    <div class="modal-header">
+      <h2>First Use</h2>
+      <button id="btn-close-sensitive-setup" class="btn-icon">✕</button>
+    </div>
+    <div class="modal-body sensitive-setup-body">
+      <p class="sensitive-setup-intro">
+        Default preferences are already loaded. Add secrets only on this machine; do not commit them or paste them into chat.
+      </p>
+      <div id="sensitive-setup-status" class="sensitive-setup-status"></div>
+      <div class="sensitive-setup-actions">
+        <button id="btn-sensitive-setup-dismiss" class="btn-text small">Close</button>
       </div>
     </div>
   </div>

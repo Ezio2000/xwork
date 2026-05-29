@@ -3,6 +3,7 @@ import { bindChatHeaderController, renderChatHeaderActions } from './js/controll
 import { bindChatInputController } from './js/controllers/chat-input-controller.js';
 import { bindFileMentionController } from './js/controllers/file-mention-controller.js';
 import { bindImageAttachments } from './js/image-attachments.js';
+import { bindSensitiveSetupGuide } from './js/sensitive-setup-guide.js';
 import {
   bindConversationsController,
   loadConversations,
@@ -33,6 +34,7 @@ function bindEvents() {
   bindUsageController();
   bindPricingController();
   bindWorkspaceController();
+  bindSensitiveSetupGuide({ showToolsPage });
 }
 
 async function init() {

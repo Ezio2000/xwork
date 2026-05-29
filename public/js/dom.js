@@ -22,6 +22,7 @@ export const dom = {
   btnSettings: $('#btn-settings'),
   btnCloseSettings: $('#btn-close-settings'),
   settingChannels: $('#setting-channels'),
+  settingSensitiveSetup: $('#setting-sensitive-setup'),
   settingWorkspace: $('#setting-workspace'),
   settingTools: $('#setting-tools'),
   settingExpertAgents: $('#setting-expert-agents'),
@@ -141,4 +142,8 @@ export const dom = {
   editPricingNotes: $('#edit-pricing-notes'),
   btnSavePricing: $('#btn-save-pricing'),
   btnCancelPricing: $('#btn-cancel-pricing'),
+  sensitiveSetupModal: $('#sensitive-setup-modal'),
+  btnCloseSensitiveSetup: $('#btn-close-sensitive-setup'),
+  btnSensitiveSetupDismiss: $('#btn-sensitive-setup-dismiss'),
+  sensitiveSetupStatus: $('#sensitive-setup-status'),
 };

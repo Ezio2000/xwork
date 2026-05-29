@@ -188,6 +188,56 @@ describe('frontend module boundaries', () => {
     assert.equal(typeof modules[8].showUsagePage, 'function');
   });
 
+  it('detects missing sensitive setup values without exposing secret contents', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { sensitiveSetupItems } = await import('../public/js/sensitive-setup-guide.js');
+
+    state.activeChannelId = 'ch1';
+    state.channels = [{ id: 'ch1', name: 'DeepSeek', apiKey: '' }];
+    state.visionProviders = [{
+      id: 'minimax',
+      name: 'MiniMax',
+      adapter: 'http_json',
+      enabled: true,
+      config: { auth: { type: 'bearer', apiKey: '' } },
+    }];
+    state.tools = [{
+      id: 'feishu_auth',
+      enabled: true,
+      config: { app_id: 'cli_xxx', app_secret: '' },
+    }];
+
+    const items = sensitiveSetupItems();
+
+    assert.deepEqual(items.map(item => item.id), ['chat-api-key', 'vision-api-key', 'feishu-app-secret']);
+    assert.deepEqual(items.map(item => item.status), ['missing', 'missing', 'missing']);
+    assert.doesNotMatch(JSON.stringify(items), /cli_xxx|sk-/);
+  });
+
+  it('shows the first use guide only when the user opens it', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { dom } = await import('../public/js/dom.js');
+    const {
+      hideSensitiveSetupGuide,
+      showSensitiveSetupGuide,
+    } = await import('../public/js/sensitive-setup-guide.js');
+
+    state.activeChannelId = 'ch1';
+    state.channels = [{ id: 'ch1', name: 'DeepSeek', apiKey: '' }];
+    state.visionProviders = [];
+    state.tools = [];
+
+    dom.sensitiveSetupModal.classList.add('hidden');
+    assert.equal(dom.sensitiveSetupModal.classList.contains('hidden'), true);
+
+    showSensitiveSetupGuide();
+    assert.equal(dom.sensitiveSetupModal.classList.contains('hidden'), false);
+    assert.match(dom.sensitiveSetupStatus.innerHTML, /Chat API key/);
+
+    hideSensitiveSetupGuide();
+    assert.equal(dom.sensitiveSetupModal.classList.contains('hidden'), true);
+  });
+
   it('keeps the selected vision provider while repopulating fallback options', async () => {
     const { state } = await import('../public/js/state.js');
     const { dom } = await import('../public/js/dom.js');

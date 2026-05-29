@@ -431,6 +431,7 @@ describe('architecture safety contracts', () => {
 
     assert.equal(cfg.activeChannelId, '911c406a');
     assert.equal(cfg.activeModel, 'deepseek-v4-flash');
+    assert.equal(cfg.workspace.label, 'xwork');
     assert.equal(cfg.channels[0].id, '911c406a');
     assert.equal(cfg.channels[0].name, 'deepseek');
     assert.equal(cfg.channels[0].baseUrl, 'https://api.deepseek.com/anthropic');
