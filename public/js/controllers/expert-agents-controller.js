@@ -61,8 +61,7 @@ async function saveExpertAgent() {
       ? await api('PUT', `/api/v1/expert-agents/${id}`, payload)
       : await api('POST', '/api/v1/expert-agents', payload);
     replaceExpertAgent(updated);
-    renderExpertAgentList();
-    hideExpertAgentEditor();
+    showExpertAgentEditor(updated);
   } catch (err) {
     setExpertAgentEditorError(err.message || String(err));
   } finally {
@@ -112,13 +111,16 @@ export function bindExpertAgentsController() {
   });
 
   dom.expertAgentList.addEventListener('click', (event) => {
+    if (event.target.closest('.switch')) return;
     const card = event.target.closest('[data-expert-agent-id]');
     if (!card) return;
     const id = card.dataset.expertAgentId;
     const action = event.target.closest('button')?.dataset.action;
-    if (!action) return;
     const agent = state.expertAgents.find(item => item.id === id);
-    if (action === 'edit-expert-agent' && agent) showExpertAgentEditor(agent);
+    if (!action) {
+      if (agent) showExpertAgentEditor(agent);
+      return;
+    }
     if (action === 'delete-expert-agent') deleteExpertAgent(id).catch(err => alert(err.message || String(err)));
     if (action === 'reset-expert-agent') resetExpertAgent(id).catch(err => alert(err.message || String(err)));
   });

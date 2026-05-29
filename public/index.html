@@ -257,79 +257,85 @@
     </div>
     <div id="expert-agents-content">
       <div id="expert-agent-list"></div>
-      <div id="expert-agent-editor" class="expert-agent-editor hidden">
-        <h3 id="expert-agent-editor-title">New Expert Agent</h3>
-        <input type="hidden" id="edit-expert-agent-id">
-        <div class="expert-agent-editor-grid">
-          <label>
-            <span>Name</span>
-            <input type="text" id="edit-expert-agent-title" placeholder="Backend Review Expert">
-          </label>
-          <label>
-            <span>Status</span>
-            <select id="edit-expert-agent-enabled">
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
-            </select>
-          </label>
-          <label class="wide">
-            <span>Description</span>
-            <input type="text" id="edit-expert-agent-description" placeholder="What this expert is good at">
-          </label>
-          <label class="wide">
-            <span>Selection Prompt</span>
-            <textarea id="edit-expert-agent-selection" rows="3" placeholder="When should delegate_task choose this expert?"></textarea>
-          </label>
-          <label class="wide">
-            <span>System Prompt</span>
-            <textarea id="edit-expert-agent-system" rows="7" placeholder="Expert identity, rules, reasoning standards"></textarea>
-          </label>
-          <label class="wide">
-            <span>Output Contract</span>
-            <textarea id="edit-expert-agent-output" rows="4" placeholder="Expected answer shape"></textarea>
-          </label>
-          <label>
-            <span>Preferred Channel</span>
-            <select id="edit-expert-agent-channel"></select>
-          </label>
-          <label>
-            <span>Preferred Model</span>
-            <input type="text" id="edit-expert-agent-model" placeholder="optional">
-          </label>
-          <label>
-            <span>Max Turns</span>
-            <input type="number" id="edit-expert-agent-max-turns" min="1" max="100">
-          </label>
-          <label>
-            <span>Timeout (ms)</span>
-            <input type="number" id="edit-expert-agent-timeout" min="1000" max="120000">
-          </label>
-          <label>
-            <span>Max Output Chars</span>
-            <input type="number" id="edit-expert-agent-output-chars" min="500" max="4000">
-          </label>
-          <label>
-            <span>Max Depth</span>
-            <input type="number" id="edit-expert-agent-max-depth" min="1" max="4">
-          </label>
-          <label class="expert-agent-check">
-            <input type="checkbox" id="edit-expert-agent-allow-subagents">
-            <span>Allow nested delegation</span>
-          </label>
-          <div class="wide">
-            <div class="expert-agent-tools-header">
-              <span>Allowed Tools</span>
-              <span>Only globally enabled tools are available at runtime.</span>
+      <section id="expert-agent-editor-pane">
+        <div id="expert-agent-empty" class="expert-agent-empty">
+          <h3>Select an expert</h3>
+          <p>Choose an expert from the list or add a new one.</p>
+        </div>
+        <div id="expert-agent-editor" class="expert-agent-editor hidden">
+          <h3 id="expert-agent-editor-title">New Expert Agent</h3>
+          <input type="hidden" id="edit-expert-agent-id">
+          <div class="expert-agent-editor-grid">
+            <label>
+              <span>Name</span>
+              <input type="text" id="edit-expert-agent-title" placeholder="Backend Review Expert">
+            </label>
+            <label>
+              <span>Status</span>
+              <select id="edit-expert-agent-enabled">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </label>
+            <label class="wide">
+              <span>Description</span>
+              <input type="text" id="edit-expert-agent-description" placeholder="What this expert is good at">
+            </label>
+            <label class="wide">
+              <span>Selection Prompt</span>
+              <textarea id="edit-expert-agent-selection" rows="3" placeholder="When should delegate_task choose this expert?"></textarea>
+            </label>
+            <label class="wide">
+              <span>System Prompt</span>
+              <textarea id="edit-expert-agent-system" rows="7" placeholder="Expert identity, rules, reasoning standards"></textarea>
+            </label>
+            <label class="wide">
+              <span>Output Contract</span>
+              <textarea id="edit-expert-agent-output" rows="4" placeholder="Expected answer shape"></textarea>
+            </label>
+            <label>
+              <span>Preferred Channel</span>
+              <select id="edit-expert-agent-channel"></select>
+            </label>
+            <label>
+              <span>Preferred Model</span>
+              <input type="text" id="edit-expert-agent-model" placeholder="optional">
+            </label>
+            <label>
+              <span>Max Turns</span>
+              <input type="number" id="edit-expert-agent-max-turns" min="1" max="100">
+            </label>
+            <label>
+              <span>Timeout (ms)</span>
+              <input type="number" id="edit-expert-agent-timeout" min="1000" max="120000">
+            </label>
+            <label>
+              <span>Max Output Chars</span>
+              <input type="number" id="edit-expert-agent-output-chars" min="500" max="4000">
+            </label>
+            <label>
+              <span>Max Depth</span>
+              <input type="number" id="edit-expert-agent-max-depth" min="1" max="4">
+            </label>
+            <label class="expert-agent-check">
+              <input type="checkbox" id="edit-expert-agent-allow-subagents">
+              <span>Allow nested delegation</span>
+            </label>
+            <div class="wide">
+              <div class="expert-agent-tools-header">
+                <span>Allowed Tools</span>
+                <span>Only globally enabled tools are available at runtime.</span>
+              </div>
+              <div id="edit-expert-agent-tools" class="expert-agent-tools"></div>
             </div>
-            <div id="edit-expert-agent-tools" class="expert-agent-tools"></div>
+          </div>
+          <div id="expert-agent-editor-error" class="tool-config-error"></div>
+          <div class="editor-actions">
+            <button id="btn-cancel-expert-agent" class="btn-text">Cancel</button>
+            <button id="btn-save-expert-agent" class="btn-primary">Save</button>
           </div>
         </div>
-        <div id="expert-agent-editor-error" class="tool-config-error"></div>
-        <div class="editor-actions">
-          <button id="btn-cancel-expert-agent" class="btn-text">Cancel</button>
-          <button id="btn-save-expert-agent" class="btn-primary">Save</button>
-        </div>
-      </div>
+      </section>
     </div>
   </main>
 

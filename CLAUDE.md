@@ -115,10 +115,10 @@ POST /api/v1/chat (SSE)
 
 ### 专家 agent / 子代理系统
 
-`lib/agents/profiles.mjs` 管理 Expert Agent profiles，内置 `general_task_agent`，用户可通过 `/expert-agents` 创建自定义专家。
+`lib/agents/profiles.mjs` 管理 Expert Agent profiles，内置 `general_task_agent` 和一组 `xwork_*` 场景专家（定义在 `lib/agents/builtin-profiles.mjs`），用户可通过 `/expert-agents` 创建自定义专家或重置内置专家。
 `lib/agents/subagent-runtime.mjs` 提供 `runSubagent()`：
 - 按 `expertAgentId` 加载专家 profile，合并默认工具、模型偏好、轮次、超时、输出限制
-- 默认通用专家最大深度 2 层、3 轮、90s 超时、输出截断 2000 字符
+- 默认通用专家最大深度 2 层、30 轮、90s 超时、输出截断 2000 字符；场景专家按用途收窄工具权限和轮次预算
 - 专家 agent 调用 `queryLoop` 独立执行，结果通过 AGENT_EVENT_TYPES 事件通知根运行
 - 专家 agent 输出截断后追加到父消息历史，避免上下文膨胀
 

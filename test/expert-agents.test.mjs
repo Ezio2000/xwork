@@ -25,6 +25,41 @@ describe('expert agent profiles', () => {
     assert.ok(general.allowedTools.includes('web_search'));
   });
 
+  it('exposes the built-in xwork scenario expert catalog', async () => {
+    const agents = await listExpertAgents();
+    const scenarioAgents = agents.filter(agent => agent.id.startsWith('xwork_'));
+    const ids = new Set(scenarioAgents.map(agent => agent.id));
+
+    assert.ok(scenarioAgents.length >= 20);
+    for (const requiredId of [
+      'xwork_code_review_expert',
+      'xwork_implementation_expert',
+      'xwork_backend_api_expert',
+      'xwork_frontend_ux_expert',
+      'xwork_test_qa_expert',
+      'xwork_security_review_expert',
+      'xwork_web_research_expert',
+      'xwork_market_research_expert',
+      'xwork_documentation_expert',
+      'xwork_feishu_workspace_expert',
+    ]) {
+      assert.ok(ids.has(requiredId), `missing scenario expert: ${requiredId}`);
+    }
+
+    for (const agent of scenarioAgents) {
+      assert.equal(agent.builtin, true);
+      assert.equal(agent.enabled, true);
+      assert.equal(agent.allowSubagents, false);
+      assert.ok(agent.title);
+      assert.ok(agent.description);
+      assert.ok(agent.selectionPrompt);
+      assert.ok(agent.systemPrompt);
+      assert.ok(agent.outputContract);
+      assert.ok(Array.isArray(agent.allowedTools));
+      assert.ok(agent.allowedTools.length > 0);
+    }
+  });
+
   it('creates, updates, and deletes a custom expert agent', async () => {
     const id = `agent_test_${Date.now()}`;
     const created = await createExpertAgent({
@@ -60,8 +95,11 @@ describe('expert agent profiles', () => {
 
     assert.ok(delegateTask);
     assert.ok(delegateTask.expertAgents.some(agent => agent.id === DEFAULT_EXPERT_AGENT_ID));
+    assert.ok(delegateTask.expertAgents.some(agent => agent.id === 'xwork_code_review_expert'));
+    assert.ok(delegateTask.expertAgents.length >= 21);
     assert.match(delegateTask.description, /Available expert agents/);
     assert.ok(delegateTask.inputSchema.properties.expertAgentId);
+    assert.ok(delegateTask.inputSchema.properties.expertAgentId.enum.includes('xwork_security_review_expert'));
   });
 
   it('runs with selected expert profile metadata and tool policy', async () => {
@@ -116,5 +154,24 @@ describe('expert agent profiles', () => {
 
     const resetCustom = await resetExpertAgent('not_builtin');
     assert.equal(resetCustom.status, 409);
+  });
+
+  it('allows built-in scenario experts to be reset but not deleted', async () => {
+    const updated = await updateExpertAgent('xwork_code_review_expert', {
+      enabled: false,
+      title: 'Temporarily Customized Reviewer',
+      maxTurns: 5,
+    });
+    assert.equal(updated.enabled, false);
+    assert.equal(updated.title, 'Temporarily Customized Reviewer');
+
+    const reset = await resetExpertAgent('xwork_code_review_expert');
+    assert.equal(reset.id, 'xwork_code_review_expert');
+    assert.equal(reset.title, 'Code Review Expert');
+    assert.equal(reset.enabled, true);
+    assert.equal(reset.maxTurns, 22);
+
+    const deleteResult = await deleteExpertAgent('xwork_code_review_expert');
+    assert.equal(deleteResult.status, 409);
   });
 });

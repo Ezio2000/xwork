@@ -33,8 +33,9 @@ export function renderExpertAgentList() {
     return;
   }
 
+  const editingId = dom.editExpertAgentId?.value || '';
   dom.expertAgentList.innerHTML = state.expertAgents.map(agent => `
-    <div class="expert-agent-card${agent.enabled ? ' enabled' : ''}" data-expert-agent-id="${escHtml(agent.id)}">
+    <div class="expert-agent-card${agent.enabled ? ' enabled' : ''}${agent.id === editingId ? ' selected' : ''}" data-expert-agent-id="${escHtml(agent.id)}">
       <div class="expert-agent-card-main">
         <div class="expert-agent-info">
           <div class="expert-agent-title-row">
@@ -58,7 +59,6 @@ export function renderExpertAgentList() {
         </label>
       </div>
       <div class="expert-agent-actions">
-        <button type="button" class="btn-text small" data-action="edit-expert-agent">Edit</button>
         ${agent.builtin ? '<button type="button" class="btn-text small" data-action="reset-expert-agent">Reset</button>' : ''}
         ${agent.builtin ? '' : '<button type="button" class="btn-text small danger" data-action="delete-expert-agent">Delete</button>'}
       </div>
@@ -109,11 +109,16 @@ export function showExpertAgentEditor(agent = null) {
   dom.editExpertAgentTools.innerHTML = renderToolCheckboxes(profile);
   dom.expertAgentEditorError.textContent = '';
   dom.expertAgentEditorError.classList.remove('visible');
+  dom.expertAgentEmpty?.classList.add('hidden');
   dom.expertAgentEditor.classList.remove('hidden');
+  renderExpertAgentList();
 }
 
 export function hideExpertAgentEditor() {
   dom.expertAgentEditor.classList.add('hidden');
+  dom.editExpertAgentId.value = '';
+  dom.expertAgentEmpty?.classList.remove('hidden');
+  renderExpertAgentList();
 }
 
 function numberValue(input, fallback) {

@@ -91,6 +91,8 @@ export const dom = {
   btnRefreshExpertAgents: $('#btn-refresh-expert-agents'),
   btnAddExpertAgent: $('#btn-add-expert-agent'),
   expertAgentList: $('#expert-agent-list'),
+  expertAgentEditorPane: $('#expert-agent-editor-pane'),
+  expertAgentEmpty: $('#expert-agent-empty'),
   expertAgentEditor: $('#expert-agent-editor'),
   expertAgentEditorTitle: $('#expert-agent-editor-title'),
   editExpertAgentId: $('#edit-expert-agent-id'),
