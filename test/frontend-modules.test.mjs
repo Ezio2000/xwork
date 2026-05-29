@@ -238,6 +238,32 @@ describe('frontend module boundaries', () => {
     assert.equal(dom.sensitiveSetupModal.classList.contains('hidden'), true);
   });
 
+  it('only offers main-agent enabled tools in the expert editor', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { dom } = await import('../public/js/dom.js');
+    const { showExpertAgentEditor } = await import('../public/js/expert-agent-view.js');
+
+    state.channels = [];
+    state.tools = [
+      { id: 'web_search', name: 'web_search', title: 'Web Search', category: 'web', enabled: true },
+      { id: 'shell_command', name: 'shell_command', title: 'Shell Command', category: 'system', enabled: false },
+      { id: 'missing_tool', name: 'missing_tool', title: 'Missing Tool', category: 'unavailable', enabled: true, adapter: 'unavailable' },
+    ];
+
+    showExpertAgentEditor({
+      id: 'agent_ui_policy',
+      title: 'UI Policy Expert',
+      enabled: true,
+      systemPrompt: 'Check UI policy.',
+      allowedTools: ['web_search', 'shell_command', 'missing_tool'],
+    });
+
+    assert.match(dom.editExpertAgentTools.innerHTML, /Web Search/);
+    assert.doesNotMatch(dom.editExpertAgentTools.innerHTML, /Shell Command/);
+    assert.doesNotMatch(dom.editExpertAgentTools.innerHTML, /Missing Tool/);
+    assert.doesNotMatch(dom.editExpertAgentTools.innerHTML, /disabled globally/);
+  });
+
   it('keeps the selected vision provider while repopulating fallback options', async () => {
     const { state } = await import('../public/js/state.js');
     const { dom } = await import('../public/js/dom.js');

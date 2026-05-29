@@ -12,8 +12,8 @@ const DEFAULT_PROFILE = {
   allowSubagents: false,
   maxDepth: 2,
   maxTurns: 30,
-  timeoutMs: 90000,
-  maxOutputChars: 2000,
+  timeoutMs: 120000,
+  maxOutputChars: 2400,
   channelId: '',
   model: '',
   enabled: true,
@@ -76,14 +76,15 @@ function renderChannelOptions(profile) {
 
 function renderToolCheckboxes(profile) {
   const selected = selectedTools(profile);
-  if (!state.tools.length) return '<div class="empty-panel">No tools available.</div>';
-  return state.tools
-    .filter(tool => tool.adapter !== 'unavailable')
+  const enabledTools = state.tools
+    .filter(tool => tool.enabled && tool.adapter !== 'unavailable');
+  if (!enabledTools.length) return '<div class="empty-panel">No main-agent enabled tools available.</div>';
+  return enabledTools
     .map(tool => `
       <label class="expert-agent-tool-option">
         <input type="checkbox" value="${escHtml(tool.name || tool.id)}" ${selected.has(tool.name || tool.id) ? 'checked' : ''}>
         <span>${escHtml(toolLabel(tool))}</span>
-        <small>${escHtml(tool.category || 'tool')}${tool.enabled ? '' : ' · disabled globally'}</small>
+        <small>${escHtml(tool.category || 'tool')}</small>
       </label>
     `).join('');
 }
@@ -102,8 +103,8 @@ export function showExpertAgentEditor(agent = null) {
   dom.editExpertAgentChannel.innerHTML = renderChannelOptions(profile);
   dom.editExpertAgentModel.value = profile.model || '';
   dom.editExpertAgentMaxTurns.value = profile.maxTurns || 30;
-  dom.editExpertAgentTimeout.value = profile.timeoutMs || 90000;
-  dom.editExpertAgentOutputChars.value = profile.maxOutputChars || 2000;
+  dom.editExpertAgentTimeout.value = profile.timeoutMs || 120000;
+  dom.editExpertAgentOutputChars.value = profile.maxOutputChars || 2400;
   dom.editExpertAgentMaxDepth.value = profile.maxDepth || 2;
   dom.editExpertAgentAllowSubagents.checked = profile.allowSubagents === true;
   dom.editExpertAgentTools.innerHTML = renderToolCheckboxes(profile);
@@ -140,8 +141,8 @@ export function expertAgentPayloadFromEditor() {
     channelId: dom.editExpertAgentChannel.value || null,
     model: dom.editExpertAgentModel.value.trim(),
     maxTurns: numberValue(dom.editExpertAgentMaxTurns, 30),
-    timeoutMs: numberValue(dom.editExpertAgentTimeout, 90000),
-    maxOutputChars: numberValue(dom.editExpertAgentOutputChars, 2000),
+    timeoutMs: numberValue(dom.editExpertAgentTimeout, 120000),
+    maxOutputChars: numberValue(dom.editExpertAgentOutputChars, 2400),
     maxDepth: numberValue(dom.editExpertAgentMaxDepth, 2),
     allowSubagents: dom.editExpertAgentAllowSubagents.checked,
     allowedTools,

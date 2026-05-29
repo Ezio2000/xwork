@@ -348,8 +348,13 @@ describe('architecture safety contracts', () => {
       enabled: true,
       timeoutMs: 3000,
     });
+    assert.equal(validateToolConfigPatch({ timeoutMs: 310000 }).timeoutMs, 310000);
     assert.throws(
       () => validateToolConfigPatch({ timeoutMs: -1 }),
+      SchemaValidationError,
+    );
+    assert.throws(
+      () => validateToolConfigPatch({ timeoutMs: 310001 }),
       SchemaValidationError,
     );
   });

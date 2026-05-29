@@ -11,8 +11,8 @@ import {
   showExpertAgentsPageFrame,
 } from '../views.js';
 
-async function ensureSupportData() {
-  if (!state.tools.length) {
+async function ensureSupportData({ refreshTools = false } = {}) {
+  if (refreshTools || !state.tools.length) {
     state.tools = await api('GET', '/api/v1/tools');
   }
   if (!state.channels.length) {
@@ -30,8 +30,18 @@ export async function loadExpertAgents() {
 
 export async function showExpertAgentsPage() {
   showExpertAgentsPageFrame();
-  await ensureSupportData();
+  await ensureSupportData({ refreshTools: true });
   await loadExpertAgents();
+}
+
+async function refreshExpertAgentsPage() {
+  await ensureSupportData({ refreshTools: true });
+  await loadExpertAgents();
+  const editingId = dom.editExpertAgentId.value;
+  if (editingId) {
+    const agent = state.expertAgents.find(item => item.id === editingId);
+    if (agent) showExpertAgentEditor(agent);
+  }
 }
 
 function replaceExpertAgent(updated) {
@@ -94,7 +104,9 @@ async function resetExpertAgent(id) {
 
 export function bindExpertAgentsController() {
   dom.btnBackChatExpertAgents.addEventListener('click', showChatPage);
-  dom.btnRefreshExpertAgents.addEventListener('click', loadExpertAgents);
+  dom.btnRefreshExpertAgents.addEventListener('click', () => {
+    refreshExpertAgentsPage().catch(err => alert(err.message || String(err)));
+  });
   dom.btnAddExpertAgent.addEventListener('click', () => showExpertAgentEditor(null));
   dom.btnCancelExpertAgent.addEventListener('click', hideExpertAgentEditor);
   dom.btnSaveExpertAgent.addEventListener('click', saveExpertAgent);

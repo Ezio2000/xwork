@@ -307,11 +307,11 @@
             </label>
             <label>
               <span>Timeout (ms)</span>
-              <input type="number" id="edit-expert-agent-timeout" min="1000" max="120000">
+              <input type="number" id="edit-expert-agent-timeout" min="1000" max="300000">
             </label>
             <label>
               <span>Max Output Chars</span>
-              <input type="number" id="edit-expert-agent-output-chars" min="500" max="4000">
+              <input type="number" id="edit-expert-agent-output-chars" min="500" max="8000">
             </label>
             <label>
               <span>Max Depth</span>
@@ -324,7 +324,7 @@
             <div class="wide">
               <div class="expert-agent-tools-header">
                 <span>Allowed Tools</span>
-                <span>Only globally enabled tools are available at runtime.</span>
+                <span>Only main-agent enabled tools can be selected.</span>
               </div>
               <div id="edit-expert-agent-tools" class="expert-agent-tools"></div>
             </div>

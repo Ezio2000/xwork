@@ -143,7 +143,7 @@ export function renderToolList() {
         <form class="tool-config-form" data-action="save-tool-config">
           <label class="tool-config-field">
             <span>Timeout (ms)</span>
-            <input type="number" name="timeoutMs" min="1" max="300000" step="1" value="${Number(tool.timeoutMs || 0)}" ${tool.adapter === 'anthropic_server' ? 'disabled' : ''}>
+            <input type="number" name="timeoutMs" min="1" max="310000" step="1" value="${Number(tool.timeoutMs || 0)}" ${tool.adapter === 'anthropic_server' ? 'disabled' : ''}>
           </label>
           ${configExamples(tool)}
           ${renderDynamicConfigFields(tool)}

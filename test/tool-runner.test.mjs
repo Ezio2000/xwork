@@ -278,6 +278,40 @@ describe('tool configuration surface', () => {
       }
     }
   });
+
+  it('migrates the old delegate_task 125s default timeout to the longer expert budget', async () => {
+    const tools = await loadBuiltinTools();
+    const previousConfigs = await readToolConfigs(tools);
+    const previousDelegateTask = previousConfigs.find(tool => tool.id === 'delegate_task');
+
+    try {
+      await writeToolConfigs(previousConfigs.map(config => (
+        config.id === 'delegate_task'
+          ? {
+              ...config,
+              timeoutMs: 125000,
+              defaultTimeoutMs: 125000,
+            }
+          : config
+      )));
+
+      const migrated = await listTools();
+      const delegateTask = migrated.find(tool => tool.id === 'delegate_task');
+      assert.equal(delegateTask.timeoutMs, 305000);
+      assert.equal(delegateTask.defaultTimeoutMs, 305000);
+
+      const custom = await updateToolConfig('delegate_task', { timeoutMs: 125000 });
+      assert.equal(custom.timeoutMs, 125000);
+
+      const reread = (await listTools()).find(tool => tool.id === 'delegate_task');
+      assert.equal(reread.timeoutMs, 125000);
+      assert.equal(reread.defaultTimeoutMs, 305000);
+    } finally {
+      if (previousDelegateTask) {
+        await writeToolConfigs(previousConfigs);
+      }
+    }
+  });
 });
 
 describe('browser action tool', () => {

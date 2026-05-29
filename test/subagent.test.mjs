@@ -80,6 +80,22 @@ describe('subagent runtime', () => {
     );
   });
 
+  it('accepts delegate_task timeout up to five minutes and rejects above the hard cap', () => {
+    assert.doesNotThrow(() => delegateTaskTool.validate({ objective: 'Long research', timeoutMs: 300000 }));
+    assert.throws(
+      () => delegateTaskTool.validate({ objective: 'Too long', timeoutMs: 300001 }),
+      /timeoutMs must be between 1000 and 300000/,
+    );
+  });
+
+  it('accepts delegate_task output up to eight thousand chars and rejects above the hard cap', () => {
+    assert.doesNotThrow(() => delegateTaskTool.validate({ objective: 'Long answer', maxOutputChars: 8000 }));
+    assert.throws(
+      () => delegateTaskTool.validate({ objective: 'Too much output', maxOutputChars: 8001 }),
+      /maxOutputChars must be between 500 and 8000/,
+    );
+  });
+
   it('does not block agent creation on run-store persistence', async () => {
     const run = await createAgentRun({
       role: 'subagent',

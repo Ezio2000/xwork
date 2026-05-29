@@ -91,8 +91,8 @@ function parseConfigForm(form) {
   const payload = { config };
   if (timeoutInput && !timeoutInput.disabled) {
     const timeoutMs = Number(timeoutInput.value);
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300000) {
-      throw new Error('Timeout must be an integer between 1 and 300000');
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 310000) {
+      throw new Error('Timeout must be an integer between 1 and 310000');
     }
     payload.timeoutMs = timeoutMs;
   }

@@ -10,7 +10,7 @@ import {
   updateExpertAgent,
 } from '../lib/agents/profiles.mjs';
 import { runSubagent } from '../lib/agents/subagent-runtime.mjs';
-import { getEnabledToolDefinitions } from '../lib/tools/registry.mjs';
+import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 
 describe('expert agent profiles', () => {
   it('exposes the built-in default expert agent', async () => {
@@ -22,6 +22,8 @@ describe('expert agent profiles', () => {
     assert.equal(general.isDefault, true);
     assert.equal(general.enabled, true);
     assert.equal(general.maxTurns, 30);
+    assert.equal(general.timeoutMs, 120000);
+    assert.equal(general.maxOutputChars, 2400);
     assert.ok(general.allowedTools.includes('web_search'));
   });
 
@@ -58,6 +60,24 @@ describe('expert agent profiles', () => {
       assert.ok(Array.isArray(agent.allowedTools));
       assert.ok(agent.allowedTools.length > 0);
     }
+
+    const expectedBudgets = {
+      xwork_code_review_expert: [120000, 3000],
+      xwork_implementation_expert: [180000, 3600],
+      xwork_frontend_ux_expert: [180000, 3600],
+      xwork_debugging_expert: [180000, 3400],
+      xwork_performance_expert: [180000, 3600],
+      xwork_documentation_expert: [180000, 5000],
+      xwork_market_research_expert: [300000, 7000],
+      xwork_web_research_expert: [300000, 6000],
+      xwork_api_integration_expert: [240000, 6000],
+      xwork_feishu_workspace_expert: [240000, 6000],
+    };
+    for (const [id, [timeoutMs, maxOutputChars]] of Object.entries(expectedBudgets)) {
+      const agent = agents.find(item => item.id === id);
+      assert.equal(agent?.timeoutMs, timeoutMs, `${id} timeoutMs`);
+      assert.equal(agent?.maxOutputChars, maxOutputChars, `${id} maxOutputChars`);
+    }
   });
 
   it('creates, updates, and deletes a custom expert agent', async () => {
@@ -86,6 +106,75 @@ describe('expert agent profiles', () => {
     } finally {
       const deleted = await deleteExpertAgent(id);
       assert.equal(deleted.ok, true);
+    }
+  });
+
+  it('limits expert tools to tools enabled for the main agent', async () => {
+    const id = `agent_tool_policy_${Date.now()}`;
+    const blockedId = `${id}_blocked`;
+    const tools = await listTools();
+    const calculator = tools.find(tool => tool.id === 'calculator');
+    const webSearch = tools.find(tool => tool.id === 'web_search');
+
+    await updateToolConfig('calculator', {
+      enabled: true,
+      timeoutMs: calculator?.timeoutMs ?? 10000,
+    });
+    await updateToolConfig('web_search', {
+      enabled: true,
+      timeoutMs: webSearch?.timeoutMs ?? 10000,
+    });
+
+    const created = await createExpertAgent({
+      id,
+      title: 'Tool Policy Expert',
+      description: 'Checks tool filtering.',
+      selectionPrompt: 'Use for tool policy tests.',
+      systemPrompt: 'Report tool policy facts.',
+      outputContract: 'Return one bullet.',
+      allowedTools: ['calculator', 'web_search'],
+      maxTurns: 1,
+      timeoutMs: 5000,
+      maxOutputChars: 600,
+    });
+
+    try {
+      assert.deepEqual(created.allowedTools, ['calculator', 'web_search']);
+
+      await updateToolConfig('calculator', { enabled: false });
+
+      const agents = await listExpertAgents();
+      const filtered = agents.find(agent => agent.id === id);
+      assert.deepEqual(filtered.allowedTools, ['web_search']);
+
+      const definitions = await getEnabledToolDefinitions();
+      const delegateTask = definitions.find(tool => tool.name === 'delegate_task');
+      const catalogProfile = delegateTask.expertAgents.find(agent => agent.id === id);
+      assert.deepEqual(catalogProfile.allowedTools, ['web_search']);
+
+      const updateRejected = await updateExpertAgent(id, { allowedTools: ['calculator'] });
+      assert.equal(updateRejected.status, 400);
+      assert.match(updateRejected.error, /calculator/);
+
+      const createRejected = await createExpertAgent({
+        id: blockedId,
+        title: 'Blocked Tool Expert',
+        systemPrompt: 'This should not save.',
+        allowedTools: ['calculator'],
+      });
+      assert.equal(createRejected.status, 400);
+      assert.match(createRejected.error, /calculator/);
+    } finally {
+      await deleteExpertAgent(id);
+      await deleteExpertAgent(blockedId);
+      await updateToolConfig('calculator', {
+        enabled: calculator?.enabled ?? true,
+        timeoutMs: calculator?.timeoutMs ?? 10000,
+      });
+      await updateToolConfig('web_search', {
+        enabled: webSearch?.enabled ?? true,
+        timeoutMs: webSearch?.timeoutMs ?? 10000,
+      });
     }
   });
 
