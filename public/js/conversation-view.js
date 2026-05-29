@@ -1,6 +1,6 @@
 import { dom } from './dom.js';
-import { contentToBlocks, messageSources, messageText } from './message-blocks.js';
-import { escHtml, renderBlocks, renderContent, renderPendingMermaid, renderPendingEcharts, renderSourceCards, renderUserMessage } from './renderers.js';
+import { contentToBlocks, messageImages, messageSources, messageText } from './message-blocks.js';
+import { escHtml, renderBlocks, renderContent, renderPendingMermaid, renderPendingEcharts, renderSourceCards, renderUserImages, renderUserMessage } from './renderers.js';
 import { state } from './state.js';
 
 const SCROLL_THRESHOLD = 80;
@@ -128,7 +128,7 @@ export function hydrateAssistantMessages(messages) {
 
 export function isVisibleMessage(message) {
   if (message.role === 'tool') return false;
-  return messageText(message).trim().length > 0;
+  return messageText(message).trim().length > 0 || messageImages(message).length > 0;
 }
 
 export function renderMessages() {
@@ -157,7 +157,7 @@ export function renderMessages() {
       </div>`;
     }
     const body = message.role === 'user'
-      ? renderUserMessage(messageText(message))
+      ? `${renderUserImages(messageImages(message))}${renderUserMessage(messageText(message))}`
       : renderContent(messageText(message));
     return `<div class="message ${message.role}">
       <div class="content">${body}</div>
@@ -175,12 +175,12 @@ export function renderMessages() {
   renderPendingEcharts(dom.messages);
 }
 
-export function addUserMessage(text) {
+export function addUserMessage(text, images = []) {
   const emptyState = dom.messages.querySelector('.empty-state');
   if (emptyState) dom.messages.innerHTML = '';
   const div = document.createElement('div');
   div.className = 'message user';
-  div.innerHTML = `<div class="content">${renderUserMessage(text)}</div>`;
+  div.innerHTML = `<div class="content">${renderUserImages(images)}${renderUserMessage(text)}</div>`;
   dom.messages.appendChild(div);
   renderPendingMermaid(div);
   renderPendingEcharts(div);

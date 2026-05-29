@@ -170,9 +170,24 @@ describe('tool configuration surface', () => {
     const delegateTask = tools.find(tool => tool.id === 'delegate_task');
 
     assert.ok(delegateTask);
-    assert.deepEqual(delegateTask.defaultConfig, {});
-    assert.deepEqual(delegateTask.configSchema.properties, {});
+    assert.deepEqual(delegateTask.defaultConfig, { defaultMaxTurns: 3 });
+    assert.equal(delegateTask.configSchema.properties.defaultMaxTurns.type, 'number');
     assert.equal(delegateTask.inputSchema.properties.maxTurns.type, 'number');
+  });
+
+  it('seeds current non-sensitive tool defaults for new installs', async () => {
+    const tools = await listTools();
+    const byId = Object.fromEntries(tools.map(tool => [tool.id, tool]));
+
+    assert.equal(byId.web_search.defaultConfig.maxUses, 20);
+    assert.equal(byId.web_fetch.defaultConfig.proxy, 'http://localhost:7890');
+    assert.deepEqual(byId.delegate_task.defaultConfig, { defaultMaxTurns: 3 });
+    assert.equal(byId.feishu_auth.defaultConfig.app_id, 'cli_a87b1a4b2bfc900b');
+    assert.equal(byId.feishu_auth.defaultConfig.app_secret, '');
+    assert.equal(byId.feishu_auth.defaultConfig.user_access_token, '');
+    assert.equal(byId.feishu_auth.defaultConfig.refresh_token, '');
+    assert.match(byId.feishu_auth.defaultConfig.oauthScope_user_authorized, /sheets:spreadsheet:read/);
+    assert.equal(byId.feishu_read.defaultConfig.user_access_token, '');
   });
 
   it('exposes config metadata and applies server-tool config overrides', async () => {
@@ -181,7 +196,7 @@ describe('tool configuration surface', () => {
 
     assert.ok(webSearch);
     assert.deepEqual(webSearch.defaultConfig, {
-      maxUses: 4,
+      maxUses: 20,
       allowedDomains: [],
       blockedDomains: [],
     });
@@ -192,8 +207,8 @@ describe('tool configuration surface', () => {
       const baseline = await updateToolConfig('web_search', {
         config: webSearch.defaultConfig,
       });
-      assert.equal(baseline.config.maxUses, 4);
-      assert.equal(baseline.maxUses, 4);
+      assert.equal(baseline.config.maxUses, 20);
+      assert.equal(baseline.maxUses, 20);
 
       const updated = await updateToolConfig('web_search', {
         config: {
@@ -218,7 +233,7 @@ describe('tool configuration surface', () => {
         },
       });
       const fallbackDefinition = (await getEnabledToolDefinitions()).find(tool => tool.name === 'web_search');
-      assert.equal(fallbackDefinition.maxUses, 4);
+      assert.equal(fallbackDefinition.maxUses, 20);
       assert.deepEqual(fallbackDefinition.allowedDomains, []);
     } finally {
       await updateToolConfig('web_search', { config: previous });
@@ -345,6 +360,6 @@ describe('web fetch tool', () => {
       /Invalid web_fetch proxy URL protocol: httt:/,
     );
 
-    assert.equal(webFetchTool.defaultConfig.proxy, '');
+    assert.equal(webFetchTool.defaultConfig.proxy, 'http://localhost:7890');
   });
 });

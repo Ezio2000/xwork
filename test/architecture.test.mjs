@@ -4,10 +4,22 @@ import assert from 'node:assert/strict';
 import { streamChat } from '../lib/api.mjs';
 import { buildAuditTrace } from '../lib/audit-trace.mjs';
 import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
-import { buildSystemPrompt } from '../lib/anthropic/message-normalizer.mjs';
+import { buildSystemPrompt, normalizeMessages } from '../lib/anthropic/message-normalizer.mjs';
 import { CHAT_SERVICE_TEST_HOOKS, getChatRunSnapshot, handleChatRequest, handleChatRunStream } from '../lib/chat-service.mjs';
+import { projectImagesForModel } from '../lib/chat/image-policy.mjs';
 import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
-import { SchemaValidationError, validateChannelPayload, validateChatRequest, validateToolConfigPatch } from '../lib/schema.mjs';
+import { publicActiveState } from '../lib/channels.mjs';
+import { defaultConfig } from '../lib/config-store.mjs';
+import { createImageAsset } from '../lib/image-assets.mjs';
+import {
+  SchemaValidationError,
+  minimaxTokenPlanVisionProvider,
+  validateChannelPayload,
+  validateChatRequest,
+  validateToolConfigPatch,
+  validateVisionConfig,
+  validateVisionProviderPayload,
+} from '../lib/schema.mjs';
 import { withConversationQueue } from '../lib/storage.mjs';
 import { summarizeRunsForUsage } from '../lib/usage-report.mjs';
 import { calculateUsageCost, findEffectiveModelPricing } from '../lib/model-pricing.mjs';
@@ -161,9 +173,25 @@ describe('architecture safety contracts', () => {
 
   it('keeps a background chat run alive after the SSE client closes', async () => {
     const originalStreamChat = CHAT_SERVICE_TEST_HOOKS.streamChat;
+    const originalResolve = CHAT_SERVICE_TEST_HOOKS.resolveRuntimeChannelConfig;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     let sawAbortedSignal = false;
 
+    CHAT_SERVICE_TEST_HOOKS.resolveRuntimeChannelConfig = async () => ({
+      channel: { id: 'test_channel' },
+      requestModel: 'test-model',
+      modelConfig: { id: 'test-model', capabilities: { imageInput: false }, unsupportedImagePolicy: { action: 'reject' } },
+      cfg: { channels: [], vision: { defaultChannelId: null, defaultModelId: null } },
+      channelConfig: {
+        baseUrl: 'https://example.test/anthropic',
+        apiKey: 'sk-test',
+        model: 'test-model',
+        maxTokens: 1024,
+        maxTurns: 5,
+        extraHeaders: {},
+        tools: [],
+      },
+    });
     CHAT_SERVICE_TEST_HOOKS.streamChat = async (_config, _messages, onDelta, _onThinking, onDone, _onError, _onServerTool, { signal } = {}) => {
       await wait(20);
       sawAbortedSignal = signal?.aborted === true;
@@ -219,6 +247,7 @@ describe('architecture safety contracts', () => {
       assert.ok(writes.some(chunk => String(chunk).includes('chat_run_start')));
     } finally {
       CHAT_SERVICE_TEST_HOOKS.streamChat = originalStreamChat;
+      CHAT_SERVICE_TEST_HOOKS.resolveRuntimeChannelConfig = originalResolve;
     }
   });
 
@@ -255,8 +284,24 @@ describe('architecture safety contracts', () => {
 
   it('emits an error event when the provider turn fails', async () => {
     const originalStreamChat = CHAT_SERVICE_TEST_HOOKS.streamChat;
+    const originalResolve = CHAT_SERVICE_TEST_HOOKS.resolveRuntimeChannelConfig;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+    CHAT_SERVICE_TEST_HOOKS.resolveRuntimeChannelConfig = async () => ({
+      channel: { id: 'test_channel' },
+      requestModel: 'test-model',
+      modelConfig: { id: 'test-model', capabilities: { imageInput: false }, unsupportedImagePolicy: { action: 'reject' } },
+      cfg: { channels: [], vision: { defaultChannelId: null, defaultModelId: null } },
+      channelConfig: {
+        baseUrl: 'https://example.test/anthropic',
+        apiKey: 'sk-test',
+        model: 'test-model',
+        maxTokens: 1024,
+        maxTurns: 5,
+        extraHeaders: {},
+        tools: [],
+      },
+    });
     CHAT_SERVICE_TEST_HOOKS.streamChat = async () => {
       throw new Error('The model emitted DSML tool-call markup as visible text');
     };
@@ -294,6 +339,7 @@ describe('architecture safety contracts', () => {
       assert.ok(writes.some(chunk => chunk.includes('"type":"error"')));
     } finally {
       CHAT_SERVICE_TEST_HOOKS.streamChat = originalStreamChat;
+      CHAT_SERVICE_TEST_HOOKS.resolveRuntimeChannelConfig = originalResolve;
     }
   });
 
@@ -308,12 +354,17 @@ describe('architecture safety contracts', () => {
     );
   });
 
-  it('validates configurable channel max turns', () => {
+  it('validates configurable channel model objects and max turns', () => {
     const channel = validateChannelPayload({
       name: 'Test',
       baseUrl: 'https://example.test/anthropic',
       apiKey: 'sk-test',
-      models: ['m'],
+      models: [{
+        id: 'm',
+        name: 'Model M',
+        capabilities: { imageInput: true },
+        unsupportedImagePolicy: { action: 'reject' },
+      }],
       maxTokens: 1024,
       maxTurns: 12,
       extraHeaders: {},
@@ -321,6 +372,10 @@ describe('architecture safety contracts', () => {
     });
 
     assert.equal(channel.maxTurns, 12);
+    assert.equal(channel.models[0].id, 'm');
+    assert.equal(channel.models[0].capabilities.imageInput, true);
+    assert.equal(channel.models[0].unsupportedImagePolicy.action, 'reject');
+    assert.equal(channel.models[0].unsupportedImagePolicy.onVisionFailure, 'reject');
     assert.equal(validateChannelPayload({
       name: 'Default',
       baseUrl: 'https://example.test/anthropic',
@@ -337,6 +392,183 @@ describe('architecture safety contracts', () => {
       }),
       SchemaValidationError,
     );
+    assert.throws(
+      () => validateChannelPayload({
+        name: 'Bad Model',
+        baseUrl: 'https://example.test/anthropic',
+        models: ['m'],
+      }),
+      SchemaValidationError,
+    );
+  });
+
+  it('validates generic vision providers and the MiniMax preset', () => {
+    const provider = minimaxTokenPlanVisionProvider({
+      apiKey: 'sk-cp-test',
+      baseUrl: 'https://api.minimaxi.com/',
+      timeoutMs: 120000,
+    });
+    const validated = validateVisionProviderPayload(provider);
+    const vision = validateVisionConfig({
+      defaultProviderId: provider.id,
+      defaultFailureAction: 'remove_images',
+    });
+
+    assert.equal(validated.adapter, 'http_json');
+    assert.equal(validated.config.url, 'https://api.minimaxi.com/v1/coding_plan/vlm');
+    assert.equal(validated.config.timeoutMs, 120000);
+    assert.equal(validated.config.response.successPath, 'base_resp.status_code');
+    assert.equal(vision.defaultProviderId, 'minimax-token-plan-vlm');
+    assert.equal(vision.defaultFailureAction, 'remove_images');
+    assert.throws(
+      () => validateVisionProviderPayload({ name: 'Bad', adapter: 'unknown', config: {} }),
+      SchemaValidationError,
+    );
+  });
+
+  it('seeds a usable DeepSeek channel and MiniMax vision provider for fresh installs', () => {
+    const cfg = defaultConfig();
+
+    assert.equal(cfg.activeChannelId, '911c406a');
+    assert.equal(cfg.activeModel, 'deepseek-v4-flash');
+    assert.equal(cfg.channels[0].id, '911c406a');
+    assert.equal(cfg.channels[0].name, 'deepseek');
+    assert.equal(cfg.channels[0].baseUrl, 'https://api.deepseek.com/anthropic');
+    assert.equal(cfg.channels[0].apiKey, '');
+    assert.equal(cfg.channels[0].models[0].unsupportedImagePolicy.action, 'vision_to_text');
+    assert.equal(cfg.vision.defaultProviderId, 'minimax-token-plan-vlm');
+    assert.equal(cfg.vision.defaultFailureAction, 'ask_user');
+    assert.equal(cfg.visionProviders[0].id, 'minimax-token-plan-vlm');
+    assert.equal(cfg.visionProviders[0].adapter, 'http_json');
+    assert.equal(cfg.visionProviders[0].config.auth.apiKey, '');
+  });
+
+  it('returns API keys in active state without masking', () => {
+    const provider = minimaxTokenPlanVisionProvider({ apiKey: 'sk-minimax-plain' });
+    const state = publicActiveState({
+      activeChannelId: 'deepseek',
+      activeModel: 'deepseek-v4-flash',
+      channels: [{
+        id: 'deepseek',
+        name: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com/anthropic',
+        apiKey: 'sk-deepseek-plain',
+        models: [{ id: 'deepseek-v4-flash' }],
+        pricing: { models: {} },
+      }],
+      visionProviders: [provider],
+      vision: {
+        defaultProviderId: provider.id,
+        defaultFailureAction: 'reject',
+      },
+    });
+
+    assert.equal(state.channels[0].apiKey, 'sk-deepseek-plain');
+    assert.equal(state.visionProviders[0].config.auth.apiKey, 'sk-minimax-plain');
+  });
+
+  it('summarizes images through MiniMax VLM and turns API status failures into policy failures', async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody = null;
+    const asset = await createImageAsset({
+      filename: 'red.png',
+      dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFBQIAHl6u2QAAAABJRU5ErkJggg==',
+    });
+
+    globalThis.fetch = async (_url, opts) => {
+      requestBody = JSON.parse(opts.body);
+      return new Response(JSON.stringify({
+        content: '图片内容摘要：红色小图\n\n图片 OCR 文本：无',
+        base_resp: { status_code: 0, status_msg: 'success' },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'trace-id': 'trace_ok' },
+      });
+    };
+
+    try {
+      const projected = await projectImagesForModel([{
+        role: 'user',
+        content: [{ type: 'image', imageId: asset.id }],
+      }], {
+        modelConfig: {
+          id: 'text-model',
+          capabilities: { imageInput: false },
+          unsupportedImagePolicy: { action: 'vision_to_text', onVisionFailure: 'reject' },
+        },
+        appConfig: {
+          channels: [],
+          visionProviders: [
+            minimaxTokenPlanVisionProvider({
+              apiKey: 'sk-cp-test',
+              baseUrl: 'https://api.minimaxi.com',
+              timeoutMs: 90000,
+            }),
+          ],
+          vision: {
+            defaultProviderId: 'minimax-token-plan-vlm',
+            defaultFailureAction: 'reject',
+          },
+        },
+        emit: () => {},
+      });
+
+      assert.match(requestBody.image_url, /^data:image\/png;base64,/);
+      assert.match(projected[0].content[0].text, /红色小图/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('can remove images when MiniMax VLM returns a base_resp failure', async () => {
+    const originalFetch = globalThis.fetch;
+    const asset = await createImageAsset({
+      filename: 'red-fail.png',
+      dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFBQIAHl6u2QAAAABJRU5ErkJggg==',
+    });
+
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      content: '',
+      base_resp: { status_code: 1026, status_msg: 'input image sensitive' },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'trace-id': 'trace_fail' },
+    });
+
+    try {
+      const projected = await projectImagesForModel([{
+        role: 'user',
+        content: [
+          { type: 'text', text: '看图' },
+          { type: 'image', imageId: asset.id },
+        ],
+      }], {
+        modelConfig: {
+          id: 'text-model',
+          capabilities: { imageInput: false },
+          unsupportedImagePolicy: { action: 'vision_to_text', onVisionFailure: 'remove_images' },
+        },
+        appConfig: {
+          channels: [],
+          visionProviders: [
+            minimaxTokenPlanVisionProvider({
+              apiKey: 'sk-cp-test',
+              baseUrl: 'https://api.minimaxi.com',
+              timeoutMs: 90000,
+            }),
+          ],
+          vision: {
+            defaultProviderId: 'minimax-token-plan-vlm',
+            defaultFailureAction: 'reject',
+          },
+        },
+        emit: () => {},
+      });
+
+      assert.deepEqual(projected[0].content, [{ type: 'text', text: '看图' }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('passes AbortSignal through to provider fetch', async () => {
@@ -376,6 +608,27 @@ describe('architecture safety contracts', () => {
     }
 
     assert.equal(receivedSignal, ac.signal);
+  });
+
+  it('preserves projected user image blocks for Anthropic requests', () => {
+    const messages = normalizeMessages([{
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/png',
+            data: 'abc',
+          },
+        },
+        { type: 'text', text: '识别这张图' },
+      ],
+    }]);
+
+    assert.equal(messages[0].content[0].type, 'image');
+    assert.equal(messages[0].content[0].source.media_type, 'image/png');
+    assert.equal(messages[0].content[1].text, '识别这张图');
   });
 
   it('turns leaked DSML web_search markup inside text into an explicit provider error', async () => {

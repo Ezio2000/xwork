@@ -77,6 +77,7 @@ describe('feishu_read tool', () => {
     assert.equal(tool.dangerLevel, 'low');
     assert.equal(feishuReadTool.defaultEnabled, true);
     assert.equal(tool.defaultConfig.app_id, undefined);
+    assert.equal(tool.defaultConfig.user_access_token, '');
     assert.equal(tool.defaultConfig.defaultSheetRange, 'A1:Z100');
     assert.equal(tool.defaultConfig.defaultSheetMode, 'all_preview');
     assert.equal(tool.configSchema.properties.maxTextChars.type, 'number');

@@ -6,6 +6,7 @@ import {
   mergeSources,
   messageSources,
   messageText,
+  messageImages,
   subagentEventToBlocks,
 } from '../public/js/message-blocks.js';
 
@@ -26,6 +27,24 @@ describe('message block protocol', () => {
         { type: 'source-cards', sources: [{ title: 'A', url: 'https://a.test' }] },
       ],
     }), 'Hello');
+  });
+
+  it('extracts user image metadata from content arrays', () => {
+    const images = messageImages({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'look' },
+        { type: 'image', imageId: 'img_1', filename: 'a.png', mediaType: 'image/png', size: 12, url: '/api/v1/images/img_1' },
+      ],
+    });
+
+    assert.deepEqual(images, [{
+      id: 'img_1',
+      url: '/api/v1/images/img_1',
+      filename: 'a.png',
+      mediaType: 'image/png',
+      size: 12,
+    }]);
   });
 
   it('converts content arrays into stable display blocks', () => {

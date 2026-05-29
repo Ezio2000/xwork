@@ -5,10 +5,15 @@ import {
   collectChannelPricingOverrides,
   effectivePricingForChannelModel,
   hideChannelEditor,
+  hideVisionProviderEditor,
+  modelId,
   renderChannelList,
   renderSelectors,
+  renderVisionConfig,
+  renderVisionProviderList,
   showChannelEditor,
   showChatPage,
+  showVisionProviderEditor,
 } from '../views.js';
 
 export async function loadActive() {
@@ -16,13 +21,16 @@ export async function loadActive() {
   state.channels = data.channels;
   state.activeChannelId = data.activeChannelId;
   state.activeModel = data.activeModel;
+  state.vision = data.vision || { defaultChannelId: null, defaultModelId: null, defaultProviderId: null, defaultProvider: null, defaultFailureAction: 'reject' };
+  state.visionProviders = data.visionProviders || [];
   renderSelectors();
+  renderVisionConfig();
 }
 
 async function setActiveChannel(channelId) {
   state.activeChannelId = channelId;
   const channel = state.channels.find(item => item.id === channelId);
-  if (channel) state.activeModel = channel.models[0] || '';
+  if (channel) state.activeModel = modelId(channel.models?.[0]) || '';
   await api('POST', '/api/v1/active', { channelId, model: state.activeModel });
   renderSelectors();
 }
@@ -32,6 +40,18 @@ async function setActiveModel(model) {
   state.activeModel = model;
 }
 
+function parseModelsFromEditor() {
+  const text = dom.editModels.value.trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error('Models must be a JSON array');
+    return parsed;
+  } catch (err) {
+    throw new Error(`Models must be valid JSON: ${err.message || err}`);
+  }
+}
+
 async function saveChannel() {
   const id = dom.editChannelId.value;
   const current = state.channels.find(channel => channel.id === id);
@@ -39,7 +59,7 @@ async function saveChannel() {
     name: dom.editName.value.trim(),
     baseUrl: dom.editBaseUrl.value.trim(),
     apiKey: dom.editApiKey.value.trim(),
-    models: dom.editModels.value.split(',').map(item => item.trim()).filter(Boolean),
+    models: parseModelsFromEditor(),
     maxTokens: parseInt(dom.editMaxTokens.value) || 8192,
     maxTurns: parseInt(dom.editMaxTurns.value) || 5,
     pricing: id ? collectChannelPricingOverrides(current) : { models: {} },
@@ -67,8 +87,11 @@ async function saveChannel() {
     const active = await api('GET', '/api/v1/active');
     state.activeChannelId = active.activeChannelId;
     state.activeModel = active.activeModel;
+    state.vision = active.vision || state.vision;
+    state.visionProviders = active.visionProviders || state.visionProviders;
     renderChannelList();
     renderSelectors();
+    renderVisionConfig();
     hideChannelEditor();
   } catch (err) {
     alert(err.message || String(err));
@@ -85,14 +108,70 @@ async function deleteChannel(id) {
   const data = await api('GET', '/api/v1/active');
   state.activeChannelId = data.activeChannelId;
   state.activeModel = data.activeModel;
+  state.vision = data.vision || state.vision;
+  state.visionProviders = data.visionProviders || state.visionProviders;
   renderChannelList();
   renderSelectors();
+  renderVisionConfig();
 }
 
 async function useChannel(id) {
   await setActiveChannel(id);
   renderChannelList();
   renderSelectors();
+}
+
+async function saveVisionConfig() {
+  const defaultFailureAction = dom.visionFailureAction.value || 'reject';
+  const result = await api('PUT', '/api/v1/vision', {
+    defaultChannelId: null,
+    defaultModelId: null,
+    defaultProviderId: dom.visionProviderSelect.value || null,
+    defaultProvider: null,
+    defaultFailureAction,
+  });
+  state.vision = result.vision || { defaultChannelId: null, defaultModelId: null, defaultProviderId: null, defaultProvider: null, defaultFailureAction };
+  renderVisionConfig();
+}
+
+function parseVisionProviderConfig() {
+  const text = dom.editVisionProviderConfig.value.trim();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    throw new Error(`Vision provider config must be valid JSON: ${err.message || err}`);
+  }
+}
+
+async function saveVisionProvider() {
+  const id = dom.editVisionProviderId.value;
+  const payload = {
+    name: dom.editVisionProviderName.value.trim(),
+    adapter: dom.editVisionProviderAdapter.value,
+    enabled: true,
+    config: parseVisionProviderConfig(),
+  };
+  const result = id
+    ? await api('PUT', `/api/v1/vision-providers/${id}`, payload)
+    : await api('POST', '/api/v1/vision-providers', payload);
+
+  if (id) {
+    const idx = state.visionProviders.findIndex(provider => provider.id === id);
+    if (idx >= 0) state.visionProviders[idx] = result;
+  } else {
+    state.visionProviders.push(result);
+  }
+  hideVisionProviderEditor();
+  renderVisionConfig();
+}
+
+async function deleteVisionProvider(id) {
+  if (!confirm('Delete this vision provider?')) return;
+  await api('DELETE', `/api/v1/vision-providers/${id}`);
+  state.visionProviders = state.visionProviders.filter(provider => provider.id !== id);
+  if (state.vision.defaultProviderId === id) state.vision.defaultProviderId = null;
+  renderVisionConfig();
 }
 
 function copyBasePricingIntoRow(row, channel, model) {
@@ -168,6 +247,21 @@ export function bindChannelsController() {
 
   dom.btnCancelEdit.addEventListener('click', hideChannelEditor);
   dom.btnSaveChannel.addEventListener('click', saveChannel);
+  dom.btnSaveVision.addEventListener('click', () => saveVisionConfig().catch(err => alert(err.message || String(err))));
+  dom.visionProviderSelect.addEventListener('change', () => renderVisionConfig({ preserveSelection: true }));
+  dom.btnAddVisionProvider.addEventListener('click', () => showVisionProviderEditor(null));
+  dom.btnCancelVisionProvider.addEventListener('click', hideVisionProviderEditor);
+  dom.btnSaveVisionProvider.addEventListener('click', () => saveVisionProvider().catch(err => alert(err.message || String(err))));
+  dom.visionProviderList.addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    const id = button.dataset.id;
+    if (button.dataset.action === 'edit-provider') {
+      const provider = state.visionProviders.find(item => item.id === id);
+      if (provider) showVisionProviderEditor(provider);
+    }
+    if (button.dataset.action === 'delete-provider') deleteVisionProvider(id);
+  });
   dom.channelPricingList.addEventListener('click', handlePricingRowAction);
   dom.btnToggleKey.addEventListener('click', toggleApiKeyVisibility);
 }

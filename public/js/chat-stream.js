@@ -4,6 +4,7 @@ import { mergeSources } from './message-blocks.js';
 import { escHtml } from './renderers.js';
 import { attachChatStream } from './stream-client.js';
 import { createStreamRenderScheduler, getStreamingContentEl } from './stream-render-controller.js';
+import { clearPendingImages, pendingImageRefs, renderImageAttachments } from './image-attachments.js';
 import { hideThinkingPopup } from './thinking-popup.js';
 import { collapseFinishedToolBlocks, collapseToolToggleElements } from './tool-block-collapse.js';
 import { state } from './state.js';
@@ -35,8 +36,9 @@ function setSendButtonState() {
 async function ensureConversation(message) {
   if (state.activeId) return state.activeId;
 
+  const titleText = message || 'Image chat';
   const convo = await api('POST', '/api/v1/conversations', {
-    title: message.slice(0, 50) + (message.length > 50 ? '…' : ''),
+    title: titleText.slice(0, 50) + (titleText.length > 50 ? '…' : ''),
   });
 
   state.activeId = convo.id;
@@ -74,7 +76,21 @@ function finalizeStreamingMessage(stream) {
   state.streamingByConversationId.delete(stream.conversationId);
   if (state.activeId === stream.conversationId) {
     if (state.messages.length <= stream.originalMessageCount) {
-      state.messages.push({ role: 'user', content: stream.message });
+      const userContent = [
+        ...(stream.message ? [{ type: 'text', text: stream.message }] : []),
+        ...(stream.images || []).map(image => ({
+          type: 'image',
+          imageId: image.id,
+          mediaType: image.mediaType,
+          filename: image.filename,
+          size: image.size,
+          url: image.url,
+        })),
+      ];
+      state.messages.push({
+        role: 'user',
+        content: userContent.length === 1 && userContent[0].type === 'text' ? stream.message : userContent,
+      });
     }
     state.messages.push({
       role: 'assistant',
@@ -88,7 +104,8 @@ function finalizeStreamingMessage(stream) {
 
   const conv = state.conversations.find(item => item.id === stream.conversationId);
   if (conv && (stream.originalMessageCount <= 0 || conv.title === 'New Chat')) {
-    conv.title = stream.message.slice(0, 50) + (stream.message.length > 50 ? '…' : '');
+    const titleText = stream.message || 'Image chat';
+    conv.title = titleText.slice(0, 50) + (titleText.length > 50 ? '…' : '');
     if (state.activeId === stream.conversationId) dom.chatTitle.textContent = conv.title;
     renderConvoList();
   }
@@ -109,11 +126,12 @@ function markStreamErrored(stream, err) {
   setSendButtonState();
 }
 
-function createStream({ conversationId, runId, message, originalMessageCount, model }) {
+function createStream({ conversationId, runId, message, images, originalMessageCount, model }) {
   const stream = {
     conversationId,
     runId,
     message,
+    images,
     originalMessageCount,
     model,
     status: 'running',
@@ -172,7 +190,9 @@ export async function stopActiveStream() {
 }
 
 export async function sendMessage(text) {
-  if (!text.trim()) return;
+  const imageRefs = pendingImageRefs();
+  const pendingImages = [...(state.pendingImages || [])];
+  if (!text.trim() && !imageRefs.length) return;
   if (!state.activeChannelId) {
     alert('Please configure a channel in Settings first.');
     return;
@@ -182,20 +202,33 @@ export async function sendMessage(text) {
   const message = text.trim();
   dom.msgInput.value = '';
   dom.msgInput.style.height = 'auto';
+  clearPendingImages();
   dom.btnSend.disabled = true;
   resetAutoScroll();
 
   try {
     const conversationId = await ensureConversation(message);
     const originalMessageCount = state.messages.length;
-    state.messages.push({ role: 'user', content: message });
-    addUserMessage(message);
+    const userContent = [
+      ...(message ? [{ type: 'text', text: message }] : []),
+      ...pendingImages.map(image => ({
+        type: 'image',
+        imageId: image.id,
+        mediaType: image.mediaType,
+        filename: image.filename,
+        size: image.size,
+        url: image.url,
+      })),
+    ];
+    state.messages.push({ role: 'user', content: userContent.length === 1 && userContent[0].type === 'text' ? message : userContent });
+    addUserMessage(message, pendingImages);
 
     const runId = crypto.randomUUID();
     const stream = createStream({
       conversationId,
       runId,
       message,
+      images: pendingImages,
       originalMessageCount,
       model: dom.modelSelect.value,
     });
@@ -209,6 +242,7 @@ export async function sendMessage(text) {
         runId,
         conversationId,
         message,
+        images: imageRefs,
         channelId: dom.channelSelect.value,
         model: dom.modelSelect.value,
       }),
@@ -217,6 +251,8 @@ export async function sendMessage(text) {
       onError: markStreamErrored,
     });
   } catch (err) {
+    state.pendingImages = pendingImages;
+    renderImageAttachments();
     alert(err.message || String(err));
     setSendButtonState();
   }

@@ -9,10 +9,12 @@ import { expertAgentRoutes } from './expert-agent-routes.mjs';
 import { usageRoutes } from './usage-routes.mjs';
 import { pricingRoutes } from './pricing-routes.mjs';
 import { workspaceRoutes } from './workspace-routes.mjs';
+import { imageRoutes } from './image-routes.mjs';
 
 export function apiRoutes() {
   const router = Router();
   router.use(channelRoutes());
+  router.use(imageRoutes());
   router.use(workspaceRoutes());
   router.use(toolRoutes());
   router.use(expertAgentRoutes());

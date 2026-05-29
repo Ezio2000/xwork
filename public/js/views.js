@@ -2,9 +2,14 @@ export {
   collectChannelPricingOverrides,
   effectivePricingForChannelModel,
   hideChannelEditor,
+  modelId,
   renderChannelList,
   renderSelectors,
+  renderVisionConfig,
+  renderVisionProviderList,
   showChannelEditor,
+  showVisionProviderEditor,
+  hideVisionProviderEditor,
 } from './channel-view.js';
 export {
   addAssistantPlaceholder,

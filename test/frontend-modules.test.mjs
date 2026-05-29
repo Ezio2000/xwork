@@ -119,6 +119,7 @@ describe('frontend module boundaries', () => {
       'hideSettings',
       'hideToolRunDetail',
       'hideUsageRunDetail',
+      'hideVisionProviderEditor',
       'hydrateAssistantMessages',
       'isVisibleMessage',
       'pricingPayloadFromEditor',
@@ -131,6 +132,7 @@ describe('frontend module boundaries', () => {
       'renderToolList',
       'renderToolRuns',
       'renderUsageReport',
+      'renderVisionProviderList',
       'scrollBottom',
       'showChannelEditor',
       'showChannelsPage',
@@ -144,6 +146,7 @@ describe('frontend module boundaries', () => {
       'showToolsPageFrame',
       'showUsagePageFrame',
       'showUsageRunDetail',
+      'showVisionProviderEditor',
     ];
 
     for (const name of expectedExports) {
@@ -183,6 +186,60 @@ describe('frontend module boundaries', () => {
     assert.equal(typeof modules[7].showToolsPage, 'function');
     assert.equal(typeof modules[8].bindUsageController, 'function');
     assert.equal(typeof modules[8].showUsagePage, 'function');
+  });
+
+  it('keeps the selected vision provider while repopulating fallback options', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { dom } = await import('../public/js/dom.js');
+    const { renderVisionConfig } = await import('../public/js/channel-view.js');
+
+    state.visionProviders = [
+      { id: 'minimax-token-plan-vlm', name: 'MiniMax Token Plan VLM', adapter: 'http_json' },
+      { id: 'anthropic-vision', name: 'Anthropic Vision', adapter: 'anthropic_model' },
+    ];
+    state.vision = {
+      defaultProviderId: 'minimax-token-plan-vlm',
+      defaultFailureAction: 'reject',
+    };
+
+    renderVisionConfig();
+    assert.equal(dom.visionProviderSelect.value, 'minimax-token-plan-vlm');
+    assert.match(dom.visionProviderSelect.innerHTML, /MiniMax Token Plan VLM/);
+    assert.match(dom.visionProviderList.innerHTML, /HTTP JSON/);
+
+    dom.visionProviderSelect.value = 'anthropic-vision';
+    renderVisionConfig({ preserveSelection: true });
+
+    assert.equal(dom.visionProviderSelect.value, 'anthropic-vision');
+    assert.match(dom.visionProviderSelect.innerHTML, /Anthropic Vision/);
+  });
+
+  it('renders the generic vision provider editor from provider config', async () => {
+    const { dom } = await import('../public/js/dom.js');
+    const { showVisionProviderEditor, hideVisionProviderEditor } = await import('../public/js/channel-view.js');
+
+    showVisionProviderEditor({
+      id: 'custom-http',
+      name: 'Custom HTTP',
+      adapter: 'http_json',
+      config: {
+        url: 'https://vision.example.test/parse',
+        method: 'POST',
+        timeoutMs: 120000,
+        auth: { type: 'bearer', apiKey: 'sk-plain-test' },
+        request: { bodyTemplate: {}, promptPath: 'prompt', imagePath: 'image', imageFormat: 'data_url' },
+        response: { textPath: 'result.text' },
+      },
+    });
+
+    assert.equal(dom.editVisionProviderId.value, 'custom-http');
+    assert.equal(dom.editVisionProviderAdapter.value, 'http_json');
+    assert.match(dom.editVisionProviderConfig.value, /vision\.example\.test/);
+    assert.match(dom.editVisionProviderConfig.value, /sk-plain-test/);
+    assert.equal(dom.visionProviderEditor.classList.contains('hidden'), false);
+
+    hideVisionProviderEditor();
+    assert.equal(dom.visionProviderEditor.classList.contains('hidden'), true);
   });
 
   it('shows the Feishu token menu only when feishu_auth is enabled', async () => {

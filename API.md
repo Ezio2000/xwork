@@ -18,24 +18,69 @@
 
 #### GET `/active`
 
-获取当前选中的渠道 ID 和模型名，同时返回渠道列表（API Key 已掩码）。
+获取当前选中的渠道 ID 和模型名，同时返回渠道列表。API key 按明文返回，便于本地自托管页面直接编辑。
 
 **响应** `200`
 ```json
 {
-  "activeChannelId": "07c69e72",
+  "activeChannelId": "911c406a",
   "activeModel": "deepseek-v4-flash",
   "channels": [
     {
-      "id": "07c69e72",
+      "id": "911c406a",
       "name": "deepseek",
       "baseUrl": "https://api.deepseek.com/anthropic",
-      "apiKey": "••••3f613f",
-      "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
+      "apiKey": "",
+      "models": [
+        {
+          "id": "deepseek-v4-flash",
+          "capabilities": { "imageInput": false },
+          "unsupportedImagePolicy": {
+            "action": "vision_to_text",
+            "onVisionFailure": "reject"
+          }
+        }
+      ],
       "maxTokens": 8192,
+      "maxTurns": 100,
       "extraHeaders": {}
     }
-  ]
+  ],
+  "visionProviders": [
+    {
+      "id": "minimax-token-plan-vlm",
+      "name": "MiniMax Token Plan VLM",
+      "adapter": "http_json",
+      "enabled": true,
+      "config": {
+        "url": "https://api.minimaxi.com/v1/coding_plan/vlm",
+        "method": "POST",
+        "timeoutMs": 90000,
+        "headers": { "MM-API-Source": "Minimax-MCP" },
+        "auth": { "type": "bearer", "apiKey": "" },
+        "request": {
+          "bodyTemplate": {},
+          "promptPath": "prompt",
+          "imagePath": "image_url",
+          "imageFormat": "data_url"
+        },
+        "response": {
+          "textPath": "content",
+          "successPath": "base_resp.status_code",
+          "successValue": 0,
+          "errorCodePath": "base_resp.status_code",
+          "errorMessagePath": "base_resp.status_msg",
+          "traceHeader": "trace-id"
+        }
+      }
+    }
+  ],
+  "vision": {
+    "defaultChannelId": null,
+    "defaultModelId": null,
+    "defaultProviderId": "minimax-token-plan-vlm",
+    "defaultFailureAction": "ask_user"
+  }
 }
 ```
 
@@ -45,7 +90,7 @@
 
 **请求体**
 ```json
-{ "channelId": "07c69e72", "model": "deepseek-v4-pro" }
+{ "channelId": "deepseek", "model": "deepseek-v4-flash" }
 ```
 
 **响应** `200` — 格式同 GET（返回更新后的状态）。
@@ -54,7 +99,7 @@
 
 ### 2. 渠道管理 (Channels)
 
-每次操作渠道涉及 API Key 时，响应中的 `apiKey` 字段均为掩码值（`••••` + 后 4 位）。
+默认初始化会创建一个 `911c406a` 渠道，名称为 `deepseek`，API key 为空。API key 按明文返回和保存，适合本地自托管管理界面使用。
 
 #### GET `/channels`
 
@@ -64,12 +109,22 @@
 ```json
 [
   {
-    "id": "07c69e72",
+    "id": "911c406a",
     "name": "deepseek",
     "baseUrl": "https://api.deepseek.com/anthropic",
-    "apiKey": "••••3f613f",
-    "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
+    "apiKey": "",
+    "models": [
+      {
+        "id": "deepseek-v4-flash",
+        "capabilities": { "imageInput": false },
+        "unsupportedImagePolicy": {
+          "action": "vision_to_text",
+          "onVisionFailure": "reject"
+        }
+      }
+    ],
     "maxTokens": 8192,
+    "maxTurns": 100,
     "extraHeaders": {}
   }
 ]
@@ -82,10 +137,19 @@
 **请求体**
 ```json
 {
-  "name": "deepseek",
+  "name": "DeepSeek",
   "baseUrl": "https://api.deepseek.com/anthropic",
   "apiKey": "sk-xxxxxxxx",
-  "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
+  "models": [
+    {
+      "id": "deepseek-v4-flash",
+      "capabilities": { "imageInput": false },
+      "unsupportedImagePolicy": {
+        "action": "vision_to_text",
+        "onVisionFailure": "reject"
+      }
+    }
+  ],
   "maxTokens": 8192,
   "extraHeaders": {}
 }
@@ -96,15 +160,127 @@
 | `name` | 是 | — | 渠道显示名称 |
 | `baseUrl` | 是 | — | Anthropic Messages API 兼容地址 |
 | `apiKey` | 否 | `""` | API 密钥 |
-| `models` | 否 | `[]` | 模型列表 |
+| `models` | 否 | `[]` | 模型对象列表；每项至少包含 `id` |
 | `maxTokens` | 否 | `8192` | 每次请求最大 token 数 |
 | `extraHeaders` | 否 | `{}` | 附加请求头 |
 
-**响应** `200` — 返回创建的渠道对象。
+模型对象支持：
+
+| 字段 | 说明 |
+|---|---|
+| `id` | 发给 API 的模型 ID |
+| `name` | 可选显示名 |
+| `capabilities.imageInput` | 是否支持原生图片输入，默认 `false` |
+| `unsupportedImagePolicy.action` | 图片不支持时的策略：`vision_to_text` / `ask_user` / `reject` |
+| `unsupportedImagePolicy.visionModel` | 可选旧式视觉模型覆盖：`{ "channelId": "...", "modelId": "..." }`，等价于 `anthropic_model` |
+| `unsupportedImagePolicy.visionProviderId` | 可选视觉 provider ID 覆盖，优先于全局 `vision.defaultProviderId` |
+| `unsupportedImagePolicy.onVisionFailure` | 视觉识别失败后的策略：`reject` / `remove_images` / `ask_user` |
+
+#### PUT `/vision`
+
+设置全局默认视觉辅助 provider，供 `vision_to_text` 策略使用。provider 本身通过 `/vision-providers` 管理。
+
+```json
+{
+  "defaultProviderId": "minimax-token-plan-vlm",
+  "defaultFailureAction": "ask_user"
+}
+```
+
+**响应** `200` — 返回视觉配置。
+
+#### GET `/vision-providers`
+
+返回所有视觉 provider。密钥字段按明文返回。
+
+**响应** `200`
+```json
+[
+  {
+    "id": "minimax-token-plan-vlm",
+    "name": "MiniMax Token Plan VLM",
+    "adapter": "http_json",
+    "enabled": true,
+    "config": {
+      "url": "https://api.minimaxi.com/v1/coding_plan/vlm",
+      "method": "POST",
+      "timeoutMs": 90000,
+      "headers": { "MM-API-Source": "Minimax-MCP" },
+      "auth": { "type": "bearer", "apiKey": "" },
+      "request": {
+        "bodyTemplate": {},
+        "promptPath": "prompt",
+        "imagePath": "image_url",
+        "imageFormat": "data_url"
+      },
+      "response": {
+        "textPath": "content",
+        "successPath": "base_resp.status_code",
+        "successValue": 0,
+        "errorCodePath": "base_resp.status_code",
+        "errorMessagePath": "base_resp.status_msg",
+        "traceHeader": "trace-id"
+      }
+    }
+  }
+]
+```
+
+#### POST `/vision-providers`
+
+创建视觉 provider。首个创建的 provider 会自动成为 `vision.defaultProviderId`。
+
+**请求体**
+```json
+{
+  "id": "minimax-token-plan-vlm",
+  "name": "MiniMax Token Plan VLM",
+  "adapter": "http_json",
+  "enabled": true,
+  "config": {
+    "url": "https://api.minimaxi.com/v1/coding_plan/vlm",
+    "method": "POST",
+    "timeoutMs": 90000,
+    "headers": { "MM-API-Source": "Minimax-MCP" },
+    "auth": { "type": "bearer", "apiKey": "sk-cp-xxx" },
+    "request": {
+      "bodyTemplate": {},
+      "promptPath": "prompt",
+      "imagePath": "image_url",
+      "imageFormat": "data_url"
+    },
+    "response": {
+      "textPath": "content",
+      "successPath": "base_resp.status_code",
+      "successValue": 0,
+      "errorCodePath": "base_resp.status_code",
+      "errorMessagePath": "base_resp.status_msg",
+      "traceHeader": "trace-id"
+    }
+  }
+}
+```
+
+provider adapter 支持：
+
+| 类型 | 说明 |
+|---|---|
+| `anthropic_model` | 使用支持原生图片输入的 Anthropic Messages 兼容模型，需要 `channelId` 和 `modelId` |
+| `http_json` | 调用任意 HTTP JSON 图片解析接口。`request.promptPath` / `request.imagePath` 控制请求体写入位置；`response.textPath` / `response.successPath` / `response.errorMessagePath` 控制响应解析 |
+
+MiniMax Token Plan VLM 是 `http_json` 的配置示例。上面的配置会同时检查 HTTP 状态和响应体 `base_resp.status_code`；非 0 会按视觉识别失败处理。
+
+#### PUT `/vision-providers/:id`
+
+更新视觉 provider。请求体同 POST，所有字段可选；密钥字段按明文保存，传空字符串会清空。
+
+#### DELETE `/vision-providers/:id`
+
+删除视觉 provider。如果它是当前默认 provider，会清空 `vision.defaultProviderId`。
 
 #### PUT `/channels/:id`
 
-更新渠道。API Key 传入掩码值或空字符串时保留原值不更新。
+更新渠道。API Key 按明文保存，传空字符串会清空。
 
 **请求体** — 同 POST，所有字段可选。
 
@@ -327,10 +503,22 @@
 
 发起聊天请求，返回 SSE 流。
 
+#### POST `/images`
+
+上传聊天图片，返回图片资产元数据。请求体使用 base64 data URL。
+
+```json
+{
+  "filename": "screenshot.png",
+  "dataUrl": "data:image/png;base64,..."
+}
+```
+
 **请求体**
 ```json
 {
   "message": "查一下特朗普近况",
+  "images": [{ "id": "image_asset_id" }],
   "conversationId": "uuid",
   "channelId": "07c69e72",
   "model": "deepseek-v4-pro"
@@ -339,7 +527,8 @@
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `message` | 是 | 用户输入内容 |
+| `message` | 否* | 用户输入内容；无图片时必填 |
+| `images` | 否 | 由 `POST /images` 返回的图片资产 ID 列表，最多 5 张 |
 | `conversationId` | 否 | 对话 ID，不传则仅此轮无历史 |
 | `channelId` | 否 | 指定渠道，不传则用当前活跃渠道 |
 | `model` | 否 | 指定模型，不传则用当前活跃模型 |

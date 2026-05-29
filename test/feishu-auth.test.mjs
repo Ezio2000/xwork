@@ -62,9 +62,12 @@ describe('feishu_auth tool', () => {
     assert.ok(tool);
     assert.equal(tool.dangerLevel, 'low');
     assert.equal(feishuAuthTool.defaultEnabled, true);
-    assert.equal(tool.defaultConfig.app_id, '');
+    assert.equal(tool.defaultConfig.app_id, 'cli_a87b1a4b2bfc900b');
+    assert.equal(tool.defaultConfig.app_secret, '');
+    assert.equal(tool.defaultConfig.user_access_token, '');
     assert.equal(tool.defaultConfig.baseUrl, undefined);
     assert.equal(tool.defaultConfig.oauthScope, undefined);
+    assert.match(tool.defaultConfig.oauthScope_user_authorized, /docx:document:readonly/);
     assert.equal(tool.configSchema.properties.app_secret.type, 'string');
   });
 

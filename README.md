@@ -11,27 +11,81 @@ npm run dev      # 开发模式 (文件变更自动重启)
 
 打开 `http://localhost:3000` 使用 Web 聊天界面。
 
-## 渠道配置
+## 默认渠道配置
 
-编辑 `config.json` 添加模型渠道：
+首次启动时会自动初始化 DeepSeek 渠道和 MiniMax Token Plan VLM 图片识别 provider。默认 API key 为空，只需要在 Channels 页面分别填入 DeepSeek API Key 和 MiniMax API Key 即可使用。
 
 ```json
 {
   "channels": [
     {
-      "id": "xxx",
+      "id": "911c406a",
       "name": "deepseek",
       "baseUrl": "https://api.deepseek.com/anthropic",
-      "apiKey": "sk-xxx",
-      "models": ["deepseek-v4-flash"],
+      "apiKey": "",
+      "models": [
+        {
+          "id": "deepseek-v4-flash",
+          "capabilities": { "imageInput": false },
+          "unsupportedImagePolicy": {
+            "action": "vision_to_text",
+            "onVisionFailure": "reject"
+          }
+        }
+      ],
       "maxTokens": 8192,
+      "maxTurns": 100,
       "extraHeaders": {}
     }
   ],
-  "activeChannelId": "xxx",
-  "activeModel": "deepseek-v4-flash"
+  "activeChannelId": "911c406a",
+  "activeModel": "deepseek-v4-flash",
+  "visionProviders": [
+    {
+      "id": "minimax-token-plan-vlm",
+      "name": "MiniMax Token Plan VLM",
+      "adapter": "http_json",
+      "enabled": true,
+      "config": {
+        "url": "https://api.minimaxi.com/v1/coding_plan/vlm",
+        "method": "POST",
+        "timeoutMs": 90000,
+        "headers": { "MM-API-Source": "Minimax-MCP" },
+        "auth": { "type": "bearer", "apiKey": "" },
+        "request": {
+          "bodyTemplate": {},
+          "promptPath": "prompt",
+          "imagePath": "image_url",
+          "imageFormat": "data_url"
+        },
+        "response": {
+          "textPath": "content",
+          "successPath": "base_resp.status_code",
+          "successValue": 0,
+          "errorCodePath": "base_resp.status_code",
+          "errorMessagePath": "base_resp.status_msg",
+          "traceHeader": "trace-id"
+        }
+      }
+    }
+  ],
+  "vision": {
+    "defaultChannelId": null,
+    "defaultModelId": null,
+    "defaultProviderId": "minimax-token-plan-vlm",
+    "defaultFailureAction": "ask_user"
+  }
 }
 ```
+
+`models` 使用对象配置。`capabilities.imageInput=true` 表示模型可直接接收图片；不支持图片时，`unsupportedImagePolicy.action` 可选 `vision_to_text`、`ask_user`、`reject`。`vision_to_text` 会使用模型级 `unsupportedImagePolicy.visionProviderId` 或全局 `vision.defaultProviderId` 对应的 `visionProviders` 先生成图片摘要/OCR，再交给当前文本模型。
+
+视觉 provider 当前 adapter 支持：
+
+- `anthropic_model`：复用一个支持原生图片输入的 Anthropic Messages 兼容渠道/模型。
+- `http_json`：调用任意返回 JSON 的第三方图片解析接口，通过 `request.*` 配置 prompt/图片写入位置，通过 `response.*` 配置识别文本、成功码、错误码和 trace header 的读取位置。MiniMax Token Plan VLM 是这个 adapter 的一个配置示例，不需要专属调用代码。
+
+识别失败处理可配：模型级 `unsupportedImagePolicy.onVisionFailure` 优先，其次使用全局 `vision.defaultFailureAction`。可选值为 `reject`、`remove_images`、`ask_user`。
 
 ## API 文档
 

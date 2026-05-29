@@ -1,5 +1,6 @@
 import {
   contentToBlocks,
+  messageImages,
   mergeSources,
   messageSources,
   messageText,
@@ -61,6 +62,16 @@ export function renderUserMessage(text) {
     html = html.split(escHtml(token)).join(chip);
   }
   return html;
+}
+
+export function renderUserImages(images = []) {
+  if (!images.length) return '';
+  return `<div class="user-image-grid">${images.map(image => `
+    <a class="user-image-thumb" href="${escHtml(image.url)}" target="_blank" rel="noreferrer">
+      <img src="${escHtml(image.url)}" alt="${escHtml(image.filename || 'image')}">
+      <span>${escHtml(image.filename || 'image')}</span>
+    </a>
+  `).join('')}</div>`;
 }
 
 export function formatDateTime(value) {

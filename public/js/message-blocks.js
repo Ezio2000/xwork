@@ -118,6 +118,21 @@ export function messageText(message) {
   return '';
 }
 
+export function messageImages(message) {
+  const content = message?.content;
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter(part => part?.type === 'image')
+    .map(part => ({
+      id: part.imageId || part.source?.image_id || '',
+      url: part.url || (part.imageId ? `/api/v1/images/${encodeURIComponent(part.imageId)}` : ''),
+      filename: part.filename || 'image',
+      mediaType: part.mediaType || '',
+      size: part.size || 0,
+    }))
+    .filter(image => image.id || image.url);
+}
+
 export function messageSources(message) {
   if (Array.isArray(message.blocks)) {
     return message.blocks

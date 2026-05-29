@@ -2,6 +2,7 @@ import { bindChannelsController, loadActive } from './js/controllers/channels-co
 import { bindChatHeaderController, renderChatHeaderActions } from './js/controllers/chat-header-controller.js';
 import { bindChatInputController } from './js/controllers/chat-input-controller.js';
 import { bindFileMentionController } from './js/controllers/file-mention-controller.js';
+import { bindImageAttachments } from './js/image-attachments.js';
 import {
   bindConversationsController,
   loadConversations,
@@ -23,6 +24,7 @@ function bindEvents() {
   bindChatHeaderController();
   bindChatInputController();
   bindFileMentionController();
+  bindImageAttachments();
   bindConversationsController();
   bindSettingsController({ showExpertAgentsPage, showPricingPage, showToolsPage, showUsagePage, showWorkspacePage });
   bindChannelsController();

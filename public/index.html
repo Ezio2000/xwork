@@ -47,8 +47,17 @@
     <div id="input-area">
       <div class="input-wrapper">
         <div id="file-mention-menu" class="file-mention-menu" hidden></div>
+        <div id="image-attachments" class="image-attachments" hidden></div>
         <textarea id="msg-input" rows="1" placeholder="How can I help you today?" autofocus></textarea>
         <div class="input-toolbar">
+          <input id="image-upload-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+          <button id="btn-image-upload" class="btn-icon input-tool-button" title="Attach images" aria-label="Attach images">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M4 11l3-3 2 2 1-1 2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="11" cy="6" r="1" fill="currentColor"/>
+            </svg>
+          </button>
           <button id="btn-send" class="btn-send" title="Send">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M8 14V2M8 2L3 7M8 2L13 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -56,7 +65,7 @@
           </button>
         </div>
       </div>
-      <p class="input-hint">Enter to send · Shift+Enter for new line · @ to mention file paths</p>
+      <p class="input-hint">Enter to send · Shift+Enter for new line · @ to mention file paths · paste or attach images</p>
     </div>
   </main>
 
@@ -68,6 +77,45 @@
       <button id="btn-add-channel-page" class="btn-primary small">+ Add Channel</button>
     </div>
     <div id="channels-content">
+      <section class="vision-config-panel">
+        <div>
+          <h3>Vision fallback</h3>
+          <p>Default provider used when a text model converts images to text.</p>
+        </div>
+        <select id="vision-provider-select"></select>
+        <select id="vision-failure-action"></select>
+        <button id="btn-save-vision" class="btn-text small">Save</button>
+      </section>
+      <section class="vision-providers-section">
+        <div class="editor-subheader">
+          <h4>Vision Providers</h4>
+          <span>Reusable image understanding providers. Use JSON config for generic HTTP adapters.</span>
+        </div>
+        <div id="vision-provider-list"></div>
+        <div id="vision-provider-editor" class="vision-provider-editor hidden">
+          <input type="hidden" id="edit-vision-provider-id">
+          <label>
+            <span>Name</span>
+            <input type="text" id="edit-vision-provider-name" placeholder="MiniMax Token Plan VLM">
+          </label>
+          <label>
+            <span>Adapter</span>
+            <select id="edit-vision-provider-adapter">
+              <option value="http_json">Generic HTTP JSON</option>
+              <option value="anthropic_model">Anthropic-compatible image model</option>
+            </select>
+          </label>
+          <label class="vision-provider-config-field">
+            <span>Config JSON</span>
+            <textarea id="edit-vision-provider-config" rows="10"></textarea>
+          </label>
+          <div class="editor-actions">
+            <button id="btn-cancel-vision-provider" class="btn-text">Cancel</button>
+            <button id="btn-save-vision-provider" class="btn-primary">Save Provider</button>
+          </div>
+        </div>
+        <button id="btn-add-vision-provider" class="btn-text small">+ Add Provider</button>
+      </section>
       <div id="channel-list"></div>
       <div id="channel-editor" class="channel-editor-page hidden">
         <h3 id="editor-title">New Channel</h3>
@@ -88,8 +136,8 @@
           </div>
         </label>
         <label>
-          <span>Models (comma separated)</span>
-          <input type="text" id="edit-models" placeholder="model-a, model-b">
+          <span>Models (JSON array)</span>
+          <textarea id="edit-models" rows="8" placeholder='[{"id":"model-a","capabilities":{"imageInput":false},"unsupportedImagePolicy":{"action":"vision_to_text"}}]'></textarea>
         </label>
         <label>
           <span>Max Tokens</span>

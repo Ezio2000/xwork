@@ -37,7 +37,7 @@ app.use((_req, res, next) => {
   return next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '12mb' }));
 app.use(express.static(join(__dirname, 'public')));
 app.use('/api/v1', apiRoutes());
 
