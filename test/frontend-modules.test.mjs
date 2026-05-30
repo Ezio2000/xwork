@@ -86,10 +86,24 @@ globalThis.requestAnimationFrame = (fn) => fn();
 globalThis.window = { CSS: { escape: String } };
 globalThis.CSS = { escape: String };
 globalThis.marked = {
-  parse(value) {
-    return String(value || '').replace(/```mermaid\n([\s\S]*?)\n```/g, (_match, source) => (
+  Renderer: class {},
+  parse(value, options = {}) {
+    let html = String(value || '').replace(/```mermaid\n([\s\S]*?)\n```/g, (_match, source) => (
       `<pre><code class="language-mermaid">${source}</code></pre>`
     ));
+    if (options?.renderer?.html) {
+      html = html.replace(/<!doctype\s+html[\s\S]*$/i, match => options.renderer.html({
+        type: 'html',
+        raw: match,
+        text: match,
+      }));
+      html = html.replace(/<script[\s\S]*$/i, match => options.renderer.html({
+        type: 'html',
+        raw: match,
+        text: match,
+      }));
+    }
+    return html;
   },
   setOptions() {},
 };
@@ -672,6 +686,27 @@ describe('frontend module boundaries', () => {
     assert.match(html, /complete screenshot/);
     assert.match(html, /仙童数学/);
     assert.match(html, /visible page text/);
+  });
+
+  it('escapes raw HTML in web fetch previews so later blocks remain visible', async () => {
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const html = renderBlocks([
+      {
+        type: 'web-fetch',
+        url: 'https://example.test/raw-html',
+        statusCode: 200,
+        contentType: 'application/json',
+        contentLength: 2000,
+        contentPreview: '<!DOCTYPE html>\n<html>\n<head>\n<script src="/asset.js"',
+        collapsed: true,
+      },
+      { type: 'text', content: 'FINAL_VISIBLE' },
+    ], true);
+
+    assert.doesNotMatch(html, /<!DOCTYPE html>/i);
+    assert.doesNotMatch(html, /<script\b/i);
+    assert.match(html, /&lt;!DOCTYPE html&gt;/i);
+    assert.match(html, /FINAL_VISIBLE/);
   });
 
   it('streams browser action steps and merges final tool result into the same block', async () => {

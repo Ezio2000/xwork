@@ -396,4 +396,31 @@ describe('web fetch tool', () => {
 
     assert.equal(webFetchTool.defaultConfig.proxy, 'http://localhost:7890');
   });
+
+  it('sniffs HTML content even when the response content type is wrong', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      async text() {
+        return '<!DOCTYPE html><html><head><script>bad()</script></head><body><h1>Hello</h1><p>World</p></body></html>';
+      },
+    });
+
+    try {
+      const result = await webFetchTool.handler(
+        { url: 'https://example.test/wrong-content-type-html' },
+        { config: { proxy: '' } },
+      );
+
+      assert.match(result.markdown, /# Hello/);
+      assert.match(result.markdown, /World/);
+      assert.doesNotMatch(result.markdown, /<script|<!DOCTYPE|<html/i);
+      assert.equal(result.contentType, 'application/json');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

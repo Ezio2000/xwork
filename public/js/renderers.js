@@ -43,6 +43,13 @@ export function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function parseMarkdownSafeHtml(value) {
+  if (typeof marked?.Renderer !== 'function') return marked.parse(value);
+  const renderer = new marked.Renderer();
+  renderer.html = (token) => escHtml(token?.raw ?? token?.text ?? '');
+  return marked.parse(value, { renderer });
+}
+
 const FILE_MENTION_DISPLAY_RE = /(?:^|[\s([{])@([A-Za-z0-9_./\-]+)/g;
 
 export function renderUserMessage(text) {
@@ -1019,7 +1026,7 @@ function normalizeMarkdownForDisplay(text) {
 export function renderContent(text) {
   const escaped = protectEscapedDollars(normalizeMarkdownForDisplay(text));
   const display = protectDisplayMath(escaped.value);
-  let html = marked.parse(display.value);
+  let html = parseMarkdownSafeHtml(display.value);
   html = markLastOpenMermaidBlockPending(html, display.value);
   html = replaceMermaidCodeBlocks(html);
   html = markLastOpenEchartsBlockPending(html, display.value);
