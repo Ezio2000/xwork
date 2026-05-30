@@ -1,6 +1,7 @@
 export const STREAM_EVENT_TYPES = Object.freeze({
   CHAT_RUN_START: 'chat_run_start',
   DELTA: 'delta',
+  ASSISTANT_RETRY: 'assistant_retry',
   THINKING: 'thinking',
   TOOL_CALL: 'tool_call',
   TOOL_DELTA: 'tool_delta',

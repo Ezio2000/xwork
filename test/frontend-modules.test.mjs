@@ -598,6 +598,47 @@ describe('frontend module boundaries', () => {
     assert.equal(scheduled, 1);
   });
 
+  it('clears narrated assistant text when the backend retries missing tool calls', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    let flushed = 0;
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [{ type: 'text', content: '' }],
+      renderer: {
+        schedule() {},
+        flush() {
+          flushed++;
+        },
+        cancel() {},
+      },
+    };
+    const effects = {
+      isActiveConversation: () => true,
+      showThinking() {},
+      hideThinking() {},
+      scheduleRender() {},
+      flushRender() {
+        flushed++;
+      },
+      cancelRender() {},
+    };
+
+    appendStreamEvent({ type: 'delta', seq: 1, text: '好的，我来点击并截图。' }, stream, effects);
+    appendStreamEvent({
+      type: 'assistant_retry',
+      seq: 2,
+      reason: 'tool_call_missing',
+      message: 'retrying',
+    }, stream, effects);
+
+    assert.equal(stream.blocks.length, 1);
+    assert.equal(stream.blocks[0].type, 'text');
+    assert.equal(stream.blocks[0].content, '');
+    assert.equal(stream.retryReason, 'tool_call_missing');
+    assert.equal(stream.retryMessage, 'retrying');
+    assert.equal(flushed, 1);
+  });
+
   it('can defer Mermaid rendering until a message is ready', async () => {
     const { renderPendingMermaid } = await import('../public/js/renderers.js');
     const pendingTarget = { id: 'mermaid-pending', innerHTML: '' };

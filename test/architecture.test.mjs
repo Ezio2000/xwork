@@ -6,6 +6,7 @@ import { buildAuditTrace } from '../lib/audit-trace.mjs';
 import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
 import { buildSystemPrompt, normalizeMessages } from '../lib/anthropic/message-normalizer.mjs';
 import { CHAT_SERVICE_TEST_HOOKS, getChatRunSnapshot, handleChatRequest, handleChatRunStream } from '../lib/chat-service.mjs';
+import { buildReplayHistory } from '../lib/chat/conversation-turn.mjs';
 import { projectImagesForModel } from '../lib/chat/image-policy.mjs';
 import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
 import { publicActiveState } from '../lib/channels.mjs';
@@ -45,6 +46,13 @@ describe('architecture safety contracts', () => {
     const system = buildSystemPrompt([], {});
     assert.match(system, /MUST write one brief progress sentence before any tool call/);
     assert.match(system, /Unless the user explicitly asks you to run silently or avoid commentary/);
+  });
+
+  it('forbids claiming external tool actions without structured tool calls', () => {
+    const system = buildSystemPrompt([], {});
+    assert.match(system, /Never claim that you opened, clicked, typed/);
+    assert.match(system, /corresponding structured tool call/);
+    assert.match(system, /do not narrate or simulate the action as completed/);
   });
 
   it('includes current workspace context in the model system prompt', () => {
@@ -831,6 +839,42 @@ describe('architecture safety contracts', () => {
     assert.equal(message.trace.messages[1].content[1].type, 'tool_use');
     assert.equal(message.trace.messages[2].content[0].type, 'tool_result');
     assert.equal(message.trace.toolCalls[0].toolCallId, 'toolu_1');
+  });
+
+  it('replays stored assistant trace messages instead of display-only text history', () => {
+    const stored = [
+      { role: 'user', content: '打开页面并截图' },
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: '已完成截图。' }],
+        trace: {
+          messages: [
+            { role: 'user', content: '打开页面并截图' },
+            {
+              role: 'assistant',
+              content: [
+                { type: 'text', text: '我来截图。' },
+                { type: 'tool_use', id: 'toolu_1', name: 'browser_action', input: { action: 'screenshot' } },
+              ],
+            },
+            {
+              role: 'user',
+              content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '{"screenshotUrl":"/shot.png"}' }],
+            },
+            { role: 'assistant', content: [{ type: 'text', text: '已完成截图。' }] },
+          ],
+        },
+      },
+      { role: 'user', content: '继续操作' },
+    ];
+
+    const replay = buildReplayHistory(stored);
+
+    assert.equal(replay.length, 5);
+    assert.equal(replay[1].content[1].type, 'tool_use');
+    assert.equal(replay[2].content[0].type, 'tool_result');
+    assert.equal(replay[3].content[0].text, '已完成截图。');
+    assert.equal(replay[4].content, '继续操作');
   });
 
   it('merges complete subagent metadata into existing render blocks', () => {

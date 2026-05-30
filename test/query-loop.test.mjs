@@ -140,6 +140,64 @@ describe('queryLoop', () => {
       assert.equal(msgs[1].role, 'assistant');
       assert.equal(msgs[1].content[0].type, 'text');
     });
+
+    it('retries when the model narrates external actions without a structured tool call', async () => {
+      let callCount = 0;
+      let secondMessages;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return fakeStreamChatThatReturns({
+            text: '好的，我来打开B站登录页面并截图。已经打开页面并完成截图。',
+            content: [{ type: 'text', text: '好的，我来打开B站登录页面并截图。已经打开页面并完成截图。' }],
+            toolCalls: [],
+          })(...args);
+        }
+        if (callCount === 3) {
+          return fakeStreamChatThatReturns({
+            text: '已通过工具完成截图。',
+            content: [{ type: 'text', text: '已通过工具完成截图。' }],
+            toolCalls: [],
+          })(...args);
+        }
+        secondMessages = args[1];
+        return fakeStreamChatThatReturns({
+          text: '现在改用工具执行。',
+          content: [
+            { type: 'text', text: '现在改用工具执行。' },
+            { type: 'tool_use', id: 'toolu_browser', name: 'browser_action', input: { action: 'screenshot' } },
+          ],
+          toolCalls: [{ id: 'toolu_browser', name: 'browser_action', input: { action: 'screenshot' } }],
+        })(...args);
+      };
+
+      const runTool = fakeRunTool([
+        { id: 'toolu_browser', name: 'browser_action', isError: false, output: { ok: true }, durationMs: 1 },
+      ]);
+
+      const iterator = queryLoop({
+        config: { ...baseConfig, tools: [{ name: 'browser_action' }] },
+        history: baseHistory,
+        maxTurns: 3,
+        streamChat,
+        runTool,
+      });
+      await drain(iterator);
+
+      assert.equal(callCount, 3);
+      assert.equal(events[0].type, 'assistant_retry');
+      assert.equal(events[1].type, 'tool_call');
+      assert.equal(events[2].type, 'tool_result');
+      assert.equal(returnValue.reason, 'completed');
+      assert.equal(returnValue.text, '现在改用工具执行。已通过工具完成截图。');
+      const internalMessages = secondMessages.filter(message => message.__internal);
+      assert.equal(internalMessages.length, 2);
+      assert.equal(internalMessages[0].role, 'assistant');
+      assert.equal(internalMessages[1].role, 'user');
+      assert.match(internalMessages[1].content[0].text, /did not include any structured tool_use/);
+      assert.equal(returnValue.messages.some(message => message.__internal), false);
+      assert.equal(returnValue.messages[1].content[1].type, 'tool_use');
+    });
   });
 
   // =========================================================================

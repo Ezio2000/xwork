@@ -621,6 +621,15 @@ export function appendStreamEvent(evt, stream, injectedEffects = null) {
     return;
   }
 
+  if (evt.type === STREAM_EVENT_TYPES.ASSISTANT_RETRY) {
+    if (effects.isActiveConversation()) effects.hideThinking();
+    stream.blocks = [{ type: 'text', content: '' }];
+    stream.retryReason = evt.reason || 'tool_call_missing';
+    stream.retryMessage = evt.message || '';
+    effects.flushRender({ rememberCollapseState: false });
+    return;
+  }
+
   if (evt.type === STREAM_EVENT_TYPES.TOOL_CALL) {
     applyToolCall(evt, stream, effects);
     return;
