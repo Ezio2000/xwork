@@ -34,6 +34,8 @@ function fakeClassList() {
 
 function fakeElement() {
   const attributes = new Map();
+  const listeners = new Map();
+  const children = new Map();
   return {
     style: {},
     classList: fakeClassList(),
@@ -45,7 +47,11 @@ function fakeElement() {
     checked: false,
     scrollTop: 0,
     scrollHeight: 0,
-    addEventListener() {},
+    hidden: false,
+    tabIndex: 0,
+    addEventListener(event, handler) {
+      listeners.set(event, handler);
+    },
     setAttribute(name, value) {
       attributes.set(name, String(value));
     },
@@ -63,8 +69,16 @@ function fakeElement() {
       return null;
     },
     focus() {},
-    querySelector() {
-      return fakeElement();
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 460, height: 259, right: 460, bottom: 259 };
+    },
+    setPointerCapture() {},
+    getContext() {
+      return { clearRect() {}, drawImage() {} };
+    },
+    querySelector(selector) {
+      if (!children.has(selector)) children.set(selector, fakeElement());
+      return children.get(selector);
     },
     querySelectorAll() {
       return [];
@@ -86,6 +100,18 @@ globalThis.document = {
 globalThis.requestAnimationFrame = (fn) => fn();
 globalThis.window = { CSS: { escape: String } };
 globalThis.CSS = { escape: String };
+globalThis.Image = class {
+  constructor() {
+    this.naturalWidth = 1;
+    this.naturalHeight = 1;
+    this.width = 1;
+    this.height = 1;
+    this.onload = null;
+  }
+  set src(_value) {
+    this.onload?.();
+  }
+};
 globalThis.marked = {
   Renderer: class {},
   parse(value, options = {}) {
@@ -807,7 +833,6 @@ describe('frontend module boundaries', () => {
       url: 'http://localhost:3000/',
       title: 'xwork',
       screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
-      previewScreenshotUrl: '/api/v1/tool-assets/browser-screenshots/preview-open.png',
       textQuery: 'Run',
       ts: '2026-05-22T00:00:01.000Z',
     }, stream, effects);
@@ -824,7 +849,6 @@ describe('frontend module boundaries', () => {
           url: 'http://localhost:3000/',
           title: 'xwork',
           screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
-          previewScreenshotUrl: '/api/v1/tool-assets/browser-screenshots/preview-final.png',
           textQuery: 'Run',
         },
       }],
@@ -837,10 +861,9 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.blocks[0].status, 'completed');
     assert.equal(stream.blocks[0].steps.length, 3);
     assert.equal(stream.blocks[0].screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
-    assert.equal(stream.blocks[0].previewScreenshotUrl, '/api/v1/tool-assets/browser-screenshots/preview-final.png');
     assert.equal(stream.blocks[0].textQuery, 'Run');
-    assert.equal(browserPreviewTest.previewState.screenshotUrl, '/api/v1/tool-assets/browser-screenshots/preview-final.png');
-    assert.equal(browserPreviewTest.previewState.status, 'completed');
+    assert.equal(browserPreviewTest.previewState.url, 'http://localhost:3000/');
+    assert.equal(browserPreviewTest.previewState.status, 'streaming');
     assert.equal(scheduled, 3);
   });
 

@@ -518,9 +518,6 @@ function applyToolDelta(evt, stream, effects) {
     if (evt.textQuery) block.textQuery = evt.textQuery;
     if (evt.screenshotUrl) block.screenshotUrl = evt.screenshotUrl;
     if (evt.screenshotPath) block.screenshotPath = evt.screenshotPath;
-    if (evt.previewScreenshotUrl) block.previewScreenshotUrl = evt.previewScreenshotUrl;
-    if (evt.previewScreenshotPath) block.previewScreenshotPath = evt.previewScreenshotPath;
-    if (evt.previewError) block.previewError = evt.previewError;
     block.status = evt.phase === 'complete' ? 'completed' : 'running';
     block.collapsed = false;
     if (effects.isActiveConversation()) {

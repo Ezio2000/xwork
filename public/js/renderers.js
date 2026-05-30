@@ -1301,12 +1301,11 @@ function renderBrowserAction(block, collapsed = false) {
       </div>
     `);
   }
-  const previewUrl = block.screenshotUrl || block.previewScreenshotUrl;
-  if (previewUrl) {
+  if (block.screenshotUrl) {
     bodyParts.push(`
       <div class="browser-action-preview">
-        <a href="${escHtml(previewUrl)}" target="_blank" rel="noreferrer">
-          <img src="${escHtml(previewUrl)}" alt="Browser screenshot">
+        <a href="${escHtml(block.screenshotUrl)}" target="_blank" rel="noreferrer">
+          <img src="${escHtml(block.screenshotUrl)}" alt="Browser screenshot">
         </a>
       </div>
     `);
