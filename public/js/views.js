@@ -16,6 +16,7 @@ export {
   addUserMessage,
   hydrateAssistantMessages,
   isVisibleMessage,
+  maintainAutoScrollAnchor,
   renderConvoList,
   renderMessages,
   resetAutoScroll,

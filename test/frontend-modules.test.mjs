@@ -36,7 +36,13 @@ function fakeElement() {
   const attributes = new Map();
   const listeners = new Map();
   const children = new Map();
+  const addListener = (event, handler) => {
+    const handlers = listeners.get(event) || [];
+    handlers.push(handler);
+    listeners.set(event, handlers);
+  };
   return {
+    __listeners: listeners,
     style: {},
     classList: fakeClassList(),
     dataset: {},
@@ -47,10 +53,17 @@ function fakeElement() {
     checked: false,
     scrollTop: 0,
     scrollHeight: 0,
+    clientHeight: 0,
     hidden: false,
+    complete: true,
+    isConnected: true,
     tabIndex: 0,
     addEventListener(event, handler) {
-      listeners.set(event, handler);
+      addListener(event, handler);
+    },
+    dispatchEvent(event) {
+      const type = event?.type || event;
+      for (const handler of listeners.get(type) || []) handler(event);
     },
     setAttribute(name, value) {
       attributes.set(name, String(value));
@@ -69,6 +82,9 @@ function fakeElement() {
       return null;
     },
     focus() {},
+    scrollTo(options) {
+      this.scrollTop = typeof options === 'number' ? options : options?.top ?? this.scrollTop;
+    },
     getBoundingClientRect() {
       return { left: 0, top: 0, width: 460, height: 259, right: 460, bottom: 259 };
     },
@@ -165,6 +181,7 @@ describe('frontend module boundaries', () => {
       'hideVisionProviderEditor',
       'hydrateAssistantMessages',
       'isVisibleMessage',
+      'maintainAutoScrollAnchor',
       'pricingPayloadFromEditor',
       'renderExpertAgentList',
       'renderBasePricing',
@@ -195,6 +212,43 @@ describe('frontend module boundaries', () => {
     for (const name of expectedExports) {
       assert.equal(typeof views[name], 'function', `${name} should be exported as a function`);
     }
+  });
+
+  it('keeps bottom follow enabled when streaming content grows without user scroll intent', async () => {
+    const { dom } = await import('../public/js/dom.js');
+    const { resetAutoScroll, scrollBottom } = await import('../public/js/conversation-view.js');
+
+    resetAutoScroll();
+    dom.messages.clientHeight = 400;
+    dom.messages.scrollHeight = 1000;
+    dom.messages.scrollTop = 300;
+    dom.messages.dispatchEvent({ type: 'scroll' });
+
+    scrollBottom();
+
+    assert.equal(dom.messages.scrollTop, 1000);
+  });
+
+  it('keeps following the bottom after a streaming image loads', async () => {
+    const { dom } = await import('../public/js/dom.js');
+    const { maintainAutoScrollAnchor, resetAutoScroll } = await import('../public/js/conversation-view.js');
+    const img = fakeElement();
+    const root = {
+      querySelectorAll(selector) {
+        return selector === 'img' ? [img] : [];
+      },
+    };
+
+    resetAutoScroll();
+    img.complete = false;
+    dom.messages.scrollHeight = 600;
+    dom.messages.scrollTop = 600;
+
+    maintainAutoScrollAnchor(root);
+    dom.messages.scrollHeight = 900;
+    img.dispatchEvent({ type: 'load' });
+
+    assert.equal(dom.messages.scrollTop, 900);
   });
 
   it('loads split controller modules without missing imports', async () => {

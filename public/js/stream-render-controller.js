@@ -1,7 +1,7 @@
 import { dom } from './dom.js';
 import { state } from './state.js';
 import { disposeEchartsIn, renderBlocks, renderPendingMermaid, renderPendingEcharts } from './renderers.js';
-import { scrollBottom } from './views.js';
+import { maintainAutoScrollAnchor, scrollBottom } from './views.js';
 
 const STREAM_RENDER_INTERVAL_MS = 80;
 
@@ -184,6 +184,7 @@ export function createStreamRenderScheduler(stream) {
       defer: renderEcharts === false,
       closedOnly: renderEcharts === 'closed',
     });
+    maintainAutoScrollAnchor(contentEl);
     scrollRunningSubagentsToBottom(contentEl);
     scrollBottom();
   }

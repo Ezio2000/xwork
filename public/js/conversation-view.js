@@ -4,18 +4,73 @@ import { escHtml, renderBlocks, renderContent, renderPendingMermaid, renderPendi
 import { state } from './state.js';
 
 const SCROLL_THRESHOLD = 80;
+const USER_SCROLL_INTENT_TTL_MS = 1200;
 
 let autoScrollEnabled = true;
+let userScrollIntentUntil = 0;
+let autoScrollResizeTarget = null;
+const mediaAutoScrollTargets = new WeakSet();
+const autoScrollResizeObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const target = entry.target;
+      if (target?.isConnected === false) {
+        autoScrollResizeObserver.unobserve(target);
+        if (autoScrollResizeTarget === target) autoScrollResizeTarget = null;
+        continue;
+      }
+      if (dom.messages?.contains && !dom.messages.contains(target)) continue;
+      scrollBottom();
+    }
+  })
+  : null;
+
+function markUserScrollIntent() {
+  userScrollIntentUntil = Date.now() + USER_SCROLL_INTENT_TTL_MS;
+}
+
+function hasUserScrollIntent() {
+  return Date.now() <= userScrollIntentUntil;
+}
 
 export function resetAutoScroll() {
   autoScrollEnabled = true;
+  userScrollIntentUntil = 0;
   dom.scrollBottomBtn.hidden = true;
 }
 
-export function scrollBottom() {
-  if (!autoScrollEnabled) return;
+export function scrollBottom(options = {}) {
+  const force = options.force === true;
+  if (!force && !autoScrollEnabled) return;
   requestAnimationFrame(() => {
+    if (!force && !autoScrollEnabled) return;
     dom.messages.scrollTop = dom.messages.scrollHeight;
+    requestAnimationFrame(() => {
+      if (!force && !autoScrollEnabled) return;
+      dom.messages.scrollTop = dom.messages.scrollHeight;
+    });
+  });
+}
+
+export function maintainAutoScrollAnchor(root = dom.messages) {
+  if (!root) return;
+
+  if (autoScrollResizeObserver && autoScrollResizeTarget !== root) {
+    if (autoScrollResizeTarget) autoScrollResizeObserver.unobserve(autoScrollResizeTarget);
+    autoScrollResizeTarget = root;
+    autoScrollResizeObserver.observe(root);
+  }
+
+  root.querySelectorAll?.('img').forEach((img) => {
+    if (mediaAutoScrollTargets.has(img)) return;
+    mediaAutoScrollTargets.add(img);
+    if (img.complete) {
+      scrollBottom();
+      return;
+    }
+    const onSettled = () => scrollBottom();
+    img.addEventListener('load', onSettled, { once: true });
+    img.addEventListener('error', onSettled, { once: true });
   });
 }
 
@@ -26,6 +81,14 @@ function updateScrollButton() {
 
 function installScrollListener() {
   let ticking = false;
+  dom.messages.addEventListener('wheel', markUserScrollIntent, { passive: true });
+  dom.messages.addEventListener('touchmove', markUserScrollIntent, { passive: true });
+  dom.messages.addEventListener('pointerdown', markUserScrollIntent, { passive: true });
+  dom.messages.addEventListener('keydown', (event) => {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+      markUserScrollIntent();
+    }
+  });
   dom.messages.addEventListener('scroll', () => {
     if (ticking) return;
     ticking = true;
@@ -38,7 +101,7 @@ function installScrollListener() {
           autoScrollEnabled = true;
           updateScrollButton();
         }
-      } else {
+      } else if (hasUserScrollIntent()) {
         if (autoScrollEnabled) {
           autoScrollEnabled = false;
           updateScrollButton();
@@ -173,6 +236,8 @@ export function renderMessages() {
     : html;
   renderPendingMermaid(dom.messages);
   renderPendingEcharts(dom.messages);
+  maintainAutoScrollAnchor(dom.messages);
+  scrollBottom();
 }
 
 export function addUserMessage(text, images = []) {
@@ -184,6 +249,7 @@ export function addUserMessage(text, images = []) {
   dom.messages.appendChild(div);
   renderPendingMermaid(div);
   renderPendingEcharts(div);
+  maintainAutoScrollAnchor(div);
   scrollBottom();
 }
 
