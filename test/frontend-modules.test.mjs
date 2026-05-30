@@ -113,7 +113,9 @@ globalThis.katex = {
   },
 };
 globalThis.mermaid = {
-  initialize() {},
+  initialize(options) {
+    globalThis.__lastMermaidInitializeOptions = options;
+  },
   render() {
     return Promise.resolve({ svg: '<svg data-test="svg-rendered"></svg>' });
   },
@@ -629,6 +631,9 @@ describe('frontend module boundaries', () => {
 
     renderPendingMermaid(root, { closedOnly: true });
     await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(globalThis.__lastMermaidInitializeOptions?.htmlLabels, false);
+    assert.equal(globalThis.__lastMermaidInitializeOptions?.flowchart?.htmlLabels, false);
+    assert.equal(globalThis.__lastMermaidInitializeOptions?.flowchart?.useMaxWidth, true);
     assert.equal(pendingTarget.innerHTML, '');
     assert.match(readyTarget.innerHTML, /svg-rendered/);
 

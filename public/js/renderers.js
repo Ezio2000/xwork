@@ -718,9 +718,26 @@ function initializeMermaid() {
     suppressErrorRendering: true,
     securityLevel: 'strict',
     theme: 'neutral',
+    htmlLabels: false,
+    flowchart: {
+      htmlLabels: false,
+      useMaxWidth: true,
+    },
   });
   mermaidInitDone = true;
   bindMermaidEvents();
+}
+
+async function waitForMermaidLayoutReady() {
+  const fontReady = typeof document !== 'undefined' && document.fonts?.ready;
+  if (fontReady && typeof fontReady.then === 'function') {
+    try {
+      await fontReady;
+    } catch {}
+  }
+  if (typeof requestAnimationFrame === 'function') {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
 }
 
 function setMermaidError(block, message) {
@@ -784,7 +801,7 @@ function renderMermaidBlock(block) {
   const id = target.id || `mermaid-${Date.now().toString(36)}-${mermaidCounter++}`;
   let renderPromise;
   try {
-    renderPromise = Promise.resolve(mermaid.render(`${id}-svg`, source));
+    renderPromise = waitForMermaidLayoutReady().then(() => mermaid.render(`${id}-svg`, source));
     setMermaidCache(cacheKey, { state: 'rendering', promise: renderPromise });
   } catch (err) {
     setMermaidError(block, err?.message || 'Failed to render Mermaid diagram.');
