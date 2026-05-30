@@ -364,6 +364,43 @@ describe('browser action tool', () => {
     assert.deepEqual(render.data.matches, [{ index: 0, tagName: 'button', text: 'Send' }]);
   });
 
+  it('keeps screenshots constrained to the current viewport box', () => {
+    const tall = browserActionTool.__test.screenshotCapturePlan(
+      { action: 'screenshot', fullPage: true },
+      {},
+      { viewportWidth: 1365, viewportHeight: 768, pageHeight: 85588 },
+    );
+
+    assert.equal(tall.metadata.fullPageRequested, true);
+    assert.equal(tall.metadata.fullPage, false);
+    assert.equal(tall.metadata.fullPageTruncated, true);
+    assert.equal(tall.metadata.truncated, true);
+    assert.equal(tall.metadata.pageHeight, 85588);
+    assert.equal(tall.metadata.screenshotHeight, 768);
+    assert.deepEqual(tall.options, { fullPage: false });
+
+    const normal = browserActionTool.__test.screenshotCapturePlan(
+      { action: 'screenshot', fullPage: true },
+      {},
+      { viewportWidth: 1365, viewportHeight: 768, pageHeight: 5000 },
+    );
+    assert.equal(normal.options.fullPage, false);
+    assert.equal(normal.metadata.fullPage, false);
+    assert.equal(normal.metadata.fullPageTruncated, true);
+    assert.equal(normal.metadata.screenshotHeight, 768);
+
+    const viewport = browserActionTool.__test.screenshotCapturePlan(
+      { action: 'screenshot' },
+      {},
+      { viewportWidth: 1024, viewportHeight: 768, pageHeight: 5000 },
+    );
+    assert.deepEqual(viewport.options, { fullPage: false });
+    assert.equal(viewport.metadata.fullPageRequested, false);
+    assert.equal(viewport.metadata.fullPageTruncated, false);
+    assert.equal(viewport.metadata.screenshotWidth, 1024);
+    assert.equal(viewport.metadata.screenshotHeight, 768);
+  });
+
   it('accepts visible text as a click or locate target', () => {
     assert.doesNotThrow(() => browserActionTool.validate({ action: 'click', text: '仙童数学' }));
     assert.doesNotThrow(() => browserActionTool.validate({ action: 'locate', text: '仙童数学' }));

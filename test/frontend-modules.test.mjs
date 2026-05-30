@@ -741,10 +741,16 @@ describe('frontend module boundaries', () => {
       statusCode: 200,
       screenshotPath: '/workspace/data/browser-screenshots/home.png',
       screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
+      fullPageRequested: true,
+      fullPageTruncated: true,
+      pageHeight: 85588,
+      screenshotWidth: 1365,
+      screenshotHeight: 768,
+      truncated: true,
       textQuery: '仙童数学',
       steps: [
         { phase: 'start', action: 'screenshot', label: 'start screenshot' },
-        { phase: 'complete', action: 'screenshot', label: 'complete screenshot', screenshotPath: '/workspace/data/browser-screenshots/home.png', textQuery: '仙童数学' },
+        { phase: 'complete', action: 'screenshot', label: 'complete screenshot', screenshotPath: '/workspace/data/browser-screenshots/home.png', textQuery: '仙童数学', fullPageTruncated: true, screenshotWidth: 1365, screenshotHeight: 768 },
       ],
       text: 'visible page text',
       collapsed: true,
@@ -757,6 +763,8 @@ describe('frontend module boundaries', () => {
     assert.match(html, /<img src="\/api\/v1\/tool-assets\/browser-screenshots\/home\.png"/);
     assert.match(html, /browser-action-steps/);
     assert.match(html, /complete screenshot/);
+    assert.match(html, /1365x768px/);
+    assert.match(html, /viewport only/);
     assert.match(html, /仙童数学/);
     assert.match(html, /visible page text/);
   });

@@ -1251,6 +1251,11 @@ function renderBrowserAction(block, collapsed = false) {
   const title = block.title || block.url || 'Browser action';
   const running = block.status === 'running';
   const error = block.status === 'error';
+  const captureMeta = [
+    block.screenshotWidth && block.screenshotHeight ? `${Number(block.screenshotWidth)}x${Number(block.screenshotHeight)}px` : '',
+    block.fullPageRequested && block.pageHeight ? `page ${Number(block.pageHeight)}px` : '',
+    block.fullPageTruncated ? 'viewport only' : '',
+  ].filter(Boolean).join(' · ');
   const meta = [
     running ? 'running' : error ? 'error' : '',
     action,
@@ -1298,6 +1303,14 @@ function renderBrowserAction(block, collapsed = false) {
       <div class="browser-action-row">
         <span>Screenshot</span>
         <code>${escHtml(block.screenshotPath)}</code>
+      </div>
+    `);
+  }
+  if (captureMeta) {
+    bodyParts.push(`
+      <div class="browser-action-row">
+        <span>Capture</span>
+        <code>${escHtml(captureMeta)}</code>
       </div>
     `);
   }
@@ -1382,6 +1395,8 @@ function browserStepMeta(step) {
     step.count !== undefined ? `${Number(step.count || 0)} matches` : '',
     step.textLength !== undefined ? `${Number(step.textLength || 0)} chars` : '',
     step.resultType ? String(step.resultType) : '',
+    step.screenshotWidth && step.screenshotHeight ? `${Number(step.screenshotWidth)}x${Number(step.screenshotHeight)}px` : '',
+    step.fullPageTruncated ? 'viewport only' : '',
     step.screenshotPath,
   ].filter(Boolean);
   return parts.join(' · ');

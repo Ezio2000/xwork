@@ -511,6 +511,11 @@ function applyToolDelta(evt, stream, effects) {
       resultType: evt.resultType,
       truncated: evt.truncated,
       fullPage: evt.fullPage,
+      fullPageRequested: evt.fullPageRequested,
+      fullPageTruncated: evt.fullPageTruncated,
+      pageHeight: evt.pageHeight,
+      screenshotWidth: evt.screenshotWidth,
+      screenshotHeight: evt.screenshotHeight,
       closed: evt.closed,
     });
     if (evt.url) block.url = evt.url;
@@ -518,6 +523,12 @@ function applyToolDelta(evt, stream, effects) {
     if (evt.textQuery) block.textQuery = evt.textQuery;
     if (evt.screenshotUrl) block.screenshotUrl = evt.screenshotUrl;
     if (evt.screenshotPath) block.screenshotPath = evt.screenshotPath;
+    if (evt.fullPageRequested !== undefined) block.fullPageRequested = evt.fullPageRequested;
+    if (evt.fullPageTruncated !== undefined) block.fullPageTruncated = evt.fullPageTruncated;
+    if (evt.pageHeight !== undefined) block.pageHeight = evt.pageHeight;
+    if (evt.screenshotWidth !== undefined) block.screenshotWidth = evt.screenshotWidth;
+    if (evt.screenshotHeight !== undefined) block.screenshotHeight = evt.screenshotHeight;
+    if (evt.truncated !== undefined) block.truncated = evt.truncated;
     block.status = evt.phase === 'complete' ? 'completed' : 'running';
     block.collapsed = false;
     if (effects.isActiveConversation()) {
