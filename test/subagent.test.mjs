@@ -361,6 +361,80 @@ describe('subagent runtime', () => {
     assert.equal(second.limits.maxTurns, 2);
   });
 
+  it('forces a no-tool final summary when a subagent reaches maxTurns', async () => {
+    let callCount = 0;
+    let summaryConfig;
+    let summaryMessages;
+    const events = [];
+    const streamChat = async (config, messages, onDelta, _onThink, onDone) => {
+      callCount += 1;
+      if (callCount === 1) {
+        onDelta('collecting facts');
+        onDone('collecting facts', 'tool_use', null);
+        return {
+          text: 'collecting facts',
+          content: [
+            { type: 'text', text: 'collecting facts' },
+            { type: 'tool_use', id: 'calc_limit', name: 'calculator', input: { expression: '2+2' } },
+          ],
+          stopReason: 'tool_use',
+          usage: null,
+          toolCalls: [{ id: 'calc_limit', name: 'calculator', input: { expression: '2+2' } }],
+          serverToolEvents: [],
+        };
+      }
+
+      summaryConfig = config;
+      summaryMessages = messages;
+      onDelta('- 2+2 = 4');
+      onDone('- 2+2 = 4', 'end_turn', { output_tokens: 8 });
+      return {
+        text: '- 2+2 = 4',
+        content: [{ type: 'text', text: '- 2+2 = 4' }],
+        stopReason: 'end_turn',
+        usage: { output_tokens: 8 },
+        toolCalls: [],
+        serverToolEvents: [],
+      };
+    };
+
+    const result = await runSubagent({
+      task: 'Calculate and report at the limit',
+      expectedOutput: 'Return one bullet.',
+      config: {
+        model: 'test-model',
+        tools: [{ name: 'calculator' }],
+        streamChat,
+      },
+      runTool: async (call) => ({
+        id: call.id,
+        name: call.name,
+        isError: false,
+        output: 4,
+        durationMs: 1,
+      }),
+      context: { conversationId: 'conv1', source: 'test', environment: 'test' },
+      emitEvent: event => events.push(event),
+      maxTurns: 1,
+    });
+
+    const stored = await getAgentRun(result.runId);
+    const lastSummaryMessage = summaryMessages.at(-1);
+
+    assert.equal(callCount, 2);
+    assert.deepEqual(summaryConfig.tools, []);
+    assert.equal(result.status, 'completed');
+    assert.equal(result.reason, 'max_turns_summarized');
+    assert.equal(result.text, '- 2+2 = 4');
+    assert.equal(result.forcedSummary.success, true);
+    assert.equal(stored.status, 'completed');
+    assert.equal(stored.result.forcedSummary.success, true);
+    assert.equal(lastSummaryMessage.role, 'user');
+    assert.equal(lastSummaryMessage.content[0].type, 'tool_result');
+    assert.match(lastSummaryMessage.content.at(-1).text, /turn budget \(1 turns\) has been reached/);
+    assert.ok(events.some(event => event.eventType === 'subagent_delta' && event.text === '- 2+2 = 4'));
+  });
+
   it('stops executing subagent web_search from the configured tool maxUses', async () => {
     let callCount = 0;
     const executedSearches = [];
@@ -625,7 +699,7 @@ describe('subagent runtime', () => {
   it('filters tools and blocks nested delegate_task by default', async () => {
     let receivedToolNames;
     const streamChat = async (config, _messages, _onDelta, _onThink, onDone) => {
-      receivedToolNames = config.tools.map(tool => tool.name);
+      if (!receivedToolNames) receivedToolNames = config.tools.map(tool => tool.name);
       onDone('', 'tool_use', null);
       return {
         text: '',
@@ -788,6 +862,7 @@ describe('subagent runtime', () => {
       usage: { input_tokens: 1 },
       limits: { maxTurns: 3, timeoutMs: 90000, maxOutputChars: 2000 },
       allowedTools: ['web_search'],
+      forcedSummary: { attempted: true, success: true, previousReason: 'max_turns' },
       truncated: true,
       fullTextLength: 5000,
     });
@@ -801,6 +876,7 @@ describe('subagent runtime', () => {
     assert.deepEqual(render.data.usage, { input_tokens: 1 });
     assert.deepEqual(render.data.limits, { maxTurns: 3, timeoutMs: 90000, maxOutputChars: 2000 });
     assert.deepEqual(render.data.allowedTools, ['web_search']);
+    assert.deepEqual(render.data.forcedSummary, { attempted: true, success: true, previousReason: 'max_turns' });
     assert.equal(render.data.truncated, true);
     assert.equal(render.data.fullTextLength, 5000);
   });

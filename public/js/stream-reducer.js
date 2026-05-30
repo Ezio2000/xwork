@@ -584,7 +584,14 @@ function applyAgentEvent(evt, stream, effects) {
       const block = stream.blocks[i];
       if (block.type === 'subagent-run' && block.runId === evt.runId) {
         block.thinking = false;
-        block.status = evt.isError ? 'tool_error' : block.status || 'running';
+        if (!isTerminalSubagentBlock(block)) block.status = 'running';
+        if (evt.isError) {
+          block.lastToolError = {
+            name: evt.name || '',
+            toolCallId: evt.toolCallId || '',
+            message: String(evt.output || evt.error || 'Tool failed'),
+          };
+        }
         pushSubagentEvent(block, evt);
         break;
       }

@@ -925,6 +925,63 @@ describe('frontend module boundaries', () => {
     assert.equal(nested.collapsed, true);
   });
 
+  it('keeps a subagent running after a nested tool error', async () => {
+    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const { renderBlocks } = await import('../public/js/renderers.js');
+    const stream = {
+      conversationId: 'conv1',
+      blocks: [],
+      renderer: { schedule() {}, flush() {}, cancel() {} },
+    };
+
+    appendStreamEvent({
+      type: 'agent_event',
+      eventType: 'subagent_start',
+      runId: 'sub_run_error_recovery',
+      task: 'Try one flaky lookup',
+      expertAgent: { id: 'general_task_agent', title: 'General Task Agent' },
+    }, stream);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      eventType: 'subagent_tool_call',
+      runId: 'sub_run_error_recovery',
+      toolCallId: 'toolu_flaky',
+      name: 'web_search',
+      input: { query: 'flaky query' },
+    }, stream);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      eventType: 'subagent_tool_result',
+      runId: 'sub_run_error_recovery',
+      toolCallId: 'toolu_flaky',
+      name: 'web_search',
+      isError: true,
+      output: 'temporary search failure',
+      durationMs: 3,
+    }, stream);
+
+    assert.equal(stream.blocks[0].status, 'running');
+    assert.equal(stream.blocks[0].lastToolError.name, 'web_search');
+    assert.equal(stream.blocks[0].blocks.at(-1).status, 'error');
+
+    const runningHtml = renderBlocks(stream.blocks, false);
+    assert.match(runningHtml, /running/);
+    assert.doesNotMatch(runningHtml, /tool_error/);
+
+    appendStreamEvent({
+      type: 'agent_event',
+      eventType: 'subagent_done',
+      runId: 'sub_run_error_recovery',
+      status: 'completed',
+      result: { text: 'Recovered with available evidence.' },
+    }, stream);
+
+    assert.equal(stream.blocks[0].status, 'completed');
+    assert.equal(stream.blocks[0].collapsed, true);
+  });
+
   it('shows subagent server web_search as a nested running tool block', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
     const stream = {
