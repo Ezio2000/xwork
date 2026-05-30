@@ -867,6 +867,45 @@ describe('frontend module boundaries', () => {
     assert.equal(scheduled, 3);
   });
 
+  it('hides the live browser preview when a chat stream completes normally', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { __test: chatStreamTest } = await import('../public/js/chat-stream.js');
+    const { updateBrowserLivePreview, __test: browserPreviewTest } = await import('../public/js/browser-live-preview.js');
+
+    globalThis.__fakeBrowserLivePreview = fakeElement();
+    state.activeId = 'conv-browser-close';
+    state.messages = [];
+    state.conversations = [{ id: 'conv-browser-close', title: 'New Chat' }];
+    state.streamingByConversationId = new Map([[
+      'conv-browser-close',
+      {
+        conversationId: 'conv-browser-close',
+        runId: 'run-browser-close',
+        message: 'open page',
+        images: [],
+        originalMessageCount: 0,
+        model: 'test-model',
+        blocks: [{ type: 'text', content: 'done' }],
+        renderer: { flush() {}, schedule() {}, cancel() {} },
+      },
+    ]]);
+
+    updateBrowserLivePreview({
+      id: 'toolu_browser_close',
+      name: 'browser_action',
+      action: 'open',
+      status: 'streaming',
+      url: 'http://localhost:3000/',
+    }, { conversationId: 'conv-browser-close' });
+    assert.equal(browserPreviewTest.previewState.visible, true);
+
+    const stream = state.streamingByConversationId.get('conv-browser-close');
+    chatStreamTest.finalizeStreamingMessage(stream);
+
+    assert.equal(browserPreviewTest.previewState.visible, false);
+    assert.equal(browserPreviewTest.previewState.toolCallId, '');
+  });
+
   it('expands while running and collapses after grep completes', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
     let flushed = 0;

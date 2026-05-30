@@ -58,7 +58,10 @@ async function ensureConversation(message) {
 function finalizeStreamingMessage(stream) {
   if (stream.finalized) return;
   stream.finalized = true;
-  if (state.activeId === stream.conversationId) hideThinkingPopup();
+  if (state.activeId === stream.conversationId) {
+    hideThinkingPopup();
+    hideBrowserLivePreview({ conversationId: stream.conversationId });
+  }
   stream.renderer.flush({ rememberCollapseState: false, renderMermaid: true, renderEcharts: true });
   const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
   if (streamingEl) {
@@ -259,3 +262,7 @@ export async function sendMessage(text) {
     setSendButtonState();
   }
 }
+
+export const __test = {
+  finalizeStreamingMessage,
+};

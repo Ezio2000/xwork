@@ -6,8 +6,9 @@ import { clearStoredUserTokens } from '../lib/feishu-auth.mjs';
 import { listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { listToolRuns } from '../lib/tools/runs.mjs';
 import { SchemaValidationError, validateSafeId } from '../lib/schema.mjs';
+import { getProjectRoot } from '../lib/workspace-root.mjs';
 
-const BROWSER_SCREENSHOT_DIR = resolve(process.cwd(), 'data', 'browser-screenshots');
+const BROWSER_SCREENSHOT_DIR = resolve(getProjectRoot(), 'data', 'browser-screenshots');
 const FEISHU_MEDIA_DIR = resolve(process.cwd(), 'data', 'feishu-media');
 const SCREENSHOT_FILE_RE = /^[a-zA-Z0-9_.-]+\.png$/i;
 const FEISHU_MEDIA_FILE_RE = /^[a-zA-Z0-9_.-]+\.[a-zA-Z0-9]{1,8}$/;
