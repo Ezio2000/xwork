@@ -9,6 +9,7 @@ export const dom = {
   btnFeishuTokenMenu: $('#btn-feishu-token-menu'),
   feishuTokenMenu: $('#feishu-token-menu'),
   btnClearFeishuToken: $('#btn-clear-feishu-token'),
+  browserLivePreview: $('#browser-live-preview'),
   msgInput: $('#msg-input'),
   fileMentionMenu: $('#file-mention-menu'),
   imageAttachments: $('#image-attachments'),

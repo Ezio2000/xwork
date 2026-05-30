@@ -9,6 +9,7 @@ import {
 } from './tool-block-collapse.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
 import { isActiveConversation } from './stores/app-store.js';
+import { completeBrowserLivePreview, updateBrowserLivePreview } from './browser-live-preview.js';
 
 function defaultEffects(stream) {
   return {
@@ -260,6 +261,9 @@ function applyAskUserPending(evt, stream, effects) {
 
 function applyToolResult(evt, stream, effects) {
   for (const tool of evt.tools) {
+    if (tool.name === 'browser_action' && effects.isActiveConversation()) {
+      completeBrowserLivePreview(tool, { conversationId: stream.conversationId });
+    }
     if (markExistingBrowserActionErrored(tool, stream)) continue;
     if (markExistingShellCommandErrored(tool, stream)) continue;
 
@@ -338,6 +342,19 @@ function applyToolResult(evt, stream, effects) {
 function applyToolCall(evt, stream, effects) {
   for (const tool of evt.tools || []) {
     if (tool.name === 'browser_action' && tool.id) {
+      if (effects.isActiveConversation()) {
+        updateBrowserLivePreview({
+          id: tool.id,
+          name: tool.name,
+          phase: 'call',
+          status: 'running',
+          action: tool.input?.action || 'browser',
+          url: tool.input?.url || '',
+          selector: tool.input?.selector || '',
+          key: tool.input?.key || '',
+          label: `call ${tool.input?.action || 'browser'}`,
+        }, { conversationId: stream.conversationId });
+      }
       const existing = stream.blocks.find(block => block.type === 'browser-action' && block.toolCallId === tool.id);
       if (existing) {
         Object.assign(existing, {
@@ -501,8 +518,17 @@ function applyToolDelta(evt, stream, effects) {
     if (evt.textQuery) block.textQuery = evt.textQuery;
     if (evt.screenshotUrl) block.screenshotUrl = evt.screenshotUrl;
     if (evt.screenshotPath) block.screenshotPath = evt.screenshotPath;
+    if (evt.previewScreenshotUrl) block.previewScreenshotUrl = evt.previewScreenshotUrl;
+    if (evt.previewScreenshotPath) block.previewScreenshotPath = evt.previewScreenshotPath;
+    if (evt.previewError) block.previewError = evt.previewError;
     block.status = evt.phase === 'complete' ? 'completed' : 'running';
     block.collapsed = false;
+    if (effects.isActiveConversation()) {
+      updateBrowserLivePreview({
+        ...evt,
+        status: block.status,
+      }, { conversationId: stream.conversationId });
+    }
     effects.scheduleRender();
     return;
   }

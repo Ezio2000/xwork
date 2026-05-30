@@ -362,6 +362,21 @@ describe('browser action tool', () => {
     assert.match(render.data.screenshotPath, /home\.png$/);
     assert.equal(render.data.screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
     assert.deepEqual(render.data.matches, [{ index: 0, tagName: 'button', text: 'Send' }]);
+
+    const outputWithPreview = browserActionTool.__test.attachBrowserPreview({
+      action: 'open',
+      url: 'http://localhost:3000/',
+      title: 'xwork',
+    }, {
+      previewScreenshotPath: '/workspace/data/browser-screenshots/preview-toolu_browser-open.png',
+      previewScreenshotUrl: '/api/v1/tool-assets/browser-screenshots/preview-toolu_browser-open.png',
+      previewCapturedAt: '2026-05-30T00:00:00.000Z',
+    });
+    const previewRender = browserActionTool.parseResult(outputWithPreview);
+
+    assert.equal(previewRender.data.previewScreenshotUrl, '/api/v1/tool-assets/browser-screenshots/preview-toolu_browser-open.png');
+    assert.equal(previewRender.data.previewCapturedAt, '2026-05-30T00:00:00.000Z');
+    assert.equal(JSON.stringify(outputWithPreview).includes('previewScreenshotUrl'), false);
   });
 
   it('accepts visible text as a click or locate target', () => {

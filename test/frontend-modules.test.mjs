@@ -79,6 +79,7 @@ globalThis.document = {
   },
   querySelector(selector) {
     if (selector === '#messages' && globalThis.__fakeMessages) return globalThis.__fakeMessages;
+    if (selector === '#browser-live-preview' && globalThis.__fakeBrowserLivePreview) return globalThis.__fakeBrowserLivePreview;
     return fakeElement();
   },
 };
@@ -757,6 +758,7 @@ describe('frontend module boundaries', () => {
 
   it('streams browser action steps and merges final tool result into the same block', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
+    const { __test: browserPreviewTest } = await import('../public/js/browser-live-preview.js');
     const stream = {
       conversationId: 'test',
       blocks: [],
@@ -805,6 +807,7 @@ describe('frontend module boundaries', () => {
       url: 'http://localhost:3000/',
       title: 'xwork',
       screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
+      previewScreenshotUrl: '/api/v1/tool-assets/browser-screenshots/preview-open.png',
       textQuery: 'Run',
       ts: '2026-05-22T00:00:01.000Z',
     }, stream, effects);
@@ -821,6 +824,7 @@ describe('frontend module boundaries', () => {
           url: 'http://localhost:3000/',
           title: 'xwork',
           screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
+          previewScreenshotUrl: '/api/v1/tool-assets/browser-screenshots/preview-final.png',
           textQuery: 'Run',
         },
       }],
@@ -833,7 +837,10 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.blocks[0].status, 'completed');
     assert.equal(stream.blocks[0].steps.length, 3);
     assert.equal(stream.blocks[0].screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
+    assert.equal(stream.blocks[0].previewScreenshotUrl, '/api/v1/tool-assets/browser-screenshots/preview-final.png');
     assert.equal(stream.blocks[0].textQuery, 'Run');
+    assert.equal(browserPreviewTest.previewState.screenshotUrl, '/api/v1/tool-assets/browser-screenshots/preview-final.png');
+    assert.equal(browserPreviewTest.previewState.status, 'completed');
     assert.equal(scheduled, 3);
   });
 

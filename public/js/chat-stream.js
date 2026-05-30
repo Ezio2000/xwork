@@ -6,6 +6,7 @@ import { attachChatStream } from './stream-client.js';
 import { createStreamRenderScheduler, getStreamingContentEl } from './stream-render-controller.js';
 import { clearPendingImages, pendingImageRefs, renderImageAttachments } from './image-attachments.js';
 import { hideThinkingPopup } from './thinking-popup.js';
+import { hideBrowserLivePreview } from './browser-live-preview.js';
 import { collapseFinishedToolBlocks, collapseToolToggleElements } from './tool-block-collapse.js';
 import { state } from './state.js';
 import { getActiveStream } from './stores/app-store.js';
@@ -123,6 +124,7 @@ function markStreamErrored(stream, err) {
   const streamingEl = dom.messages.querySelector(`.message.assistant.streaming[data-chat-run-id="${stream.runId}"]`);
   if (streamingEl) streamingEl.classList.remove('streaming');
   state.streamingByConversationId.delete(stream.conversationId);
+  hideBrowserLivePreview({ conversationId: stream.conversationId });
   setSendButtonState();
 }
 

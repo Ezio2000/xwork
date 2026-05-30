@@ -1,5 +1,6 @@
 import { dom } from './dom.js';
 import { renderChannelList } from './channel-view.js';
+import { hideBrowserLivePreview } from './browser-live-preview.js';
 import { hideToolRunDetail } from './tool-view.js';
 import { hideUsageRunDetail } from './usage-dom-view.js';
 
@@ -14,6 +15,7 @@ function hideAllPages() {
 }
 
 export function showChannelsPage() {
+  hideBrowserLivePreview();
   hideUsageRunDetail();
   hideAllPages();
   dom.channelsPage.classList.remove('hidden');
@@ -22,6 +24,7 @@ export function showChannelsPage() {
 }
 
 export function showWorkspacePageFrame() {
+  hideBrowserLivePreview();
   hideToolRunDetail();
   hideUsageRunDetail();
   hideAllPages();
@@ -29,12 +32,14 @@ export function showWorkspacePageFrame() {
 }
 
 export function showToolsPageFrame() {
+  hideBrowserLivePreview();
   hideUsageRunDetail();
   hideAllPages();
   dom.toolsPage.classList.remove('hidden');
 }
 
 export function showExpertAgentsPageFrame() {
+  hideBrowserLivePreview();
   hideToolRunDetail();
   hideUsageRunDetail();
   hideAllPages();
@@ -42,12 +47,14 @@ export function showExpertAgentsPageFrame() {
 }
 
 export function showUsagePageFrame() {
+  hideBrowserLivePreview();
   hideToolRunDetail();
   hideAllPages();
   dom.usagePage.classList.remove('hidden');
 }
 
 export function showPricingPageFrame() {
+  hideBrowserLivePreview();
   hideToolRunDetail();
   hideUsageRunDetail();
   hideAllPages();

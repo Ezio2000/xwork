@@ -4,6 +4,7 @@ import { bindChatInputController } from './js/controllers/chat-input-controller.
 import { bindFileMentionController } from './js/controllers/file-mention-controller.js';
 import { bindImageAttachments } from './js/image-attachments.js';
 import { bindSensitiveSetupGuide } from './js/sensitive-setup-guide.js';
+import { bindBrowserLivePreview } from './js/browser-live-preview.js';
 import {
   bindConversationsController,
   loadConversations,
@@ -26,6 +27,7 @@ function bindEvents() {
   bindChatInputController();
   bindFileMentionController();
   bindImageAttachments();
+  bindBrowserLivePreview();
   bindConversationsController();
   bindSettingsController({ showExpertAgentsPage, showPricingPage, showToolsPage, showUsagePage, showWorkspacePage });
   bindChannelsController();
