@@ -99,6 +99,11 @@ POST /api/v1/chat (SSE)
 
 每个 tool 是一个独立 package，位于 `lib/tools/<slug>/`（如 `read-file/`、`shell-command/`）。`loader.mjs` 自动扫描并加载各文件夹的 `index.mjs`（导出 `export const tool`）。运行时核心在 `_core/`，跨工具共享代码在 `_shared/`。
 
+> 注意：`lib/tools/` 根目录下的 `registry.mjs` / `runner.mjs` / `scheduler.mjs` / `store.mjs` / `runs.mjs` / `budget.mjs` / `main-agent-tools.mjs` 均为 `export * from './_core/...'` 的兼容 shim，真正实现在 `_core/` 下。新代码应直接 import `_core/`。
+
+`_core/` 关键模块：`registry.mjs`（工具注册 + API 定义生成）、`runner.mjs`（builtin 生命周期执行引擎）、`scheduler.mjs`（执行策略）、`store.mjs`（配置持久化）、`runs.mjs`（运行记录）、`budget.mjs`（maxUses 预算计算）、`main-agent-tools.mjs`（主 agent 可用工具集筛选）。
+`_shared/` 跨工具共享：`feishu-oauth.mjs`（飞书 OAuth）、`workspace-exploration-prompt.mjs`（探索类工具共享的 prompt 片段）、`styles/`（共享 CSS）。
+
 当前 19 个 tool：`get_current_time`, `web_search`, `calculator`, `uuid_gen`, `delegate_task`, `web_fetch`, `read_file`, `write_file`, `code_outline`, `grep`, `glob`, `list_dir`, `git`, `shell_command`, `browser_action`, `ask_user`, `feishu_auth`, `feishu_read`, `about_xwork`
 
 每个 tool package 可包含：
@@ -112,6 +117,8 @@ POST /api/v1/chat (SSE)
 两种适配器类型：
 - **`builtin`**：本地执行，提供完整生命周期钩子 (validate/before/handler/after/onError/onComplete) 和 `parseResult(output)` 返回 `{ renderType, data }`
 - **`anthropic_server`**：由 API 提供商执行，通过 `parseStreamResult(block)` 返回 `{ renderType, data }`
+
+工具运行时定义改写（`runtimeContext` + `resolveDefinition`，见 `package-contract.mjs`）：框架对工具名保持中立，工具可声明 `tool.runtimeContext: string[]`（如 `['expertAgents']`）并实现 `tool.resolveDefinition(definition, runtimeContext)` 在请求时改写自己的 API-facing description/inputSchema。`registry.mjs` 只懒加载已启用工具实际声明的 runtime-context key（loader 在 `RUNTIME_CONTEXT_LOADERS` 中注册）。典型用例：`delegate_task` 把专家 agent 目录注入到 description 和 `expertAgentId` enum。**注意**：改写产物会进入上游请求体，须保持字节稳定（拼接顺序、key/enum 顺序一致）以命中 provider 前缀缓存。
 
 工具执行调度由 `lib/tools/_core/scheduler.mjs` 管理：
 - `sequential`（默认）：同一轮多个工具按顺序执行
@@ -177,6 +184,8 @@ POST /api/v1/chat (SSE)
 - `lib/tools/ask-user/test.mjs` — ask_user 交互流程
 - `test/expand-file-mentions.test.mjs` — 文件提及展开
 - `lib/tools/grep/test.mjs`, `lib/tools/read-file/test.mjs`, `lib/tools/write-file/test.mjs`, `lib/tools/list-dir/test.mjs` — 工作区工具
+- `lib/tools/browser-action/test.mjs`, `lib/tools/code-outline/test.mjs`, `lib/tools/feishu-auth/test.mjs`, `lib/tools/feishu-read/test.mjs` — 其余 colocated 工具测试
+- `test/tool-budget.test.mjs` — 工具 maxUses 预算；`test/expert-agents.test.mjs` — 专家 agent 配置
 - `test/frontend-modules.test.mjs` — 前端模块完整性
 - 通过 `CHAT_SERVICE_TEST_HOOKS` 可注入 mock `streamChat` 和 `runTool`
 

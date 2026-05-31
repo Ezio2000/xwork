@@ -135,6 +135,41 @@ Anthropic SSE block
 
 ---
 
+## 运行时定义改写（resolveDefinition）
+
+普通工具的 `description` 和 `inputSchema` 是静态的。如果某个工具需要在**请求生成时**根据运行时数据动态改写自己的 API 定义（例如把当前可用的专家 agent 列表注入到 `description` 和参数 `enum` 中），可以使用以下两个**可选**契约，而**无需框架硬编码工具名**：
+
+```js
+export const tool = {
+  // ...其余定义
+
+  // 1. 声明需要哪些运行时数据。registry 只收集这里列出的 key 并传给 resolveDefinition。
+  runtimeContext: ['expertAgents'],
+
+  // 2. 在生成 API 定义时改写自己。返回新的 definition。
+  resolveDefinition(definition, runtimeContext = {}) {
+    const expertAgents = runtimeContext.expertAgents || [];
+    return {
+      ...definition,
+      description: `${definition.description}${buildCatalog(expertAgents)}`,
+      inputSchema: injectEnum(definition.inputSchema, expertAgents),
+    };
+  },
+};
+```
+
+工作机制：
+
+- `lib/tools/_core/registry.mjs` 的 `getEnabledToolDefinitions()` 先调用 `collectRuntimeContext()`，**惰性收集**所有已启用工具声明的 `runtimeContext` key（未被任何工具声明的 key 不会触发收集，避免无谓开销）。
+- 当前支持的运行时上下文 key 由 `registry.mjs` 的 `RUNTIME_CONTEXT_LOADERS` 注册，目前仅 `expertAgents`（来自 `listEnabledExpertAgentsForPrompt()`）。新增上下文来源时在此处增加 loader。
+- 每个工具的 `configuredToolDefinition()` 在拼好基础 definition 后，若工具实现了 `resolveDefinition` 就调用它，由工具返回最终 definition；未实现该钩子的工具行为完全不变。
+
+> **缓存约束（重要）**：`resolveDefinition` 产出的 `description` 字符串和 `inputSchema` 对象会进入发往上游 API 的请求体。上游依赖**逐字节相同的前缀**命中缓存（参见 `message-normalizer.mjs` 的 prefix-cache 注释）。改写时必须保持**字节稳定**：相同的拼接顺序、相同的换行/空格、相同的对象 key 与 enum 数组顺序。否则会击穿前缀缓存、抬高成本。`test/architecture.test.mjs` 中有针对 `delegate_task` 的字节稳定性断言作为防回归。
+
+**现有实例**：`delegate_task`（`lib/tools/delegate-task/index.mjs`）用 `resolveDefinition` 把可用专家 agent catalog 追加到 `description`，并把专家 id 注入 `expertAgentId` 参数的 `enum`；同时把 `expertAgents` 透传到 definition 上，供其 `systemPrompt(tool)` 渲染同一份 catalog。这部分逻辑过去硬编码在 `registry.mjs` 里，现已收口到工具自身，registry 不再认识任何具体工具名。
+
+---
+
 ## 模型工具调用约束
 
 全局 system prompt 由 `lib/anthropic/message-normalizer.mjs` 的 `buildSystemPrompt()` 生成。当前约束是：
@@ -613,11 +648,12 @@ export function registerRoutes(router) {
 3. 如需流式/running 块行为，添加 `stream.mjs`（`onToolCall` / `onToolDelta` / `onToolResult`）
 4. 如需浏览器交互、对话页 header action 或工具设置页扩展，添加 `client.mjs`
 5. 如需额外 API 路由（截图、媒体代理等），添加 `assets.mjs` 并实现 `registerRoutes(router)`
-6. 如需样式，添加 `styles.css`
-7. 添加 `test.mjs` 覆盖注册与 handler 行为
-8. 重启服务，工具会自动同步到 SQLite `tools` 文档
-9. 在 Tools 页面或 `/api/v1/tools` 确认工具已加载、启用状态正确
-10. 在 `/api/v1/tools/ui-manifest` 确认前端 manifest 包含新 tool
+6. 如需在请求时按运行时数据动态改写自身定义，声明 `runtimeContext` 并实现 `resolveDefinition`（注意字节稳定性，见上文）
+7. 如需样式，添加 `styles.css`
+8. 添加 `test.mjs` 覆盖注册与 handler 行为
+9. 重启服务，工具会自动同步到 SQLite `tools` 文档
+10. 在 Tools 页面或 `/api/v1/tools` 确认工具已加载、启用状态正确
+11. 在 `/api/v1/tools/ui-manifest` 确认前端 manifest 包含新 tool
 
 ---
 
@@ -628,6 +664,7 @@ export function registerRoutes(router) {
 - `anthropic_server` 工具不会由 `runTool()` 执行；它们只会被传给 provider。
 - `anthropic_server` 工具会被转换为 Anthropic 工具格式：`apiToolType/type` → `type`，`maxUses` → `max_uses`，`allowedDomains/blockedDomains` → `allowed_domains/blocked_domains`。
 - `systemPrompt()` 不会随工具定义直接发送，而是在 `message-normalizer.mjs` 的 `buildSystemPrompt()` 中拼接进系统提示。
+- `resolveDefinition()` 是可选的运行时定义改写钩子（详见上文「运行时定义改写」一节）；专家 agent catalog 注入现在由 `delegate_task` 自身的 `resolveDefinition` 完成，`registry.mjs` 不再硬编码工具名。改写产出需保持字节稳定以保前缀缓存。
 - `registry.getToolRuntime(name)` 对禁用工具、未知工具、`anthropic_server` 工具都会返回不可本地执行的结果。
 - `getEnabledToolDefinitions()` 会过滤 `adapter: 'unavailable'`，但会保留 `anthropic_server` 工具给模型使用。
 - `handler` 的返回对象会被 `formatToolOutput()` JSON 字符串化后作为 Anthropic `tool_result.content` 发回模型。

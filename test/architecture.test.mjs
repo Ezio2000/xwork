@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { streamChat } from '../lib/api.mjs';
 import { buildAuditTrace } from '../lib/audit-trace.mjs';
 import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
-import { buildSystemPrompt, normalizeMessages } from '../lib/anthropic/message-normalizer.mjs';
+import { anthropicTools, buildSystemPrompt, normalizeMessages } from '../lib/anthropic/message-normalizer.mjs';
 import { CHAT_SERVICE_TEST_HOOKS, getChatRunSnapshot, handleChatRequest, handleChatRunStream } from '../lib/chat-service.mjs';
 import { buildReplayHistory } from '../lib/chat/conversation-turn.mjs';
 import { projectImagesForModel } from '../lib/chat/image-policy.mjs';
@@ -29,6 +29,7 @@ import { PROVIDER_CONTRACT_VERSION } from '../lib/providers/provider-contract.mj
 import { RUN_EVENT_TYPES, AGENT_EVENT_TYPES } from '../lib/run-events.mjs';
 import { defaultToolScheduler, executeToolCalls } from '../lib/tools/scheduler.mjs';
 import { tool as currentTimeTool } from '../lib/tools/current-time/index.mjs';
+import { tool as delegateTaskTool } from '../lib/tools/delegate-task/index.mjs';
 import { workspaceExplorationSystemPrompt } from '../lib/tools/_shared/workspace-exploration-prompt.mjs';
 import { getWorkspaceInfo } from '../lib/workspace-root.mjs';
 
@@ -1109,5 +1110,73 @@ describe('architecture safety contracts', () => {
     assert.equal(cost.totalCost, 1);
     assert.deepEqual(cost.missingFields, ['webSearchRequestPrice']);
     assert.deepEqual(cost.unpricedUsage, ['webSearchRequests']);
+  });
+});
+
+describe('tool runtime-definition plugin contract', () => {
+  const experts = [
+    { id: 'xwork_backend', title: 'Backend Expert', selectionPrompt: 'backend risk', description: '' },
+    { id: 'general_task_agent', title: 'General Task Agent', selectionPrompt: '', description: 'default expert' },
+  ];
+
+  it('delegate_task injects the expert catalog via its own resolveDefinition hook', () => {
+    assert.deepEqual(delegateTaskTool.runtimeContext, ['expertAgents']);
+    assert.equal(typeof delegateTaskTool.resolveDefinition, 'function');
+
+    const base = {
+      name: delegateTaskTool.name,
+      description: delegateTaskTool.description,
+      inputSchema: delegateTaskTool.inputSchema,
+    };
+    const resolved = delegateTaskTool.resolveDefinition(base, { expertAgents: experts });
+
+    // catalog appended to description
+    assert.ok(resolved.description.includes('\n\nAvailable expert agents:\n- xwork_backend: Backend Expert — backend risk'));
+    // expertAgentId enum injected from live expert ids
+    assert.deepEqual(resolved.inputSchema.properties.expertAgentId.enum, ['xwork_backend', 'general_task_agent']);
+    // expertAgents carried through for systemPrompt(tool) to render the catalog
+    assert.deepEqual(resolved.expertAgents, experts);
+    // the tool's own static inputSchema must not be mutated (deep-copied)
+    assert.equal(delegateTaskTool.inputSchema.properties.expertAgentId.enum, undefined);
+  });
+
+  it('resolved definition is byte-stable through anthropicTools (preserves prefix cache)', () => {
+    // Replicate the previously-hardcoded registry logic byte-for-byte and assert
+    // the API-facing tool definition serializes identically after the refactor.
+    const oldDescription = (() => {
+      const lines = experts.map(a => {
+        const p = a.selectionPrompt || a.description || '';
+        return `- ${a.id}: ${a.title}${p ? ` — ${p}` : ''}`;
+      });
+      return `${delegateTaskTool.description}\n\nAvailable expert agents:\n${lines.join('\n')}`;
+    })();
+    const oldSchema = (() => {
+      const i = JSON.parse(JSON.stringify(delegateTaskTool.inputSchema));
+      i.properties = i.properties || {};
+      i.properties.expertAgentId = {
+        type: 'string',
+        description: 'Expert agent profile to use for this delegated objective. Choose the best id from the available expert agents listed in the system prompt. Omit only when the default general expert is the best fit.',
+        enum: experts.map(a => a.id),
+      };
+      return i;
+    })();
+    const oldDef = { name: delegateTaskTool.name, description: oldDescription, inputSchema: oldSchema, adapter: delegateTaskTool.adapter };
+
+    const newDef = delegateTaskTool.resolveDefinition({
+      name: delegateTaskTool.name,
+      description: delegateTaskTool.description,
+      inputSchema: delegateTaskTool.inputSchema,
+      adapter: delegateTaskTool.adapter,
+    }, { expertAgents: experts });
+
+    assert.equal(
+      JSON.stringify(anthropicTools([newDef])),
+      JSON.stringify(anthropicTools([oldDef])),
+    );
+  });
+
+  it('tools without resolveDefinition keep their definition unchanged', () => {
+    assert.equal(currentTimeTool.resolveDefinition, undefined);
+    assert.equal(currentTimeTool.runtimeContext, undefined);
   });
 });
