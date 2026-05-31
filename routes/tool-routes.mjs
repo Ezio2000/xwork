@@ -1,17 +1,9 @@
 import { Router } from 'express';
-import { access } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
 
-import { clearStoredUserTokens } from '../lib/feishu-auth.mjs';
+import { buildToolUiManifest, collectToolAssetRoutes } from '../lib/tools/ui-manifest.mjs';
 import { listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { listToolRuns } from '../lib/tools/runs.mjs';
 import { SchemaValidationError, validateSafeId } from '../lib/schema.mjs';
-import { getProjectRoot } from '../lib/workspace-root.mjs';
-
-const BROWSER_SCREENSHOT_DIR = resolve(getProjectRoot(), 'data', 'browser-screenshots');
-const FEISHU_MEDIA_DIR = resolve(process.cwd(), 'data', 'feishu-media');
-const SCREENSHOT_FILE_RE = /^[a-zA-Z0-9_.-]+\.png$/i;
-const FEISHU_MEDIA_FILE_RE = /^[a-zA-Z0-9_.-]+\.[a-zA-Z0-9]{1,8}$/;
 
 function sendError(res, err) {
   if (err instanceof SchemaValidationError) {
@@ -20,8 +12,12 @@ function sendError(res, err) {
   throw err;
 }
 
-export function toolRoutes() {
+export async function toolRoutes() {
   const router = Router();
+
+  router.get('/tools/ui-manifest', async (_req, res) => {
+    res.json(await buildToolUiManifest());
+  });
 
   router.get('/tools', async (_req, res) => {
     res.json(await listTools());
@@ -35,15 +31,6 @@ export function toolRoutes() {
     } catch (err) {
       return sendError(res, err);
     }
-  });
-
-  router.post('/tools/feishu_auth/clear-token', async (_req, res) => {
-    await clearStoredUserTokens();
-    const tools = await listTools();
-    return res.json({
-      feishu_auth: tools.find(tool => tool.id === 'feishu_auth') || null,
-      feishu_read: tools.find(tool => tool.id === 'feishu_read') || null,
-    });
   });
 
   router.post('/tools/:id/enable', async (req, res) => {
@@ -74,44 +61,9 @@ export function toolRoutes() {
     res.json(await listToolRuns({ limit, source, environment, includeTest }));
   });
 
-  router.get('/tool-assets/browser-screenshots/:filename', async (req, res) => {
-    const filename = String(req.params.filename || '');
-    if (!SCREENSHOT_FILE_RE.test(filename)) {
-      return res.status(400).json({ error: 'Invalid screenshot filename' });
-    }
-
-    const filePath = resolve(BROWSER_SCREENSHOT_DIR, filename);
-    try {
-      await access(filePath);
-    } catch {
-      return res.status(404).json({ error: 'Screenshot not found' });
-    }
-
-    res.type('png');
-    res.set('Cache-Control', 'private, max-age=300');
-    return res.sendFile(filePath);
-  });
-
-  router.get('/tool-assets/feishu-media/:filename', async (req, res) => {
-    const filename = String(req.params.filename || '');
-    if (!FEISHU_MEDIA_FILE_RE.test(filename)) {
-      return res.status(400).json({ error: 'Invalid Feishu media filename' });
-    }
-
-    const filePath = resolve(FEISHU_MEDIA_DIR, filename);
-    const rel = relative(FEISHU_MEDIA_DIR, filePath);
-    if (!rel || rel.startsWith('..') || resolve(rel) === rel) {
-      return res.status(400).json({ error: 'Invalid Feishu media path' });
-    }
-    try {
-      await access(filePath);
-    } catch {
-      return res.status(404).json({ error: 'Feishu media not found' });
-    }
-
-    res.set('Cache-Control', 'private, max-age=300');
-    return res.sendFile(filePath);
-  });
+  for (const register of await collectToolAssetRoutes()) {
+    register(router);
+  }
 
   return router;
 }

@@ -2,6 +2,10 @@ import { api } from '../api-client.js';
 import { dom } from '../dom.js';
 import { state } from '../state.js';
 import {
+  applyToolConfigExample as applyToolConfigExampleExtension,
+  normalizeToolConfigPayload,
+} from '../tool-ui-registry.js';
+import {
   renderChatHeaderActions,
 } from './chat-header-controller.js';
 import {
@@ -69,15 +73,6 @@ function parseConfigForm(form) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('Config JSON must be an object');
   }
-  if (tool?.id === 'feishu_auth') {
-    const currentConfig = tool.config && typeof tool.config === 'object' && !Array.isArray(tool.config) ? tool.config : {};
-    config = {
-      app_id: currentConfig.app_id ?? currentConfig.appId ?? '',
-      app_secret: currentConfig.app_secret ?? currentConfig.appSecret ?? '',
-      user_access_token: currentConfig.user_access_token ?? currentConfig.userAccessToken ?? '',
-      ...config,
-    };
-  }
   for (const field of form.querySelectorAll('[data-config-key]')) {
     const key = field.dataset.configKey;
     if (!key) continue;
@@ -96,7 +91,7 @@ function parseConfigForm(form) {
     }
     payload.timeoutMs = timeoutMs;
   }
-  return payload;
+  return normalizeToolConfigPayload(tool, payload, form);
 }
 
 async function saveToolConfig(card, form) {
@@ -122,9 +117,10 @@ function applyToolConfigExample(card, index) {
   const tool = state.tools.find(item => item.id === card.dataset.toolId);
   const example = tool?.configExamples?.[index];
   if (!example) return;
+  const config = example.config || {};
+  if (applyToolConfigExampleExtension(tool, config, card)) return;
   const textarea = card.querySelector('textarea[name="config"]');
   if (!textarea) return;
-  const config = example.config || {};
   for (const field of card.querySelectorAll('[data-config-key]')) {
     const key = field.dataset.configKey;
     if (!key) continue;

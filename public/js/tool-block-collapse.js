@@ -81,7 +81,7 @@ export function isToolBlock(block) {
 
 export function shouldKeepToolBlockExpanded(block) {
   if (!block) return false;
-  if (block.type === 'feishu-media' || block.fixedOpen) return true;
+  if (block.fixedOpen) return true;
   if (block.type === 'ask-user' && block.status === 'waiting') return true;
   if (block.status === 'running') return true;
   if (block.type === 'subagent-run') {

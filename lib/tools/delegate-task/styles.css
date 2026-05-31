@@ -1,0 +1,20 @@
+/* delegate_task subagent */
+
+/* Subagent */
+.subagent-status {
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 2px 8px; font-size: 10px; font-weight: 700;
+  color: var(--text-muted); text-transform: uppercase;
+  font-family: var(--font-sans);
+}
+.subagent-status.completed { color: var(--accent); border-color: var(--accent); }
+.subagent-status.error, .subagent-status.aborted { color: var(--danger); border-color: var(--danger); }
+
+.subagent-toggle-body { padding: 10px 12px; }
+.subagent-toggle.running .subagent-content { height: calc(9 * 22px); overflow: hidden; line-height: 22px; }
+.subagent-toggle.running .subagent-content * { line-height: 22px; }
+.subagent-toggle.running .subagent-content p,
+.subagent-toggle.running .subagent-content ul,
+.subagent-toggle.running .subagent-content ol,
+.subagent-toggle.running .subagent-content pre,
+.subagent-toggle.running .subagent-content blockquote { margin-top: 0; margin-bottom: 0; }

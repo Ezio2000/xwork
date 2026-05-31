@@ -136,10 +136,10 @@ npm start
 
 ## 工具定义接口
 
-在 `lib/tools/builtin/` 下创建 `.mjs` 文件，导出工具对象：
+在 `lib/tools/<slug>/index.mjs` 下创建工具 package，导出 `tool` 对象（文件夹名通常把 id 的下划线换成连字符，如 `my_tool` → `my-tool/`）：
 
 ```js
-export const myTool = {
+export const tool = {
   // ========== 必填 ==========
   id: 'my_tool',                    // 唯一标识
   name: 'my_tool',                  // 传给模型的名字
@@ -169,12 +169,7 @@ export const myTool = {
 };
 ```
 
-然后在 `lib/tools/builtin/index.mjs` 注册：
-
-```js
-import { myTool } from './my-tool.mjs';
-export const builtinTools = [..., myTool];
-```
+**无需手动注册。** `loader.mjs` 会自动扫描 `lib/tools/*/index.mjs`。如需自定义 UI，在同目录添加 `ui.mjs`；详见 [TOOL.md](./TOOL.md)。
 
 ## 生命周期钩子
 
@@ -268,7 +263,7 @@ parseResult(output, input) {
 }
 ```
 
-与 anthropic_server 工具的 `parseStreamResult` 产出同一结构 `{ renderType, data }`，前端渲染协议统一。`renderType` 目前支持：
+与 anthropic_server 工具的 `parseStreamResult` 产出同一结构 `{ renderType, data }`，前端渲染协议统一。对应 UI 实现在 `lib/tools/<slug>/ui.mjs`，由 `tool-ui-registry.js` 动态加载。`renderType` 目前支持：
 
 | renderType | data 结构 | 前端渲染 |
 |---|---|---|

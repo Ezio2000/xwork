@@ -6,25 +6,35 @@
 
 ```
 lib/tools/
-├── builtin/           ← 内置工具定义
-│   ├── index.mjs      ← 异步加载内置工具：loadBuiltinTools()
-│   ├── browser-action.mjs
-│   ├── calculator.mjs
-│   ├── current-time.mjs
-│   ├── delegate-task.mjs
-│   ├── feishu-read.mjs
-│   ├── shell-command.mjs
-│   ├── uuid-gen.mjs
-│   ├── web-fetch.mjs
-│   └── web-search.mjs
-├── runner.mjs         ← builtin 工具执行引擎（生命周期 + 超时 + parseResult + 运行记录）
-├── registry.mjs       ← 工具注册读取 + 启用/禁用 + 配置合并
-├── runs.mjs           ← 工具运行记录（SQLite document key: tool-runs，保留最近 200 条）
-├── scheduler.mjs      ← 工具调用调度策略（顺序执行、parallel_batch、tool_delta 事件队列）
-└── store.mjs          ← 工具配置持久化（SQLite document key: tools）
+├── _core/                 ← 工具运行时（runner / registry / scheduler / store / runs / budget）
+├── _shared/               ← 跨工具共享模块（workspace-exploration-prompt、feishu-oauth 等）
+├── loader.mjs             ← 自动扫描 lib/tools/<slug>/index.mjs 并加载
+├── ui-manifest.mjs        ← 汇总前端 ui/stream/assets 路由
+├── package-contract.mjs   ← tool package 文件契约
+├── calculator/            ← 每个工具一个文件夹
+│   └── index.mjs
+├── read-file/
+│   ├── index.mjs          ← 必填：export const tool = { ... }
+│   ├── ui.mjs             ← 可选：前端 block 渲染
+│   ├── stream.mjs         ← 可选：SSE tool_call / tool_delta / tool_result 处理
+│   ├── client.mjs         ← 可选：浏览器交互、对话页 header action、工具设置页扩展
+│   ├── assets.mjs         ← 可选：registerRoutes(router) 挂载 API 路由
+│   ├── styles.css         ← 可选：工具专属样式
+│   └── test.mjs           ← 可选：node:test 用例
+├── browser-action/
+│   ├── index.mjs, ui.mjs, stream.mjs, cdp-session.mjs, assets.mjs, test.mjs
+└── ...（其余 19 个 tool 同理）
+
+lib/tools/runner.mjs       ← re-export shim → _core/runner.mjs
+lib/tools/registry.mjs     ← re-export shim → _core/registry.mjs
+
+public/js/
+├── tool-ui-registry.js    ← 启动时拉 /tools/ui-manifest，动态 import 各 tool/ui.mjs
+├── tool-stream-registry.js← 委托 tool stream 模块处理 tool_call/delta/result
+└── renderers.js           ← 通用渲染（markdown/mermaid 等）+ 合并 registry 的 blockRenderers
 
 data/
-└── xwork.sqlite       ← documents 表保存 tools / tool-runs 等文档，conversations 表保存会话
+└── xwork.sqlite           ← documents 表保存 tools / tool-runs 等文档，conversations 表保存会话
 ```
 
 `data/` 不需要手动创建；`sqlite-store.mjs` 会在首次读写时自动创建目录和数据库。历史版本的 `data/tools.json`、`data/tool-runs.json` 仍会作为 legacy 文件读取并迁移到 SQLite document store。
@@ -33,11 +43,13 @@ data/
 
 ## 定义一个 builtin 工具
 
+每个工具放在 `lib/tools/<slug>/` 文件夹中，文件夹名通常把 tool id 的下划线换成连字符（如 `read_file` → `read-file/`）。`loader.mjs` 会自动扫描并加载所有含 `index.mjs` 的子目录（跳过 `_core`、`_shared`）。
+
 最小工具定义：
 
 ```js
-// lib/tools/builtin/my-tool.mjs
-export const myTool = {
+// lib/tools/my-tool/index.mjs
+export const tool = {
   id: 'my_tool',                  // 唯一标识，用于配置和运行记录
   name: 'my_tool',                // 给 AI 的函数名
   title: 'My Tool',               // 前端展示名
@@ -68,16 +80,7 @@ export const myTool = {
 };
 ```
 
-注册到 `lib/tools/builtin/index.mjs` 的 loader 列表：
-
-```js
-const builtinToolLoaders = [
-  // ...
-  ['my_tool', () => import('./my-tool.mjs'), 'myTool'],
-];
-```
-
-当前不是静态导出 `builtinTools` 数组。`loadBuiltinTools()` 会异步加载 `builtinToolLoaders` 中的每个工具。如果某个工具加载失败，系统会生成一个 `adapter: 'unavailable'` 的占位工具，在工具列表中显示为不可用且默认禁用。
+**无需手动注册。** 创建 `lib/tools/my-tool/index.mjs` 并导出 `tool` 后，`loadTools()` 会在下次启动时自动发现。如果某个工具加载失败，系统会生成一个 `adapter: 'unavailable'` 的占位工具，在工具列表中显示为不可用且默认禁用。
 
 `capabilities.executionMode` 会影响 `lib/tools/scheduler.mjs` 的调度策略：
 
@@ -128,7 +131,7 @@ Anthropic SSE block
 
 ### `adapter: 'unavailable'`
 
-内部占位类型。工具 import 失败时由 `builtin/index.mjs` 自动生成。它会出现在 `/api/v1/tools` 返回结果中，但不会作为可执行工具传给模型。
+内部占位类型。工具 import 失败时由 `loader.mjs` 自动生成。它会出现在 `/api/v1/tools` 返回结果中，但不会作为可执行工具传给模型。
 
 ---
 
@@ -394,8 +397,9 @@ handler output
   → public/js/stream-reducer.js applyToolResult()
   → 新 block: stream.blocks.push({ type: renderType, ...data })
   → 或已有 block: shell_command 按 toolCallId 合并最终状态并折叠
-  → public/js/renderers.js blockRenderers[type]()
-  → public/style.css
+  → public/js/tool-stream-registry.js（各 tool/stream.mjs）
+  → public/js/tool-ui-registry.js 动态加载的 blockRenderers[type]()
+  → public/style.css（通用样式；可选 lib/tools/<slug>/styles.css）
 ```
 
 `shell_command` 的特殊点：
@@ -449,53 +453,105 @@ parseResult(output, input) {
 
 ### 2. 前端：注册 block renderer
 
-在 `public/js/renderers.js` 中添加渲染函数，并注册到 `blockRenderers`：
+在 `lib/tools/<slug>/ui.mjs` 中实现渲染函数并导出：
 
 ```js
-function renderMyBlock(block, collapsed = false) {
+// lib/tools/my-tool/ui.mjs
+export const renderType = 'my-render-type';
+
+export function renderBlock(block, collapsed = false, ctx) {
+  // ctx 提供 escHtml、renderContent 等（由 renderers.js 传入）
   return `
     <div class="my-block-toggle${collapsed ? ' collapsed' : ''}">
       <div class="my-block-toggle-header" data-toggle-parent>
-        <span class="my-block-toggle-label">${escHtml(block.label)}</span>
+        <span class="my-block-toggle-label">${ctx.escHtml(block.label)}</span>
         <span class="my-block-toggle-arrow">▾</span>
       </div>
       <div class="my-block-toggle-body">
         ${(block.items || []).map(item => `
-          <div class="my-block-item">${escHtml(item)}</div>
+          <div class="my-block-item">${ctx.escHtml(item)}</div>
         `).join('')}
       </div>
     </div>
   `;
 }
-
-const blockRenderers = {
-  // ...已有条目
-  'my-render-type': (block, collapsed) => renderMyBlock(block, block.collapsed ?? collapsed),
-};
 ```
+
+`app.js` 启动时会调用 `loadToolUiRegistry()`，通过 `GET /api/v1/tools/ui-manifest` 动态 import 各 tool 的 `ui.mjs` 并合并到 `blockRenderers`。`renderers.js` 保留 markdown/mermaid 等通用渲染，最终由 `renderBlocks()` 合并 core + registry。
 
 `data-toggle-parent` 的折叠交互由 `installRendererEventHandlers()` 统一处理，不需要额外绑定点击事件。
 
-### 3. 前端：默认折叠
+### 3. 前端：block 行为元数据 / 流式行为
 
-如果希望流式传输时默认折叠，在 `public/js/stream-reducer.js` 的 `applyToolResult()` 中增加类型：
+`ui.mjs` 除了 `renderType` / `renderBlock`，还可以声明 block 行为元数据：
 
 ```js
-if (
-  block.type === 'source-cards' ||
-  block.type === 'sources' ||
-  block.type === 'web-fetch' ||
-  block.type === 'my-render-type'
-) {
-  block.collapsed = true;
+export const keepExpanded = true;        // 完成后也保持展开，并标记 fixedOpen
+export const defaultCollapsed = false;   // 通用结果 block 初始折叠状态
+```
+
+这些元数据只绑定 `renderType` 和 `aliasRenderTypes`，不会绑定 `altRenderTypes`。例如 `feishu-read/ui.mjs` 的 `feishu-media` 会声明 `keepExpanded = true`，但它作为 `file-snippet` 的备用 renderer 时不会改变普通文件片段的折叠策略。
+
+如需自定义 `tool_call`、`tool_delta` 或默认折叠逻辑，在 `lib/tools/<slug>/stream.mjs` 中导出对应钩子：
+
+```js
+export function onToolCall(stream, tool, evt) { /* 创建 running block */ }
+export function onToolDelta(stream, tool, evt) { /* 追加增量输出 */ }
+export function onToolResult(stream, tool, evt) { /* 合并最终状态、设置 collapsed */ }
+```
+
+`stream-reducer.js` 会把 tool 专用逻辑委托给 `tool-stream-registry.js` 加载的 stream 模块。无 stream 模块时，走通用 `applyToolCall` / `applyToolDelta` / `applyToolResult` 逻辑。
+
+### 4. 前端：client 扩展点
+
+在 `lib/tools/<slug>/client.mjs` 中可以导出浏览器侧扩展。`tool-ui-registry.js` 会随 manifest 动态 import，并把 `api`、`state`、`escHtml` 等上下文传给扩展函数。
+
+```js
+export const toolId = 'my_tool';
+// 或 export const toolIds = ['my_tool', 'related_tool'];
+
+export function renderHeaderActions(ctx) {
+  return '<button type="button" class="btn-icon">…</button>';
+}
+
+export function installHeaderActionHandlers(root, ctx) {
+  root.addEventListener('click', event => {
+    // 处理 renderHeaderActions 贡献的 DOM
+  });
+}
+
+export function renderConfigFields(tool, ctx) {
+  return '';
+}
+
+export function editableConfig(tool, config) {
+  return config;
+}
+
+export function normalizeConfigPayload(tool, payload, form, ctx) {
+  return payload;
 }
 ```
 
-注意：当前不是在 `chat-stream.js` 中处理默认折叠。
+当前 Feishu 的对话页“飞”按钮、清 token API 调用、App ID/App Secret 配置字段都在 `lib/tools/feishu-auth/client.mjs` 中实现；公共工具设置页只提供表单骨架和这些扩展点。
 
-### 4. 前端：样式
+### 5. 前端：样式
 
-在 `public/style.css` 添加样式。优先复用项目 CSS 变量，例如 `--accent`、`--border`、`--bg-secondary`、`--text-muted`。
+在 `lib/tools/<slug>/styles.css` 添加工具专属样式，由 `ui-manifest` 自动注入。共享折叠块样式（`shell-command-toggle`、`sources-toggle` 等）在 `lib/tools/_shared/styles/shell-toggle.css`。聊天页全局样式仍在 `public/style.css`。
+
+### 6. 后端：tool 自带 API / asset 路由
+
+如需为工具提供额外 HTTP 路由，在 `lib/tools/<slug>/assets.mjs` 中导出：
+
+```js
+export function registerRoutes(router) {
+  router.get('/tool-assets/my-tool/:filename', async (req, res) => {
+    // 返回工具生成的资源
+  });
+}
+```
+
+`routes/tool-routes.mjs` 会调用 `collectToolAssetRoutes()` 自动加载这些 registrar。路由仍挂在 `/api/v1` 下；如果在 registrar 中注册 `/tools/my_tool/action`，最终路径就是 `/api/v1/tools/my_tool/action`。
 
 ---
 
@@ -552,23 +608,23 @@ if (
 
 ## 新建工具 Checklist
 
-1. 创建 `lib/tools/builtin/<name>.mjs`，导出工具对象
-2. 在 `lib/tools/builtin/index.mjs` 的 `builtinToolLoaders` 中加入 loader
-3. 如需自定义展示，实现 `parseResult`
-4. 如需自定义展示，在 `public/js/renderers.js` 添加渲染函数并注册 `blockRenderers`
-5. 如需流式默认折叠，在 `public/js/stream-reducer.js` 的 `applyToolResult()` 中添加类型条件
-6. 如需运行中可见 UI，在 `applyToolCall()` 中为对应工具创建 running block
-7. 如需实时增量输出，在后端 `handler` 调用 `emit()`，并在前端 `applyToolDelta()` 中追加到对应 block
-8. 如需样式，在 `public/style.css` 添加对应 CSS
-9. 重启服务，工具会自动同步到 SQLite `tools` 文档
-10. 在 Tools 页面或 `/api/v1/tools` 确认工具已加载、启用状态正确
+1. 创建 `lib/tools/<slug>/index.mjs`，导出 `export const tool = { ... }`
+2. 如需自定义展示，在 `index.mjs` 实现 `parseResult`，并添加 `ui.mjs`（`renderType` + `renderBlock`）
+3. 如需流式/running 块行为，添加 `stream.mjs`（`onToolCall` / `onToolDelta` / `onToolResult`）
+4. 如需浏览器交互、对话页 header action 或工具设置页扩展，添加 `client.mjs`
+5. 如需额外 API 路由（截图、媒体代理等），添加 `assets.mjs` 并实现 `registerRoutes(router)`
+6. 如需样式，添加 `styles.css`
+7. 添加 `test.mjs` 覆盖注册与 handler 行为
+8. 重启服务，工具会自动同步到 SQLite `tools` 文档
+9. 在 Tools 页面或 `/api/v1/tools` 确认工具已加载、启用状态正确
+10. 在 `/api/v1/tools/ui-manifest` 确认前端 manifest 包含新 tool
 
 ---
 
 ## 常见注意点
 
 - `browser_action` 基于 Playwright Chromium，默认禁用。它适合跨平台网页 UI 验证，截图写入 workspace 内的 `data/browser-screenshots`。建议优先配置 `allowedHosts`，例如只允许 `localhost` 和 `127.0.0.1`。
-- `feishu_read` 默认禁用。它通过飞书 OpenAPI 只读获取新版文档、Docx block tree、文档图片/附件素材、旧版文档、电子表格元数据和范围值；建议用 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 环境变量提供凭据，或在工具配置中提供 `accessToken`。授权域映射在 `lib/feishu-auth.mjs`：`docs` 包含 `docx:document:readonly`、`space:document:retrieve`，`media` 包含 `docs:document.media:download`，`wiki` 包含 `wiki:wiki:readonly`、`wiki:node:read`，`sheets` 包含 `sheets:spreadsheet:read`、`sheets:spreadsheet.meta:read`，`contact` 包含用户基础资料读取权限。
+- `feishu_read` 默认禁用。它通过飞书 OpenAPI 只读获取新版文档、Docx block tree、文档图片/附件素材、旧版文档、电子表格元数据和范围值；建议用 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 环境变量提供凭据，或在工具配置中提供 `accessToken`。授权域映射在 `lib/tools/_shared/feishu-oauth.mjs`：`docs` 包含 `docx:document:readonly`、`space:document:retrieve`，`media` 包含 `docs:document.media:download`，`wiki` 包含 `wiki:wiki:readonly`、`wiki:node:read`，`sheets` 包含 `sheets:spreadsheet:read`、`sheets:spreadsheet.meta:read`，`contact` 包含用户基础资料读取权限。
 - `anthropic_server` 工具不会由 `runTool()` 执行；它们只会被传给 provider。
 - `anthropic_server` 工具会被转换为 Anthropic 工具格式：`apiToolType/type` → `type`，`maxUses` → `max_uses`，`allowedDomains/blockedDomains` → `allowed_domains/blocked_domains`。
 - `systemPrompt()` 不会随工具定义直接发送，而是在 `message-normalizer.mjs` 的 `buildSystemPrompt()` 中拼接进系统提示。

@@ -68,11 +68,13 @@ POST /api/v1/chat (SSE)
 | `lib/agents/subagent-runtime.mjs` | 子代理运行时：runSubagent() 使用受限工具集执行委托任务，支持深度/轮次/超时限制 |
 | `lib/agents/runs.mjs` | 代理运行记录（agent-runs.json）：创建/追加事件/完成，支持 root + subagent |
 | `lib/user-input-registry.mjs` | ask_user 交互注册表：等待用户响应、超时管理 |
-| `lib/tools/registry.mjs` | 工具注册：读取 SQLite 配置、合并工具定义与用户配置、导出启用工具给 API |
-| `lib/tools/runner.mjs` | builtin 工具执行引擎：生命周期钩子 (validate→before→handler→after→onComplete) + parseResult + 超时 + 运行记录 |
-| `lib/tools/scheduler.mjs` | 工具调度策略：根据 capabilities.executionMode 决定 sequential 或 parallel_batch 执行 |
-| `lib/tools/store.mjs` | 工具配置持久化到 SQLite documents key='tools' |
-| `lib/tools/runs.mjs` | 工具运行记录，写入 SQLite documents key='tool-runs'（最近 200 条） |
+| `lib/tools/_core/registry.mjs` | 工具注册：读取 SQLite 配置、合并工具定义与用户配置、导出启用工具给 API |
+| `lib/tools/_core/runner.mjs` | builtin 工具执行引擎：生命周期钩子 (validate→before→handler→after→onComplete) + parseResult + 超时 + 运行记录 |
+| `lib/tools/loader.mjs` | 自动扫描 `lib/tools/<slug>/index.mjs` 加载 tool package |
+| `lib/tools/ui-manifest.mjs` | 汇总各 tool 的 ui/stream/assets 路由，供前端动态加载 |
+| `lib/tools/_core/scheduler.mjs` | 工具调度策略：根据 capabilities.executionMode 决定 sequential 或 parallel_batch 执行 |
+| `lib/tools/_core/store.mjs` | 工具配置持久化到 SQLite documents key='tools' |
+| `lib/tools/_core/runs.mjs` | 工具运行记录，写入 SQLite documents key='tool-runs'（最近 200 条） |
 | `lib/model-pricing.mjs` | 模型定价计算：findEffectiveModelPricing + calculateUsageCost |
 | `lib/pricing-store.mjs` | 定价数据存储（model-pricing.json） |
 | `lib/usage-report.mjs` | Token 用量汇总报告：按 run/task/role/model 分组统计输入/输出/cache/成本 |
@@ -86,7 +88,7 @@ POST /api/v1/chat (SSE)
 | `routes/channel-routes.mjs` | `/channels`, `/active` | 渠道 CRUD + 活跃渠道/模型切换 |
 | `routes/chat-routes.mjs` | `/chat`, `/chat-runs/:id/stream`, `/chat-runs/:id/status` | 聊天 SSE + 后台运行重连 + ask_user 响应 |
 | `routes/conversation-routes.mjs` | `/conversations` | 对话 CRUD |
-| `routes/tool-routes.mjs` | `/tools`, `/tool-runs` | 工具配置 + 运行记录查询 |
+| `routes/tool-routes.mjs` | `/tools`, `/tool-runs`, `/tools/ui-manifest` | 工具配置 + 运行记录 + UI manifest |
 | `routes/expert-agent-routes.mjs` | `/expert-agents` | 专家 agent 配置 CRUD + 内置专家 reset |
 | `routes/agent-routes.mjs` | `/agent-runs` | 代理运行记录查询 |
 | `routes/usage-routes.mjs` | `/usage` | Token 用量与费用报表 |
@@ -95,23 +97,31 @@ POST /api/v1/chat (SSE)
 
 ### 工具系统
 
-所有工具定义在 `lib/tools/builtin/` 下，通过 `index.mjs` 的 `builtinToolLoaders` 异步加载。
+每个 tool 是一个独立 package，位于 `lib/tools/<slug>/`（如 `read-file/`、`shell-command/`）。`loader.mjs` 自动扫描并加载各文件夹的 `index.mjs`（导出 `export const tool`）。运行时核心在 `_core/`，跨工具共享代码在 `_shared/`。
 
-当前 builtin 工具（15 个）：`get_current_time`, `web_search`, `calculator`, `uuid_gen`, `delegate_task`, `web_fetch`, `read_file`, `write_file`, `code_outline`, `grep`, `glob`, `list_dir`, `git`, `shell_command`, `browser_action`, `ask_user`
+当前 19 个 tool：`get_current_time`, `web_search`, `calculator`, `uuid_gen`, `delegate_task`, `web_fetch`, `read_file`, `write_file`, `code_outline`, `grep`, `glob`, `list_dir`, `git`, `shell_command`, `browser_action`, `ask_user`, `feishu_auth`, `feishu_read`, `about_xwork`
+
+每个 tool package 可包含：
+- `index.mjs`（必填）— 工具定义与 handler
+- `ui.mjs`（可选）— 前端 block 渲染（`renderType` + `renderBlock`）
+- `stream.mjs`（可选）— SSE 流式行为（`onToolCall` / `onToolDelta` / `onToolResult`）
+- `client.mjs`（可选）— 浏览器交互客户端
+- `assets.mjs`（可选）— 额外 API 路由
+- `styles.css` / `test.mjs`（可选）
 
 两种适配器类型：
 - **`builtin`**：本地执行，提供完整生命周期钩子 (validate/before/handler/after/onError/onComplete) 和 `parseResult(output)` 返回 `{ renderType, data }`
 - **`anthropic_server`**：由 API 提供商执行，通过 `parseStreamResult(block)` 返回 `{ renderType, data }`
 
-工具执行调度由 `lib/tools/scheduler.mjs` 管理：
+工具执行调度由 `lib/tools/_core/scheduler.mjs` 管理：
 - `sequential`（默认）：同一轮多个工具按顺序执行
 - `parallel_batch`：相邻且同名的工具调用并行执行（当前仅 `delegate_task` 使用）
 
 两种适配器的 `{ renderType, data }` 通过统一管道流动：
-  - 实时 SSE 流：前端 `stream-reducer.js` 通用 push `{ type: renderType, ...data }` 到 blocks
+  - 实时 SSE 流：前端 `stream-reducer.js` → `tool-stream-registry.js` 委托各 tool/stream.mjs
   - 保存对话：`message-rendering.mjs` 的 `buildRenderBlocks()` 统一输出
-  - 渲染：前端 `renderers.js` 的 `blockRenderers` 注册表按 type 匹配渲染函数
-新增具备自定义渲染的 tool 只需定义 `parseResult`/`parseStreamResult` + 在 `blockRenderers` 注册一行。
+  - 渲染：`tool-ui-registry.js` 动态加载各 tool/ui.mjs，与 `renderers.js` 通用渲染合并
+新增具备自定义渲染的 tool 只需在 package 内实现 `parseResult`/`parseStreamResult` + `ui.mjs`（及可选 `stream.mjs`）。
 
 ### 专家 agent / 子代理系统
 
@@ -135,7 +145,9 @@ POST /api/v1/chat (SSE)
 `public/` 目录为纯静态文件（无框架）：`index.html` + `app.js` + `markdown-it` + `style.css`。架构为 MVC 模式：
 - `public/js/stores/app-store.js` — 全局状态存储
 - `public/js/stream-client.js` + `public/js/stream-reducer.js` — SSE 流消费与响应式状态更新
-- `public/js/renderers.js` — `blockRenderers` 注册表按 type 匹配渲染函数
+- `public/js/tool-ui-registry.js` — 启动时拉 ui-manifest，动态 import 各 tool/ui.mjs
+- `public/js/tool-stream-registry.js` — tool 流式事件分发给各 tool/stream.mjs
+- `public/js/renderers.js` — 通用渲染（markdown/mermaid 等）+ 合并 registry 的 blockRenderers
 - `public/js/controllers/` — 各页面控制器（chat-input, channels, tools, conversations, settings, pricing, usage, workspace, file-mention）
 - `public/js/views.js` — 视图渲染工具
 - `public/js/message-blocks.js` — 历史消息 blocks 兼容恢复
@@ -156,15 +168,15 @@ POST /api/v1/chat (SSE)
 
 ### 测试
 
-22 个测试文件，使用 `node:test` + `node:assert/strict`。核心测试：
+22+ 个测试文件，使用 `node:test` + `node:assert/strict`。工具相关测试优先放在 `lib/tools/<slug>/test.mjs`（colocated），`test/*.test.mjs` 保留集成测试或 re-export shim。核心测试：
 - `test/query-loop.test.mjs` — queryLoop 引擎（mock streamChat + runTool，覆盖纯文本/单工具/多工具/多轮/maxTurns/abort/错误/混合 server+local 工具）
 - `test/architecture.test.mjs` — 架构安全契约（事件常量、system prompt、工具调度策略、对话排队、后台运行、审计追踪、用量报表、定价匹配）
 - `test/subagent.test.mjs` — 子代理执行与限制
 - `test/tool-runner.test.mjs` — 工具生命周期钩子
 - `test/chat-runs.test.mjs` — 后台运行管理
-- `test/ask-user.test.mjs` — ask_user 交互流程
+- `lib/tools/ask-user/test.mjs` — ask_user 交互流程
 - `test/expand-file-mentions.test.mjs` — 文件提及展开
-- `test/grep-glob.test.mjs`, `test/read-file.test.mjs`, `test/write-file.test.mjs`, `test/list-dir-git.test.mjs` — 工作区工具
+- `lib/tools/grep/test.mjs`, `lib/tools/read-file/test.mjs`, `lib/tools/write-file/test.mjs`, `lib/tools/list-dir/test.mjs` — 工作区工具
 - `test/frontend-modules.test.mjs` — 前端模块完整性
 - 通过 `CHAT_SERVICE_TEST_HOOKS` 可注入 mock `streamChat` 和 `runTool`
 

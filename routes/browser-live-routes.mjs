@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { dispatchBrowserInput, subscribeBrowserScreencast } from '../lib/tools/browser-cdp-session.mjs';
+import { dispatchBrowserInput, subscribeBrowserScreencast } from '../lib/tools/browser-action/cdp-session.mjs';
 
 export function browserLiveRoutes() {
   const router = Router();

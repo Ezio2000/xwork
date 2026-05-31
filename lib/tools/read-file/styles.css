@@ -1,0 +1,9 @@
+/* read_file file-snippet markdown */
+
+.file-snippet-markdown { color: var(--text); font-size: 13px; line-height: 1.55; max-height: 520px; overflow: auto; padding: 10px 12px; word-break: break-word; }
+.file-snippet-markdown h1, .file-snippet-markdown h2, .file-snippet-markdown h3 { margin: 14px 0 6px; }
+.file-snippet-markdown p { margin: 6px 0; }
+.file-snippet-markdown table { border-collapse: collapse; margin: 10px 0; width: 100%; }
+.file-snippet-markdown th, .file-snippet-markdown td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; }
+.file-snippet-markdown th { background: var(--bg-hover); font-weight: 600; }
+.file-snippet-markdown code { background: var(--bg-code); border-radius: 4px; font-family: var(--font-mono); font-size: 0.9em; padding: 2px 5px; }

@@ -1,0 +1,19 @@
+/* about_xwork */
+
+/* ---- about_xwork ---- */
+.about-xwork-body { padding: 8px 0; }
+.about-pairs { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; align-items: baseline; margin: 0; }
+.about-row { display: contents; }
+.about-row dt { color: var(--text-muted); font-weight: 500; font-size: 0.875rem; white-space: nowrap; }
+.about-row dd { margin: 0; font-size: 0.875rem; word-break: break-word; max-height: 120px; overflow-y: auto; }
+.about-nil { color: var(--text-muted); font-style: italic; }
+.about-bool { font-weight: 600; }
+.about-number { font-variant-numeric: tabular-nums; }
+.about-chip { display: inline-block; background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; margin: 1px 2px; font-size: 0.8rem; }
+.about-list { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.about-index { color: var(--text-muted); font-weight: 500; font-size: 0.75rem; margin-right: 6px; }
+.about-nested-card { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; margin: 4px 0; }
+.about-nested-card .about-index { display: block; margin-bottom: 2px; }
+.about-hint { margin-top: 8px; font-size: 0.8rem; color: var(--text-muted); font-style: italic; }
+.about-xwork-toggle .shell-command-toggle-header { cursor: pointer; }
+.about-string { word-break: break-word; }

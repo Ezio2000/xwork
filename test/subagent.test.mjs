@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { appendAgentRunEvent, completeAgentRun, createAgentRun, getAgentRun } from '../lib/agents/runs.mjs';
 import { runSubagent } from '../lib/agents/subagent-runtime.mjs';
 import { buildSystemPrompt } from '../lib/anthropic/message-normalizer.mjs';
-import { delegateTaskTool } from '../lib/tools/builtin/delegate-task.mjs';
-import { webSearchTool } from '../lib/tools/builtin/web-search.mjs';
+import { tool as delegateTaskTool } from '../lib/tools/delegate-task/index.mjs';
+import { tool as webSearchTool } from '../lib/tools/web-search/index.mjs';
 
 describe('subagent runtime', () => {
   it('delegate_task accepts shell_command in allowedTools', () => {

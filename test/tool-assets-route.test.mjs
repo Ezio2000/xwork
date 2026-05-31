@@ -15,7 +15,7 @@ const PNG_1X1 = Buffer.from(
 
 async function withToolAssetServer(fn) {
   const app = express();
-  app.use('/api/v1', toolRoutes());
+  app.use('/api/v1', await toolRoutes());
   const server = app.listen(0);
   await once(server, 'listening');
   try {

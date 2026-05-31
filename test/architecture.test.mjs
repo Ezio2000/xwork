@@ -28,8 +28,8 @@ import { CONVERSATION_CONTRACT_VERSION } from '../lib/conversations/contracts.mj
 import { PROVIDER_CONTRACT_VERSION } from '../lib/providers/provider-contract.mjs';
 import { RUN_EVENT_TYPES, AGENT_EVENT_TYPES } from '../lib/run-events.mjs';
 import { defaultToolScheduler, executeToolCalls } from '../lib/tools/scheduler.mjs';
-import { currentTimeTool } from '../lib/tools/builtin/current-time.mjs';
-import { workspaceExplorationSystemPrompt } from '../lib/tools/builtin/workspace-exploration-prompt.mjs';
+import { tool as currentTimeTool } from '../lib/tools/current-time/index.mjs';
+import { workspaceExplorationSystemPrompt } from '../lib/tools/_shared/workspace-exploration-prompt.mjs';
 import { getWorkspaceInfo } from '../lib/workspace-root.mjs';
 
 describe('architecture safety contracts', () => {

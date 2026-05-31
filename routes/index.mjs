@@ -12,13 +12,13 @@ import { pricingRoutes } from './pricing-routes.mjs';
 import { workspaceRoutes } from './workspace-routes.mjs';
 import { imageRoutes } from './image-routes.mjs';
 
-export function apiRoutes() {
+export async function apiRoutes() {
   const router = Router();
   router.use(channelRoutes());
   router.use(imageRoutes());
   router.use(workspaceRoutes());
   router.use(browserLiveRoutes());
-  router.use(toolRoutes());
+  router.use(await toolRoutes());
   router.use(expertAgentRoutes());
   router.use(agentRoutes());
   router.use(usageRoutes());

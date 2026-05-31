@@ -1,0 +1,11 @@
+/* code_outline symbol list */
+
+/* ===== Symbol blocks ===== */
+.symbol-list { list-style: none; display: flex; flex-direction: column; gap: 2px; padding: 8px; margin: 0; font-family: var(--font-mono); }
+.symbol-item { display: grid; grid-template-columns: 18px 80px 1fr 60px; align-items: baseline; gap: 8px; padding: 3px 6px; font-size: 12px; border-radius: 3px; }
+.symbol-item:hover { background: var(--bg-hover); }
+.symbol-item .symbol-icon { color: var(--accent); text-align: center; font-weight: 600; }
+.symbol-item .symbol-kind { color: var(--text-muted); font-size: 11px; text-transform: lowercase; }
+.symbol-item .symbol-name { color: var(--text); word-break: break-all; }
+.symbol-item .symbol-line { color: var(--text-muted); font-size: 11px; text-align: right; }
+.symbol-empty { color: var(--text-muted); font-size: 12px; padding: 6px 8px; }

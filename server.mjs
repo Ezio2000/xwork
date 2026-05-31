@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { apiRoutes } from './routes/index.mjs';
+import { toolStaticRoutes } from './routes/tool-static-routes.mjs';
 import { readConfig } from './lib/config-store.mjs';
 import { setWorkspaceRoot, validateWorkspaceCandidate } from './lib/workspace-root.mjs';
 
@@ -39,7 +40,8 @@ app.use((_req, res, next) => {
 
 app.use(express.json({ limit: '12mb' }));
 app.use(express.static(join(__dirname, 'public')));
-app.use('/api/v1', apiRoutes());
+app.use(toolStaticRoutes());
+app.use('/api/v1', await apiRoutes());
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

@@ -1,0 +1,86 @@
+/* feishu_auth block body */
+
+.feishu-token-menu-wrap {
+  position: relative;
+}
+
+.feishu-token-button {
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.feishu-token-button[data-status="clearing"] {
+  opacity: 0.6;
+}
+
+.feishu-token-button[data-status="cleared"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.feishu-token-button[data-status="error"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.feishu-token-icon {
+  align-items: center;
+  background: #00d6b9;
+  border-radius: 6px;
+  color: #fff;
+  display: inline-flex;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  height: 20px;
+  justify-content: center;
+  line-height: 1;
+  width: 20px;
+}
+
+.feishu-token-menu {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  min-width: 128px;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+}
+
+.feishu-token-menu.hidden {
+  display: none;
+}
+
+.feishu-token-menu-item {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 7px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.feishu-token-menu-item:hover,
+.feishu-token-menu-item:focus {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.feishu-token-menu-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.feishu-auth-body { display: grid; gap: 10px; padding: 12px; }
+.feishu-auth-body p { color: var(--text-secondary); font-size: 13px; line-height: 1.45; margin: 0; }
+.feishu-auth-body code { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feishu-auth-warning { color: var(--danger) !important; }

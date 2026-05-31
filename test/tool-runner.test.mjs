@@ -6,10 +6,10 @@ import { spawnSync } from 'node:child_process';
 import { runTool } from '../lib/tools/runner.mjs';
 import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/tools/registry.mjs';
 import { readToolConfigs, writeToolConfigs } from '../lib/tools/store.mjs';
-import { loadBuiltinTools } from '../lib/tools/builtin/index.mjs';
-import { shellCommandTool } from '../lib/tools/builtin/shell-command.mjs';
-import { browserActionTool } from '../lib/tools/builtin/browser-action.mjs';
-import { webFetchTool } from '../lib/tools/builtin/web-fetch.mjs';
+import { loadTools } from '../lib/tools/loader.mjs';
+import { tool as shellCommandTool } from '../lib/tools/shell-command/index.mjs';
+import { tool as browserActionTool } from '../lib/tools/browser-action/index.mjs';
+import { tool as webFetchTool } from '../lib/tools/web-fetch/index.mjs';
 
 function hasCommand(command) {
   const result = process.platform === 'win32' ? spawnSync('where', [command], {
@@ -241,7 +241,7 @@ describe('tool configuration surface', () => {
   });
 
   it('uses a configurable 60s default timeout for web_search and migrates the old 10s default', async () => {
-    const tools = await loadBuiltinTools();
+    const tools = await loadTools();
     const previousConfigs = await readToolConfigs(tools);
     const previousWebSearch = previousConfigs.find(tool => tool.id === 'web_search');
 
@@ -280,7 +280,7 @@ describe('tool configuration surface', () => {
   });
 
   it('migrates the old delegate_task 125s default timeout to the longer expert budget', async () => {
-    const tools = await loadBuiltinTools();
+    const tools = await loadTools();
     const previousConfigs = await readToolConfigs(tools);
     const previousDelegateTask = previousConfigs.find(tool => tool.id === 'delegate_task');
 

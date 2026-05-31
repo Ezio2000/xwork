@@ -1,5 +1,6 @@
 import { STREAM_AGENT_EVENT_TYPES, streamAgentEventType } from './stream-events.js';
 import { buildRunningToolBlock } from './tool-block-collapse.js';
+import { applyBlockOptions } from './tool-ui-registry.js';
 
 export function stripSearchQueryText(text) {
   return String(text || '').replace(/^Search results for query: .*/gm, '').replace(/\n{3,}/g, '\n\n');
@@ -30,8 +31,7 @@ function codeBlock(label, value) {
 
 function renderBlockFromResult(renderType, data) {
   if (!renderType || !data) return null;
-  if (renderType === 'feishu-media') return { type: renderType, ...data, collapsed: false, fixedOpen: true };
-  return { type: renderType, ...data, collapsed: true };
+  return applyBlockOptions({ type: renderType, ...data, collapsed: true });
 }
 
 function renderBlockFromOutput(output) {

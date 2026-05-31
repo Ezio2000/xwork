@@ -1,0 +1,50 @@
+/* shell_command terminal */
+
+/* ===== Shell Command Terminal ===== */
+.shell-command-toggle-label { font-family: var(--font-mono); }
+.shell-command-icon { color: var(--accent); font-size: 12px; flex-shrink: 0; }
+.shell-command-meta { flex-shrink: 0; font-size: 12px; color: var(--text-muted); }
+.shell-command-meta.status-ok { color: var(--text-muted); }
+.shell-command-meta.status-running { color: var(--accent); }
+.shell-command-meta.status-error { color: var(--danger); }
+
+.shell-command-toggle-body { padding: 12px; }
+
+.shell-terminal {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid #1f2937;
+  background: #0f1419;
+  color: #d1d5db;
+  font-family: var(--font-mono);
+}
+
+.shell-terminal-title {
+  display: flex; align-items: center; min-height: 28px;
+  padding: 0 10px; background: #1f2937; border-bottom: 1px solid #374151;
+}
+
+.shell-terminal-title-text { font-size: 11px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.shell-terminal-screen { padding: 12px; font-size: 12px; line-height: 1.55; }
+
+.shell-terminal-line { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.shell-terminal-prompt { color: #34d399; white-space: nowrap; flex-shrink: 0; }
+.shell-terminal-command-text { color: #e5e7eb; word-break: break-word; }
+.shell-terminal-cursor { color: #e5e7eb; animation: shell-cursor-blink 1s steps(1) infinite; }
+
+.shell-terminal-output {
+  margin: 0; padding: 0; white-space: pre-wrap; word-break: break-word;
+  overflow-wrap: anywhere; background: transparent; border: none; border-radius: 0;
+}
+
+.message .content .shell-terminal-output,
+.message .content .shell-terminal-output code {
+  background: transparent; border: none; padding: 0; color: inherit; font-size: 12px;
+}
+
+.shell-terminal-output.stdout { color: #d1d5db; }
+.shell-terminal-output.stderr { color: #fca5a5; margin-top: 10px; }
+.shell-terminal-running { margin-top: 8px; color: #93c5fd; font-style: italic; }
+
+@keyframes shell-cursor-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }

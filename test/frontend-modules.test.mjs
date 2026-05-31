@@ -1,5 +1,6 @@
-import { describe, it } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadToolUiForTests } from './helpers/load-tool-ui-for-tests.mjs';
 
 function fakeClassList() {
   const classes = new Set();
@@ -102,6 +103,47 @@ function fakeElement() {
   };
 }
 
+function fakeFeishuHeaderActions() {
+  const root = fakeElement();
+  const wrapper = fakeElement();
+  const button = fakeElement();
+  const menu = fakeElement();
+  const clearButton = fakeElement();
+  wrapper.classList.remove('hidden');
+  menu.classList.add('hidden');
+  wrapper.contains = target => target === wrapper || target === button || target === menu || target === clearButton;
+  wrapper.querySelector = selector => {
+    if (selector === '[data-feishu-token-menu]') return menu;
+    if (selector === '[data-feishu-token-menu-button]') return button;
+    if (selector === '[data-feishu-clear-token]') return clearButton;
+    return null;
+  };
+  button.closest = selector => {
+    if (selector === '[data-feishu-token-menu-button]') return button;
+    if (selector === '[data-tool-header-action="feishu-token"]') return wrapper;
+    return null;
+  };
+  clearButton.closest = selector => {
+    if (selector === '[data-feishu-clear-token]') return clearButton;
+    if (selector === '[data-tool-header-action="feishu-token"]') return wrapper;
+    return null;
+  };
+  root.querySelector = selector => {
+    if (selector === '[data-tool-header-action="feishu-token"]') return root.innerHTML ? wrapper : null;
+    if (selector === '[data-feishu-token-menu]') return root.innerHTML ? menu : null;
+    if (selector === '[data-feishu-token-menu-button]') return root.innerHTML ? button : null;
+    if (selector === '[data-feishu-clear-token]') return root.innerHTML ? clearButton : null;
+    return null;
+  };
+  root.querySelectorAll = selector => {
+    if (selector === '[data-tool-header-action="feishu-token"]' && root.innerHTML) return [wrapper];
+    return [];
+  };
+  return { root, wrapper, button, menu, clearButton };
+}
+
+globalThis.__fakeChatHeaderActions = fakeFeishuHeaderActions();
+
 globalThis.document = {
   addEventListener() {},
   createElement() {
@@ -110,6 +152,7 @@ globalThis.document = {
   querySelector(selector) {
     if (selector === '#messages' && globalThis.__fakeMessages) return globalThis.__fakeMessages;
     if (selector === '#browser-live-preview' && globalThis.__fakeBrowserLivePreview) return globalThis.__fakeBrowserLivePreview;
+    if (selector === '#chat-header-actions') return globalThis.__fakeChatHeaderActions.root;
     return fakeElement();
   },
 };
@@ -165,6 +208,9 @@ globalThis.mermaid = {
 };
 
 describe('frontend module boundaries', () => {
+  before(async () => {
+    await loadToolUiForTests();
+  });
   it('keeps the views compatibility exports available', async () => {
     const views = await import('../public/js/views.js');
     const expectedExports = [
@@ -283,6 +329,13 @@ describe('frontend module boundaries', () => {
     assert.equal(typeof modules[7].showToolsPage, 'function');
     assert.equal(typeof modules[8].bindUsageController, 'function');
     assert.equal(typeof modules[8].showUsagePage, 'function');
+  });
+
+  it('loads tool UI manifest from the API route prefix', async () => {
+    const source = await import('node:fs/promises')
+      .then(fs => fs.readFile(new URL('../public/js/tool-ui-registry.js', import.meta.url), 'utf8'));
+    assert.match(source, /api\('GET', '\/api\/v1\/tools\/ui-manifest'\)/);
+    assert.doesNotMatch(source, /api\('GET', '\/tools\/ui-manifest'\)/);
   });
 
   it('detects missing sensitive setup values without exposing secret contents', async () => {
@@ -415,32 +468,25 @@ describe('frontend module boundaries', () => {
     assert.equal(dom.visionProviderEditor.classList.contains('hidden'), true);
   });
 
-  it('shows the Feishu token menu only when feishu_auth is enabled', async () => {
+  it('renders Feishu token menu as a tool header action only when feishu_auth is enabled', async () => {
     const { state } = await import('../public/js/state.js');
     const { dom } = await import('../public/js/dom.js');
     const { renderChatHeaderActions } = await import('../public/js/controllers/chat-header-controller.js');
 
     state.tools = [{ id: 'feishu_auth', enabled: false, config: {} }];
     renderChatHeaderActions();
-    assert.equal(dom.feishuTokenMenuWrap.classList.contains('hidden'), true);
+    assert.equal(dom.chatHeaderActions.innerHTML, '');
 
     state.tools = [{ id: 'feishu_auth', enabled: true, config: { user_access_token: 'u-token' } }];
     renderChatHeaderActions();
-    assert.equal(dom.feishuTokenMenuWrap.classList.contains('hidden'), false);
-    assert.equal(dom.btnFeishuTokenMenu.getAttribute('aria-label'), 'Feishu token actions');
+    assert.match(dom.chatHeaderActions.innerHTML, /data-tool-header-action="feishu-token"/);
+    assert.match(dom.chatHeaderActions.innerHTML, /飞/);
   });
 
-  it('clears Feishu token through dedicated endpoint without sending config overwrite', async () => {
+  it('clears Feishu token through tool header action without sending config overwrite', async () => {
     const { state } = await import('../public/js/state.js');
     const { dom } = await import('../public/js/dom.js');
-    const { bindChatHeaderController } = await import('../public/js/controllers/chat-header-controller.js');
-    const listeners = {};
-    dom.btnFeishuTokenMenu.addEventListener = (event, handler) => {
-      listeners[`menu:${event}`] = handler;
-    };
-    dom.btnClearFeishuToken.addEventListener = (event, handler) => {
-      listeners[`clear:${event}`] = handler;
-    };
+    const { bindChatHeaderController, renderChatHeaderActions } = await import('../public/js/controllers/chat-header-controller.js');
 
     const calls = [];
     const originalFetch = globalThis.fetch;
@@ -473,11 +519,20 @@ describe('frontend module boundaries', () => {
         { id: 'feishu_auth', enabled: true, config: { user_access_token: 'u-token' } },
         { id: 'feishu_read', enabled: true, config: { user_access_token: 'read-token' } },
       ];
+      renderChatHeaderActions();
       bindChatHeaderController();
-      dom.feishuTokenMenu.classList.add('hidden');
-      listeners['menu:click']({ stopPropagation() {} });
-      assert.equal(dom.feishuTokenMenu.classList.contains('hidden'), false);
-      await listeners['clear:click']();
+      const { button, menu, clearButton, root } = globalThis.__fakeChatHeaderActions;
+      root.dispatchEvent({
+        type: 'click',
+        target: button,
+        stopPropagation() {},
+      });
+      assert.equal(menu.classList.contains('hidden'), false);
+      await root.__listeners.get('click')[0]({
+        type: 'click',
+        target: clearButton,
+        preventDefault() {},
+      });
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -486,6 +541,39 @@ describe('frontend module boundaries', () => {
     assert.equal(state.tools.find(tool => tool.id === 'feishu_auth').config.app_id, 'cli_xxx');
     assert.equal(state.tools.find(tool => tool.id === 'feishu_auth').config.app_secret, 'secret');
     assert.equal(state.tools.find(tool => tool.id === 'feishu_auth').config.user_access_token, '');
+  });
+
+  it('renders Feishu config fields from the tool client extension', async () => {
+    const { state } = await import('../public/js/state.js');
+    const { dom } = await import('../public/js/dom.js');
+    const { renderToolList } = await import('../public/js/tool-view.js');
+
+    state.tools = [
+      {
+        id: 'feishu_auth',
+        name: 'feishu_auth',
+        title: 'Feishu Auth',
+        category: 'web',
+        adapter: 'builtin',
+        enabled: true,
+        timeoutMs: 300000,
+        config: {
+          app_id: 'cli_xxx',
+          app_secret: 'secret-value',
+          user_access_token: 'u-token',
+          oauthScope_user_authorized: 'wiki:wiki:readonly',
+        },
+        configSchema: { properties: {} },
+        configExamples: [],
+      },
+    ];
+
+    renderToolList();
+
+    assert.match(dom.toolList.innerHTML, /Feishu App Credentials/);
+    assert.match(dom.toolList.innerHTML, /data-config-key="app_id"/);
+    assert.match(dom.toolList.innerHTML, /value="cli_xxx"/);
+    assert.doesNotMatch(dom.toolList.innerHTML, /u-token/);
   });
 
   it('shows shell command blocks while the command is still running', async () => {
@@ -846,7 +934,7 @@ describe('frontend module boundaries', () => {
 
   it('streams browser action steps and merges final tool result into the same block', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
-    const { __test: browserPreviewTest } = await import('../public/js/browser-live-preview.js');
+    const { __test: browserPreviewTest, updateBrowserLivePreview, completeBrowserLivePreview } = await import('../public/js/browser-live-preview.js');
     const stream = {
       conversationId: 'test',
       blocks: [],
@@ -863,6 +951,8 @@ describe('frontend module boundaries', () => {
       },
       flushRender() {},
       cancelRender() {},
+      updateBrowserLivePreview,
+      completeBrowserLivePreview,
     };
 
     appendStreamEvent({
