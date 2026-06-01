@@ -141,6 +141,39 @@ describe('queryLoop', () => {
       assert.equal(msgs[1].content[0].type, 'text');
     });
 
+    it('does not retry a capability-oriented greeting as a missing tool call', async () => {
+      let callCount = 0;
+      const text = [
+        "Hello! I'm xwork, your helpful AI agent. I'm running as **deepseek-v4-flash** on your xwork installation at `D:\\xwork`.",
+        '',
+        'How can I help you today? Feel free to ask me to:',
+        '',
+        '- **Explore your workspace** — browse code, read files, search for patterns',
+        '- **Research topics** — search the web for current information',
+        '- **Inspect or configure xwork** — check channels, tools, or active models',
+      ].join('\n');
+      const streamChat = async (...args) => {
+        callCount++;
+        return fakeStreamChatThatReturns({
+          text,
+          content: [{ type: 'text', text }],
+        })(...args);
+      };
+
+      const iterator = queryLoop({
+        config: baseConfig,
+        history: baseHistory,
+        streamChat,
+        runTool: fakeRunTool([]),
+      });
+      await drain(iterator);
+
+      assert.equal(callCount, 1);
+      assert.equal(events.length, 0);
+      assert.equal(returnValue.reason, 'completed');
+      assert.equal(returnValue.text, text);
+    });
+
     it('retries when the model narrates external actions without a structured tool call', async () => {
       let callCount = 0;
       let secondMessages;
