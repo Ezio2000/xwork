@@ -32,21 +32,19 @@ describe('expert agent profiles', () => {
     const scenarioAgents = agents.filter(agent => agent.id.startsWith('xwork_'));
     const ids = new Set(scenarioAgents.map(agent => agent.id));
 
-    assert.ok(scenarioAgents.length >= 20);
+    assert.equal(scenarioAgents.length, 6);
     for (const requiredId of [
-      'xwork_code_review_expert',
-      'xwork_implementation_expert',
-      'xwork_backend_api_expert',
-      'xwork_frontend_ux_expert',
-      'xwork_test_qa_expert',
-      'xwork_security_review_expert',
-      'xwork_web_research_expert',
-      'xwork_market_research_expert',
-      'xwork_documentation_expert',
-      'xwork_feishu_workspace_expert',
+      'xwork_code_expert',
+      'xwork_system_design_expert',
+      'xwork_frontend_product_expert',
+      'xwork_research_integration_expert',
+      'xwork_operations_expert',
+      'xwork_workspace_data_expert',
     ]) {
       assert.ok(ids.has(requiredId), `missing scenario expert: ${requiredId}`);
     }
+    assert.ok(!ids.has('xwork_code_review_expert'));
+    assert.ok(!ids.has('xwork_security_review_expert'));
 
     for (const agent of scenarioAgents) {
       assert.equal(agent.builtin, true);
@@ -62,16 +60,12 @@ describe('expert agent profiles', () => {
     }
 
     const expectedBudgets = {
-      xwork_code_review_expert: [120000, 3000],
-      xwork_implementation_expert: [180000, 3600],
-      xwork_frontend_ux_expert: [180000, 3600],
-      xwork_debugging_expert: [180000, 3400],
-      xwork_performance_expert: [180000, 3600],
-      xwork_documentation_expert: [180000, 5000],
-      xwork_market_research_expert: [300000, 7000],
-      xwork_web_research_expert: [300000, 6000],
-      xwork_api_integration_expert: [240000, 6000],
-      xwork_feishu_workspace_expert: [240000, 6000],
+      xwork_code_expert: [180000, 4200],
+      xwork_system_design_expert: [180000, 4000],
+      xwork_frontend_product_expert: [180000, 3800],
+      xwork_research_integration_expert: [300000, 7000],
+      xwork_operations_expert: [240000, 5000],
+      xwork_workspace_data_expert: [240000, 6500],
     };
     for (const [id, [timeoutMs, maxOutputChars]] of Object.entries(expectedBudgets)) {
       const agent = agents.find(item => item.id === id);
@@ -184,11 +178,12 @@ describe('expert agent profiles', () => {
 
     assert.ok(delegateTask);
     assert.ok(delegateTask.expertAgents.some(agent => agent.id === DEFAULT_EXPERT_AGENT_ID));
-    assert.ok(delegateTask.expertAgents.some(agent => agent.id === 'xwork_code_review_expert'));
-    assert.ok(delegateTask.expertAgents.length >= 21);
+    assert.ok(delegateTask.expertAgents.some(agent => agent.id === 'xwork_code_expert'));
+    assert.ok(delegateTask.expertAgents.length >= 7);
     assert.match(delegateTask.description, /Available expert agents/);
     assert.ok(delegateTask.inputSchema.properties.expertAgentId);
-    assert.ok(delegateTask.inputSchema.properties.expertAgentId.enum.includes('xwork_security_review_expert'));
+    assert.ok(delegateTask.inputSchema.properties.expertAgentId.enum.includes('xwork_system_design_expert'));
+    assert.ok(!delegateTask.inputSchema.properties.expertAgentId.enum.includes('xwork_security_review_expert'));
   });
 
   it('runs with selected expert profile metadata and tool policy', async () => {
@@ -246,21 +241,46 @@ describe('expert agent profiles', () => {
   });
 
   it('allows built-in scenario experts to be reset but not deleted', async () => {
-    const updated = await updateExpertAgent('xwork_code_review_expert', {
+    const updated = await updateExpertAgent('xwork_code_expert', {
       enabled: false,
-      title: 'Temporarily Customized Reviewer',
+      title: 'Temporarily Customized Code Expert',
       maxTurns: 5,
     });
     assert.equal(updated.enabled, false);
-    assert.equal(updated.title, 'Temporarily Customized Reviewer');
+    assert.equal(updated.title, 'Temporarily Customized Code Expert');
 
-    const reset = await resetExpertAgent('xwork_code_review_expert');
-    assert.equal(reset.id, 'xwork_code_review_expert');
-    assert.equal(reset.title, 'Code Review Expert');
+    const reset = await resetExpertAgent('xwork_code_expert');
+    assert.equal(reset.id, 'xwork_code_expert');
+    assert.equal(reset.title, 'Code Expert');
     assert.equal(reset.enabled, true);
-    assert.equal(reset.maxTurns, 22);
+    assert.equal(reset.maxTurns, 34);
 
-    const deleteResult = await deleteExpertAgent('xwork_code_review_expert');
+    const deleteResult = await deleteExpertAgent('xwork_code_expert');
     assert.equal(deleteResult.status, 409);
+  });
+
+  it('maps retired built-in expert ids to compacted profiles at runtime', async () => {
+    const result = await runSubagent({
+      task: 'Review one thing',
+      expertAgentId: 'xwork_code_review_expert',
+      config: { model: 'test-model', maxTurns: 5, tools: [] },
+      context: { conversationId: 'conv1', channelId: 'ch1', model: 'test-model', source: 'test', environment: 'test' },
+      streamChat: async (_config, _messages, onDelta, _onThink, onDone) => {
+        onDelta('ok');
+        onDone('ok', 'end_turn', null);
+        return {
+          text: 'ok',
+          content: [{ type: 'text', text: 'ok' }],
+          stopReason: 'end_turn',
+          usage: null,
+          toolCalls: [],
+          serverToolEvents: [],
+        };
+      },
+      emitEvent: () => {},
+    });
+
+    assert.equal(result.expertAgent.id, 'xwork_code_expert');
+    assert.equal(result.expertAgent.requestedId, 'xwork_code_review_expert');
   });
 });
