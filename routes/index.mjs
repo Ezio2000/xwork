@@ -3,7 +3,6 @@ import { Router } from 'express';
 import { channelRoutes } from './channel-routes.mjs';
 import { chatRoutes } from './chat-routes.mjs';
 import { conversationRoutes } from './conversation-routes.mjs';
-import { browserLiveRoutes } from './browser-live-routes.mjs';
 import { toolRoutes } from './tool-routes.mjs';
 import { agentRoutes } from './agent-routes.mjs';
 import { expertAgentRoutes } from './expert-agent-routes.mjs';
@@ -17,7 +16,6 @@ export async function apiRoutes() {
   router.use(channelRoutes());
   router.use(imageRoutes());
   router.use(workspaceRoutes());
-  router.use(browserLiveRoutes());
   router.use(await toolRoutes());
   router.use(expertAgentRoutes());
   router.use(agentRoutes());

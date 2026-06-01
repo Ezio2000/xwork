@@ -1,10 +1,8 @@
 import { getStreamModules } from './tool-ui-registry.js';
 
 export function getStreamHelpers(modules) {
-  const browser = modules.find(m => m.toolNames?.includes('browser_action'));
   const shell = modules.find(m => m.toolNames?.includes('shell_command'));
   return {
-    markExistingBrowserActionErrored: (tool, stream) => browser?.markExistingBrowserActionErrored?.(tool, stream) ?? false,
     markExistingShellCommandErrored: (tool, stream) => shell?.markExistingShellCommandErrored?.(tool, stream) ?? false,
   };
 }

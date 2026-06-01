@@ -1,5 +1,4 @@
 import { api } from '../api-client.js';
-import { hideBrowserLivePreview } from '../browser-live-preview.js';
 import { renderActiveStreamingMessage } from '../chat-stream.js';
 import { dom } from '../dom.js';
 import { state } from '../state.js';
@@ -18,8 +17,7 @@ export async function loadConversations() {
 }
 
 export async function selectConversation(id) {
-  if (id !== state.activeId) hideBrowserLivePreview();
-  state.activeId = id;
+  if (id !== state.activeId) state.activeId = id;
   const convo = await api('GET', `/api/v1/conversations/${id}`);
   state.messages = hydrateAssistantMessages(convo.messages);
   dom.chatTitle.textContent = convo.title;
@@ -31,7 +29,6 @@ export async function selectConversation(id) {
 }
 
 export async function newConversation() {
-  hideBrowserLivePreview();
   const convo = await api('POST', '/api/v1/conversations', { title: 'New Chat' });
   state.conversations.unshift({
     id: convo.id,
@@ -51,7 +48,6 @@ export async function newConversation() {
 async function deleteConversation(id) {
   await api('DELETE', `/api/v1/conversations/${id}`);
   if (state.activeId === id) {
-    hideBrowserLivePreview();
     state.activeId = null;
     state.messages = [];
     dom.chatTitle.textContent = '';

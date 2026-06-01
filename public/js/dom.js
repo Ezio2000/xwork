@@ -6,7 +6,6 @@ export const dom = {
   scrollBottomBtn: $('#scroll-bottom-btn'),
   chatTitle: $('#chat-title'),
   chatHeaderActions: $('#chat-header-actions'),
-  browserLivePreview: $('#browser-live-preview'),
   msgInput: $('#msg-input'),
   fileMentionMenu: $('#file-mention-menu'),
   imageAttachments: $('#image-attachments'),

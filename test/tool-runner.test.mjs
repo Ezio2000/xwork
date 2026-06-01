@@ -8,7 +8,6 @@ import { getEnabledToolDefinitions, listTools, updateToolConfig } from '../lib/t
 import { readToolConfigs, writeToolConfigs } from '../lib/tools/store.mjs';
 import { loadTools } from '../lib/tools/loader.mjs';
 import { tool as shellCommandTool } from '../lib/tools/shell-command/index.mjs';
-import { tool as browserActionTool } from '../lib/tools/browser-action/index.mjs';
 import { tool as webFetchTool } from '../lib/tools/web-fetch/index.mjs';
 
 function hasCommand(command) {
@@ -311,113 +310,6 @@ describe('tool configuration surface', () => {
         await writeToolConfigs(previousConfigs);
       }
     }
-  });
-});
-
-describe('browser action tool', () => {
-  it('is registered and enabled by default', async () => {
-    const tools = await listTools();
-    const browser = tools.find(tool => tool.name === 'browser_action');
-
-    assert.ok(browser);
-    assert.equal(browser.dangerLevel, 'high');
-    assert.equal(browserActionTool.defaultEnabled, true);
-    assert.equal(browser.config.headless, true);
-  });
-
-  it('validates URL and host restrictions', () => {
-    const url = browserActionTool.__test.validateHttpUrl('http://localhost:3000/');
-    assert.equal(url.hostname, 'localhost');
-
-    assert.doesNotThrow(() => browserActionTool.__test.assertAllowedUrl(url, { allowedHosts: ['localhost'] }));
-    assert.throws(() => browserActionTool.__test.assertAllowedUrl(url, { allowedHosts: ['example.com'] }), /not allowed/i);
-    assert.throws(() => browserActionTool.__test.assertAllowedUrl(url, { blockedHosts: ['localhost'] }), /Blocked/i);
-    assert.throws(() => browserActionTool.__test.validateHttpUrl('file:///etc/passwd'), /http or https/);
-  });
-
-  it('sanitizes screenshot names and exposes render metadata', () => {
-    assert.equal(browserActionTool.__test.screenshotFilename('home'), 'home.png');
-    assert.equal(browserActionTool.__test.screenshotFilename('bilibili_search_黄仁勋.png'), 'bilibili_search.png');
-    assert.equal(browserActionTool.__test.screenshotFilename('../bad'), 'bad.png');
-    assert.equal(
-      browserActionTool.__test.screenshotUrlFromPath('/workspace/data/browser-screenshots/home.png'),
-      '/api/v1/tool-assets/browser-screenshots/home.png',
-    );
-
-    const render = browserActionTool.parseResult({
-      action: 'locate',
-      url: 'http://localhost:3000/',
-      title: 'xwork',
-      statusCode: 200,
-      screenshotPath: '/workspace/data/browser-screenshots/home.png',
-      screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
-      fullPage: true,
-      count: 1,
-      matches: [{ index: 0, tagName: 'button', text: 'Send' }],
-    });
-
-    assert.equal(render.renderType, 'browser-action');
-    assert.equal(render.data.action, 'locate');
-    assert.equal(render.data.title, 'xwork');
-    assert.match(render.data.screenshotPath, /home\.png$/);
-    assert.equal(render.data.screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
-    assert.deepEqual(render.data.matches, [{ index: 0, tagName: 'button', text: 'Send' }]);
-  });
-
-  it('keeps screenshots constrained to the current viewport box', () => {
-    const tall = browserActionTool.__test.screenshotCapturePlan(
-      { action: 'screenshot', fullPage: true },
-      {},
-      { viewportWidth: 1365, viewportHeight: 768, pageHeight: 85588 },
-    );
-
-    assert.equal(tall.metadata.fullPageRequested, true);
-    assert.equal(tall.metadata.fullPage, false);
-    assert.equal(tall.metadata.fullPageTruncated, true);
-    assert.equal(tall.metadata.truncated, true);
-    assert.equal(tall.metadata.pageHeight, 85588);
-    assert.equal(tall.metadata.screenshotHeight, 768);
-    assert.deepEqual(tall.options, { fullPage: false });
-
-    const normal = browserActionTool.__test.screenshotCapturePlan(
-      { action: 'screenshot', fullPage: true },
-      {},
-      { viewportWidth: 1365, viewportHeight: 768, pageHeight: 5000 },
-    );
-    assert.equal(normal.options.fullPage, false);
-    assert.equal(normal.metadata.fullPage, false);
-    assert.equal(normal.metadata.fullPageTruncated, true);
-    assert.equal(normal.metadata.screenshotHeight, 768);
-
-    const viewport = browserActionTool.__test.screenshotCapturePlan(
-      { action: 'screenshot' },
-      {},
-      { viewportWidth: 1024, viewportHeight: 768, pageHeight: 5000 },
-    );
-    assert.deepEqual(viewport.options, { fullPage: false });
-    assert.equal(viewport.metadata.fullPageRequested, false);
-    assert.equal(viewport.metadata.fullPageTruncated, false);
-    assert.equal(viewport.metadata.screenshotWidth, 1024);
-    assert.equal(viewport.metadata.screenshotHeight, 768);
-  });
-
-  it('accepts visible text as a click or locate target', () => {
-    assert.doesNotThrow(() => browserActionTool.validate({ action: 'click', text: '仙童数学' }));
-    assert.doesNotThrow(() => browserActionTool.validate({ action: 'locate', text: '仙童数学' }));
-    assert.throws(() => browserActionTool.validate({ action: 'click' }), /selector or text/);
-    assert.throws(() => browserActionTool.validate({ action: 'locate' }), /selector or text/);
-
-    const render = browserActionTool.parseResult({
-      action: 'locate',
-      url: 'https://www.bilibili.com/',
-      title: 'bilibili',
-      textQuery: '仙童数学',
-      count: 1,
-      matches: [{ index: 0, tagName: 'a', text: '仙童数学' }],
-    });
-
-    assert.equal(render.data.textQuery, '仙童数学');
-    assert.equal(render.data.count, 1);
   });
 });
 

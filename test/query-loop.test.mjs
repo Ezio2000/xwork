@@ -165,18 +165,18 @@ describe('queryLoop', () => {
           text: '现在改用工具执行。',
           content: [
             { type: 'text', text: '现在改用工具执行。' },
-            { type: 'tool_use', id: 'toolu_browser', name: 'browser_action', input: { action: 'screenshot' } },
+            { type: 'tool_use', id: 'toolu_browser', name: 'get_current_time', input: { timezone: 'local' } },
           ],
-          toolCalls: [{ id: 'toolu_browser', name: 'browser_action', input: { action: 'screenshot' } }],
+          toolCalls: [{ id: 'toolu_browser', name: 'get_current_time', input: { timezone: 'local' } }],
         })(...args);
       };
 
       const runTool = fakeRunTool([
-        { id: 'toolu_browser', name: 'browser_action', isError: false, output: { ok: true }, durationMs: 1 },
+        { id: 'toolu_browser', name: 'get_current_time', isError: false, output: { time: '2026-01-01T00:00:00Z' }, durationMs: 1 },
       ]);
 
       const iterator = queryLoop({
-        config: { ...baseConfig, tools: [{ name: 'browser_action' }] },
+        config: { ...baseConfig, tools: [{ name: 'get_current_time' }] },
         history: baseHistory,
         maxTurns: 3,
         streamChat,

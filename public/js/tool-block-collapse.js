@@ -11,7 +11,6 @@ export const AUTO_COLLAPSE_TOOL_BLOCK_TYPES = new Set([
   'git-output',
   'shell-command',
   'uuid-list',
-  'browser-action',
   'subagent-run',
   'ask-user',
   'tool-running',
@@ -19,7 +18,6 @@ export const AUTO_COLLAPSE_TOOL_BLOCK_TYPES = new Set([
 ]);
 
 const SPECIAL_TOOL_CALL_NAMES = new Set([
-  'browser_action',
   'ask_user',
   'shell_command',
   'delegate_task',
@@ -123,7 +121,6 @@ export function collapseToolToggleElements(rootEl) {
   rootEl.querySelectorAll([
     '.sources-toggle',
     '.shell-command-toggle',
-    '.browser-action-toggle',
     '.web-fetch-toggle',
     '.subagent-toggle',
     '.uuid-toggle',

@@ -151,7 +151,6 @@ globalThis.document = {
   },
   querySelector(selector) {
     if (selector === '#messages' && globalThis.__fakeMessages) return globalThis.__fakeMessages;
-    if (selector === '#browser-live-preview' && globalThis.__fakeBrowserLivePreview) return globalThis.__fakeBrowserLivePreview;
     if (selector === '#chat-header-actions') return globalThis.__fakeChatHeaderActions.root;
     return fakeElement();
   },
@@ -873,44 +872,6 @@ describe('frontend module boundaries', () => {
     assert.match(html, /npm test/);
   });
 
-  it('renders browser action results as a collapsible block', async () => {
-    const { renderBlocks } = await import('../public/js/renderers.js');
-    const html = renderBlocks([{
-      type: 'browser-action',
-      action: 'screenshot',
-      url: 'http://localhost:3000/',
-      title: 'xwork',
-      statusCode: 200,
-      screenshotPath: '/workspace/data/browser-screenshots/home.png',
-      screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
-      fullPageRequested: true,
-      fullPageTruncated: true,
-      pageHeight: 85588,
-      screenshotWidth: 1365,
-      screenshotHeight: 768,
-      truncated: true,
-      textQuery: '仙童数学',
-      steps: [
-        { phase: 'start', action: 'screenshot', label: 'start screenshot' },
-        { phase: 'complete', action: 'screenshot', label: 'complete screenshot', screenshotPath: '/workspace/data/browser-screenshots/home.png', textQuery: '仙童数学', fullPageTruncated: true, screenshotWidth: 1365, screenshotHeight: 768 },
-      ],
-      text: 'visible page text',
-      collapsed: true,
-    }], false);
-
-    assert.match(html, /browser-action-toggle collapsed/);
-    assert.match(html, /xwork/);
-    assert.match(html, /HTTP 200/);
-    assert.match(html, /browser-screenshots\/home\.png/);
-    assert.match(html, /<img src="\/api\/v1\/tool-assets\/browser-screenshots\/home\.png"/);
-    assert.match(html, /browser-action-steps/);
-    assert.match(html, /complete screenshot/);
-    assert.match(html, /1365x768px/);
-    assert.match(html, /viewport only/);
-    assert.match(html, /仙童数学/);
-    assert.match(html, /visible page text/);
-  });
-
   it('escapes raw HTML in web fetch previews so later blocks remain visible', async () => {
     const { renderBlocks } = await import('../public/js/renderers.js');
     const html = renderBlocks([
@@ -930,132 +891,6 @@ describe('frontend module boundaries', () => {
     assert.doesNotMatch(html, /<script\b/i);
     assert.match(html, /&lt;!DOCTYPE html&gt;/i);
     assert.match(html, /FINAL_VISIBLE/);
-  });
-
-  it('streams browser action steps and merges final tool result into the same block', async () => {
-    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
-    const { __test: browserPreviewTest, updateBrowserLivePreview, completeBrowserLivePreview } = await import('../public/js/browser-live-preview.js');
-    const stream = {
-      conversationId: 'test',
-      blocks: [],
-      renderer: { schedule() {}, flush() {}, cancel() {} },
-    };
-    let scheduled = 0;
-
-    const effects = {
-      isActiveConversation: () => true,
-      showThinking() {},
-      hideThinking() {},
-      scheduleRender() {
-        scheduled++;
-      },
-      flushRender() {},
-      cancelRender() {},
-      updateBrowserLivePreview,
-      completeBrowserLivePreview,
-    };
-
-    appendStreamEvent({
-      type: 'tool_call',
-      tools: [{
-        id: 'toolu_browser',
-        name: 'browser_action',
-        input: { action: 'screenshot', url: 'http://localhost:3000/' },
-      }],
-    }, stream, effects);
-
-    appendStreamEvent({
-      type: 'tool_delta',
-      id: 'toolu_browser',
-      name: 'browser_action',
-      stream: 'browser',
-      phase: 'start',
-      action: 'screenshot',
-      url: 'http://localhost:3000/',
-      ts: '2026-05-22T00:00:00.000Z',
-    }, stream, effects);
-
-    appendStreamEvent({
-      type: 'tool_delta',
-      id: 'toolu_browser',
-      name: 'browser_action',
-      stream: 'browser',
-      phase: 'complete',
-      action: 'screenshot',
-      url: 'http://localhost:3000/',
-      title: 'xwork',
-      screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
-      textQuery: 'Run',
-      ts: '2026-05-22T00:00:01.000Z',
-    }, stream, effects);
-
-    appendStreamEvent({
-      type: 'tool_result',
-      tools: [{
-        id: 'toolu_browser',
-        name: 'browser_action',
-        isError: false,
-        renderType: 'browser-action',
-        data: {
-          action: 'screenshot',
-          url: 'http://localhost:3000/',
-          title: 'xwork',
-          screenshotUrl: '/api/v1/tool-assets/browser-screenshots/home.png',
-          textQuery: 'Run',
-        },
-      }],
-    }, stream, effects);
-
-    assert.equal(stream.blocks[0].type, 'browser-action');
-    assert.equal(stream.blocks.length, 2);
-    assert.equal(stream.blocks[0].collapsed, true);
-    assert.equal(stream.blocks[0].toolCallId, 'toolu_browser');
-    assert.equal(stream.blocks[0].status, 'completed');
-    assert.equal(stream.blocks[0].steps.length, 3);
-    assert.equal(stream.blocks[0].screenshotUrl, '/api/v1/tool-assets/browser-screenshots/home.png');
-    assert.equal(stream.blocks[0].textQuery, 'Run');
-    assert.equal(browserPreviewTest.previewState.url, 'http://localhost:3000/');
-    assert.equal(browserPreviewTest.previewState.status, 'streaming');
-    assert.equal(scheduled, 3);
-  });
-
-  it('hides the live browser preview when a chat stream completes normally', async () => {
-    const { state } = await import('../public/js/state.js');
-    const { __test: chatStreamTest } = await import('../public/js/chat-stream.js');
-    const { updateBrowserLivePreview, __test: browserPreviewTest } = await import('../public/js/browser-live-preview.js');
-
-    globalThis.__fakeBrowserLivePreview = fakeElement();
-    state.activeId = 'conv-browser-close';
-    state.messages = [];
-    state.conversations = [{ id: 'conv-browser-close', title: 'New Chat' }];
-    state.streamingByConversationId = new Map([[
-      'conv-browser-close',
-      {
-        conversationId: 'conv-browser-close',
-        runId: 'run-browser-close',
-        message: 'open page',
-        images: [],
-        originalMessageCount: 0,
-        model: 'test-model',
-        blocks: [{ type: 'text', content: 'done' }],
-        renderer: { flush() {}, schedule() {}, cancel() {} },
-      },
-    ]]);
-
-    updateBrowserLivePreview({
-      id: 'toolu_browser_close',
-      name: 'browser_action',
-      action: 'open',
-      status: 'streaming',
-      url: 'http://localhost:3000/',
-    }, { conversationId: 'conv-browser-close' });
-    assert.equal(browserPreviewTest.previewState.visible, true);
-
-    const stream = state.streamingByConversationId.get('conv-browser-close');
-    chatStreamTest.finalizeStreamingMessage(stream);
-
-    assert.equal(browserPreviewTest.previewState.visible, false);
-    assert.equal(browserPreviewTest.previewState.toolCallId, '');
   });
 
   it('expands while running and collapses after grep completes', async () => {
@@ -1335,36 +1170,6 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.blocks[0].blocks.at(-1).sources[0].title, 'Server Result');
   });
 
-  it('collapses browser tool blocks after errors', async () => {
-    const { appendStreamEvent } = await import('../public/js/stream-reducer.js');
-    const stream = {
-      conversationId: 'conv1',
-      blocks: [],
-      renderer: { schedule() {}, flush() {}, cancel() {} },
-    };
-
-    appendStreamEvent({
-      type: 'tool_call',
-      tools: [{
-        id: 'toolu_browser_err',
-        name: 'browser_action',
-        input: { action: 'open', url: 'http://localhost:3000/' },
-      }],
-    }, stream);
-
-    appendStreamEvent({
-      type: 'tool_result',
-      tools: [{
-        id: 'toolu_browser_err',
-        name: 'browser_action',
-        isError: true,
-        output: 'blocked by policy',
-      }],
-    }, stream);
-
-    assert.equal(stream.blocks[0].status, 'error');
-    assert.equal(stream.blocks[0].collapsed, true);
-  });
 
   it('keeps Feishu media previews expanded and non-collapsible', async () => {
     const { appendStreamEvent } = await import('../public/js/stream-reducer.js');

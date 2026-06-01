@@ -9,7 +9,6 @@ import {
 } from './tool-block-collapse.js';
 import { hideThinkingPopup, showThinkingPopup } from './thinking-popup.js';
 import { isActiveConversation } from './stores/app-store.js';
-import { completeBrowserLivePreview, updateBrowserLivePreview } from './browser-live-preview.js';
 import {
   dispatchAskUserPending,
   dispatchToolCall,
@@ -28,8 +27,6 @@ function defaultEffects(stream) {
     scheduleRender: () => stream.renderer.schedule(),
     flushRender: (options) => stream.renderer.flush(options),
     cancelRender: () => stream.renderer.cancel(),
-    updateBrowserLivePreview: (payload, options) => updateBrowserLivePreview(payload, options),
-    completeBrowserLivePreview: (tool, options) => completeBrowserLivePreview(tool, options),
   };
 }
 
@@ -283,7 +280,7 @@ function applyToolResult(evt, stream, effects) {
 function applyToolCall(evt, stream, effects) {
   dispatchToolCall(evt, stream, effects, streamModules());
   for (const tool of evt.tools || []) {
-    if (['browser_action', 'ask_user', 'shell_command'].includes(tool.name)) continue;
+    if (['ask_user', 'shell_command'].includes(tool.name)) continue;
 
     if (shouldCreateRunningToolBlock(tool) && !findToolBlockByCallId(stream, tool.id)) {
       stream.blocks.push(buildRunningToolBlock(tool));

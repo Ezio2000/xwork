@@ -7,8 +7,7 @@
 .uuid-toggle,
 .web-fetch-toggle,
 .subagent-toggle,
-.shell-command-toggle,
-.browser-action-toggle {
+.shell-command-toggle {
   margin: 10px 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -20,8 +19,7 @@
 .uuid-toggle-header,
 .web-fetch-toggle-header,
 .subagent-toggle-header,
-.shell-command-toggle-header,
-.browser-action-toggle-header {
+.shell-command-toggle-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -36,8 +34,7 @@
 .uuid-toggle-header:hover,
 .web-fetch-toggle-header:hover,
 .subagent-toggle-header:hover,
-.shell-command-toggle-header:hover,
-.browser-action-toggle-header:hover {
+.shell-command-toggle-header:hover {
   background: var(--bg-hover);
 }
 
@@ -45,8 +42,7 @@
 .uuid-toggle-label,
 .web-fetch-toggle-label,
 .subagent-toggle-label,
-.shell-command-toggle-label,
-.browser-action-toggle-label {
+.shell-command-toggle-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -65,8 +61,7 @@
 .uuid-toggle-arrow,
 .web-fetch-toggle-arrow,
 .subagent-toggle-arrow,
-.shell-command-toggle-arrow,
-.browser-action-toggle-arrow {
+.shell-command-toggle-arrow {
   font-size: 10px;
   color: var(--text-muted);
   transition: transform var(--transition);
@@ -77,8 +72,7 @@
 .uuid-toggle.collapsed .uuid-toggle-arrow,
 .web-fetch-toggle.collapsed .web-fetch-toggle-arrow,
 .subagent-toggle.collapsed .subagent-toggle-arrow,
-.shell-command-toggle.collapsed .shell-command-toggle-arrow,
-.browser-action-toggle.collapsed .browser-action-toggle-arrow {
+.shell-command-toggle.collapsed .shell-command-toggle-arrow {
   transform: rotate(-90deg);
 }
 
@@ -86,8 +80,7 @@
 .uuid-toggle.collapsed .uuid-toggle-body,
 .web-fetch-toggle.collapsed .web-fetch-toggle-body,
 .subagent-toggle.collapsed .subagent-toggle-body,
-.shell-command-toggle.collapsed .shell-command-toggle-body,
-.browser-action-toggle.collapsed .browser-action-toggle-body {
+.shell-command-toggle.collapsed .shell-command-toggle-body {
   display: none;
 }
 
@@ -95,8 +88,7 @@
 .uuid-toggle-body,
 .web-fetch-toggle-body,
 .subagent-toggle-body,
-.shell-command-toggle-body,
-.browser-action-toggle-body {
+.shell-command-toggle-body {
   border-top: 1px solid var(--border);
 }
 

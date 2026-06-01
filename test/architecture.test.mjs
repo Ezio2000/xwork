@@ -855,7 +855,7 @@ describe('architecture safety contracts', () => {
               role: 'assistant',
               content: [
                 { type: 'text', text: '我来截图。' },
-                { type: 'tool_use', id: 'toolu_1', name: 'browser_action', input: { action: 'screenshot' } },
+                { type: 'tool_use', id: 'toolu_1', name: 'get_current_time', input: { timezone: 'local' } },
               ],
             },
             {
