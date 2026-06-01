@@ -174,6 +174,38 @@ describe('queryLoop', () => {
       assert.equal(returnValue.text, text);
     });
 
+    it('does not retry capability or runtime-status descriptions', async () => {
+      const samples = [
+        'I can read files, search the web, and inspect the workspace when you ask.',
+        'Feel free to ask me to search the web or read files.',
+        "I'm running as deepseek-v4-flash in this xwork session.",
+        '我可以帮你读取文件、搜索网页和检查配置。',
+        '你可以让我搜索资料或读取项目文件。',
+      ];
+
+      for (const text of samples) {
+        let callCount = 0;
+        const iterator = queryLoop({
+          config: baseConfig,
+          history: baseHistory,
+          streamChat: async (...args) => {
+            callCount++;
+            return fakeStreamChatThatReturns({
+              text,
+              content: [{ type: 'text', text }],
+            })(...args);
+          },
+          runTool: fakeRunTool([]),
+        });
+        await drain(iterator);
+
+        assert.equal(callCount, 1, text);
+        assert.equal(events.length, 0, text);
+        assert.equal(returnValue.reason, 'completed', text);
+        assert.equal(returnValue.text, text, text);
+      }
+    });
+
     it('retries when the model narrates external actions without a structured tool call', async () => {
       let callCount = 0;
       let secondMessages;
@@ -230,6 +262,101 @@ describe('queryLoop', () => {
       assert.match(internalMessages[1].content[0].text, /did not include any structured tool_use/);
       assert.equal(returnValue.messages.some(message => message.__internal), false);
       assert.equal(returnValue.messages[1].content[1].type, 'tool_use');
+    });
+
+    it('retries completed English action claims without a structured tool call', async () => {
+      let callCount = 0;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return fakeStreamChatThatReturns({
+            text: 'I have searched the web and read the file.',
+            content: [{ type: 'text', text: 'I have searched the web and read the file.' }],
+            toolCalls: [],
+          })(...args);
+        }
+        return fakeStreamChatThatReturns({
+          text: 'I cannot verify that without a tool call.',
+          content: [{ type: 'text', text: 'I cannot verify that without a tool call.' }],
+          toolCalls: [],
+        })(...args);
+      };
+
+      const iterator = queryLoop({
+        config: { ...baseConfig, tools: [{ name: 'web_search' }] },
+        history: baseHistory,
+        streamChat,
+        runTool: fakeRunTool([]),
+      });
+      await drain(iterator);
+
+      assert.equal(callCount, 2);
+      assert.equal(events[0].type, 'assistant_retry');
+      assert.equal(returnValue.reason, 'completed');
+      assert.equal(returnValue.text, 'I cannot verify that without a tool call.');
+    });
+
+    it('restores the original substantive answer when an imminent-action retry fails', async () => {
+      let callCount = 0;
+      const deltas = [];
+      const original = 'Let me inspect the workspace conceptually: start with the entrypoint, then check routes.';
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return fakeStreamChatThatReturns({
+            text: original,
+            content: [{ type: 'text', text: original }],
+            toolCalls: [],
+          })(...args);
+        }
+        throw new Error('require is not defined');
+      };
+
+      const iterator = queryLoop({
+        config: { ...baseConfig, tools: [{ name: 'read_file' }] },
+        history: baseHistory,
+        streamChat,
+        runTool: fakeRunTool([]),
+        onDelta: (delta) => deltas.push(delta),
+      });
+      await drain(iterator);
+
+      assert.equal(callCount, 2);
+      assert.deepEqual(events.map(event => event.type), ['assistant_retry', 'assistant_retry']);
+      assert.equal(events[1].reason, 'tool_call_missing_recovered');
+      assert.equal(returnValue.reason, 'completed');
+      assert.equal(returnValue.text, original);
+      assert.equal(returnValue.result.retryRecovery.category, 'imminent_action_claim');
+      assert.equal(deltas.join('').endsWith(original), true);
+    });
+
+    it('keeps completed-action retry failures as api errors', async () => {
+      let callCount = 0;
+      const streamChat = async (...args) => {
+        callCount++;
+        if (callCount === 1) {
+          return fakeStreamChatThatReturns({
+            text: 'I have searched the web and saved the result.',
+            content: [{ type: 'text', text: 'I have searched the web and saved the result.' }],
+            toolCalls: [],
+          })(...args);
+        }
+        throw new Error('require is not defined');
+      };
+
+      const iterator = queryLoop({
+        config: { ...baseConfig, tools: [{ name: 'web_search' }] },
+        history: baseHistory,
+        streamChat,
+        runTool: fakeRunTool([]),
+      });
+      await drain(iterator);
+
+      assert.equal(callCount, 2);
+      assert.equal(events.length, 1);
+      assert.equal(events[0].type, 'assistant_retry');
+      assert.equal(returnValue.reason, 'api_error');
+      assert.match(returnValue.error, /require is not defined/);
     });
   });
 
