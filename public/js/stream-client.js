@@ -1,6 +1,55 @@
 import { appendStreamEvent } from './stream-reducer.js';
 import { STREAM_EVENT_TYPES } from './stream-events.js';
 
+const MAX_RECONNECT_ATTEMPTS = 8;
+const BASE_RECONNECT_DELAY_MS = 250;
+const MAX_RECONNECT_DELAY_MS = 5000;
+
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function reconnectUrl(stream) {
+  return `/api/v1/chat-runs/${encodeURIComponent(stream.runId)}/stream?afterSeq=${encodeURIComponent(stream.lastSeq || 0)}`;
+}
+
+function reconnectDelay(attempt, override) {
+  if (Number.isFinite(override)) return Math.max(0, override);
+  return Math.min(BASE_RECONNECT_DELAY_MS * (2 ** Math.max(0, attempt - 1)), MAX_RECONNECT_DELAY_MS);
+}
+
+function canReconnect(stream) {
+  return Boolean(
+    stream?.runId
+    && stream.status === 'running'
+    && !stream.terminalEvent
+    && !stream.finalized
+    && !stream.stopping
+  );
+}
+
+function isNonRecoverableStreamError(err) {
+  return err?.status === 404 || err?.status === 409;
+}
+
+async function reconnectChatStream(stream, callbacks, cause = null) {
+  if (!canReconnect(stream) || isNonRecoverableStreamError(cause)) {
+    callbacks.onError(stream, cause || new Error('Stream connection closed before completion'));
+    return;
+  }
+
+  const attempt = (stream.reconnectAttempts || 0) + 1;
+  stream.reconnectAttempts = attempt;
+  stream.lastReconnectError = cause?.message || String(cause || 'stream closed');
+
+  if (attempt > (callbacks.maxReconnectAttempts ?? MAX_RECONNECT_ATTEMPTS)) {
+    callbacks.onError(stream, new Error(`Stream connection lost after ${attempt - 1} reconnect attempts: ${stream.lastReconnectError}`));
+    return;
+  }
+
+  await wait(reconnectDelay(attempt, callbacks.reconnectDelayMs));
+  if (!canReconnect(stream)) return;
+  await attachChatStream(stream, fetch(reconnectUrl(stream)), callbacks);
+}
+
 export async function readChatStream(res, stream) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -35,7 +84,8 @@ export async function readChatStream(res, stream) {
   return stream.blocks;
 }
 
-export async function attachChatStream(stream, resPromise, { onComplete, onError }) {
+export async function attachChatStream(stream, resPromise, { onComplete, onError, maxReconnectAttempts, reconnectDelayMs }) {
+  const callbacks = { onComplete, onError, maxReconnectAttempts, reconnectDelayMs };
   try {
     const res = await resPromise;
     if (!res.ok) {
@@ -44,12 +94,18 @@ export async function attachChatStream(stream, resPromise, { onComplete, onError
       try {
         errMsg = JSON.parse(err).error || errMsg;
       } catch {}
-      throw new Error(errMsg);
+      const httpError = new Error(errMsg);
+      httpError.status = res.status;
+      throw httpError;
     }
+    const seqBeforeRead = stream.lastSeq || 0;
     await readChatStream(res, stream);
+    if (stream.terminalEvent || (stream.lastSeq || 0) > seqBeforeRead) {
+      stream.reconnectAttempts = 0;
+      stream.lastReconnectError = '';
+    }
     if (!stream.terminalEvent && stream.status === 'running') {
-      const url = `/api/v1/chat-runs/${encodeURIComponent(stream.runId)}/stream?afterSeq=${encodeURIComponent(stream.lastSeq || 0)}`;
-      attachChatStream(stream, fetch(url), { onComplete, onError });
+      await reconnectChatStream(stream, callbacks);
       return;
     }
     if (stream.terminalEvent?.type === 'error') {
@@ -58,6 +114,10 @@ export async function attachChatStream(stream, resPromise, { onComplete, onError
       onComplete(stream);
     }
   } catch (err) {
+    if (canReconnect(stream)) {
+      await reconnectChatStream(stream, callbacks, err);
+      return;
+    }
     onError(stream, err);
   }
 }

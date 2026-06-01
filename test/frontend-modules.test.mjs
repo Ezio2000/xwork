@@ -296,6 +296,17 @@ describe('frontend module boundaries', () => {
     assert.equal(dom.messages.scrollTop, 900);
   });
 
+  it('repairs stale assistant render blocks when they no longer match content', async () => {
+    const { hydrateAssistantMessages } = await import('../public/js/conversation-view.js');
+    const hydrated = hydrateAssistantMessages([{
+      role: 'assistant',
+      content: [{ type: 'text', text: 'DeepSeek API 定价如下。' }],
+      blocks: [{ type: 'text', content: 'xwork 专家系统研究总结' }],
+    }]);
+
+    assert.equal(hydrated[0].blocks[0].content, 'DeepSeek API 定价如下。');
+  });
+
   it('loads split controller modules without missing imports', async () => {
     const modules = await Promise.all([
       import('../public/js/controllers/channels-controller.js'),
@@ -805,6 +816,74 @@ describe('frontend module boundaries', () => {
     assert.equal(stream.retryReason, 'tool_call_missing');
     assert.equal(stream.retryMessage, 'retrying');
     assert.equal(flushed, 1);
+  });
+
+  it('reconnects a running chat stream after a transient network read failure', async () => {
+    const { attachChatStream } = await import('../public/js/stream-client.js');
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    const stream = {
+      conversationId: 'conv1',
+      runId: 'run_reconnect_ui',
+      status: 'running',
+      blocks: [{ type: 'text', content: '' }],
+      lastSeq: 0,
+      terminalEvent: null,
+      finalized: false,
+      stopping: false,
+      renderer: {
+        schedule() {},
+        flush() {},
+        cancel() {},
+      },
+    };
+    const responseFromChunks = (chunks) => ({
+      ok: true,
+      body: {
+        getReader() {
+          let index = 0;
+          return {
+            read() {
+              const chunk = chunks[index++];
+              if (chunk instanceof Error) return Promise.reject(chunk);
+              if (chunk === undefined) return Promise.resolve({ done: true });
+              return Promise.resolve({ done: false, value: new TextEncoder().encode(chunk) });
+            },
+          };
+        },
+      },
+    });
+
+    globalThis.fetch = async (url) => {
+      calls.push(String(url));
+      return responseFromChunks([
+        'data: {"type":"done","seq":2,"stopReason":"end_turn"}\n\n',
+      ]);
+    };
+
+    let completed = 0;
+    let errored = 0;
+    try {
+      await attachChatStream(stream, Promise.resolve(responseFromChunks([
+        'data: {"type":"delta","seq":1,"text":"hel"}\n\n',
+        new TypeError('network error'),
+      ])), {
+        onComplete() {
+          completed++;
+        },
+        onError() {
+          errored++;
+        },
+        reconnectDelayMs: 0,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(stream.blocks[0].content, 'hel');
+    assert.equal(completed, 1);
+    assert.equal(errored, 0);
+    assert.deepEqual(calls, ['/api/v1/chat-runs/run_reconnect_ui/stream?afterSeq=1']);
   });
 
   it('can defer Mermaid rendering until a message is ready', async () => {

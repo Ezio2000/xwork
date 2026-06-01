@@ -6,6 +6,7 @@ import { buildAuditTrace } from '../lib/audit-trace.mjs';
 import { assistantMessage } from '../lib/anthropic/assistant-message.mjs';
 import { anthropicTools, buildSystemPrompt, normalizeMessages } from '../lib/anthropic/message-normalizer.mjs';
 import { CHAT_SERVICE_TEST_HOOKS, getChatRunSnapshot, handleChatRequest, handleChatRunStream } from '../lib/chat-service.mjs';
+import { buildStoredMessages } from '../lib/chat/message-projector.mjs';
 import { buildReplayHistory } from '../lib/chat/conversation-turn.mjs';
 import { projectImagesForModel } from '../lib/chat/image-policy.mjs';
 import { appendAgentRunBlocks } from '../lib/message-rendering.mjs';
@@ -840,6 +841,48 @@ describe('architecture safety contracts', () => {
     assert.equal(message.trace.messages[1].content[1].type, 'tool_use');
     assert.equal(message.trace.messages[2].content[0].type, 'tool_result');
     assert.equal(message.trace.toolCalls[0].toolCallId, 'toolu_1');
+  });
+
+  it('builds cached render blocks from the current turn instead of previous conversation history', () => {
+    const finalState = {
+      reason: 'completed',
+      stopReason: 'end_turn',
+      usage: null,
+      text: 'DeepSeek API 定价如下。',
+      content: [{ type: 'text', text: 'DeepSeek API 定价如下。' }],
+      messages: [
+        { role: 'user', content: '研究专家系统' },
+        { role: 'assistant', content: [{ type: 'text', text: 'xwork 专家系统研究总结' }] },
+        { role: 'user', content: '查 DeepSeek API 定价' },
+        { role: 'assistant', content: [{ type: 'text', text: 'DeepSeek API 定价如下。' }] },
+      ],
+    };
+    const trace = buildAuditTrace({
+      conversationId: 'conv1',
+      channelId: 'ch1',
+      model: 'model1',
+      rootRun: { runId: 'root1', startedAt: '2026-05-16T00:00:00.000Z', durationMs: 10 },
+      status: 'completed',
+      finalState,
+      turnStartIndex: 2,
+    });
+    const stored = buildStoredMessages({
+      history: [
+        { role: 'user', content: '研究专家系统' },
+        { role: 'assistant', content: [{ type: 'text', text: 'xwork 专家系统研究总结' }] },
+        { role: 'user', content: '查 DeepSeek API 定价' },
+      ],
+      originalMessageCount: 2,
+      finalState,
+      model: 'model1',
+      agentRuns: [],
+      trace,
+    });
+    const assistant = stored.at(-1);
+
+    assert.equal(assistant.content[0].text, 'DeepSeek API 定价如下。');
+    assert.equal(assistant.blocks[0].content, 'DeepSeek API 定价如下。');
+    assert.doesNotMatch(JSON.stringify(assistant.blocks), /专家系统/);
   });
 
   it('replays stored assistant trace messages instead of display-only text history', () => {

@@ -102,6 +102,33 @@ describe('chat run event store', () => {
     assert.equal(getChatRunSnapshot('run_close').status, 'completed');
   });
 
+  it('keeps active SSE subscribers warm with heartbeat comments', async () => {
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    let releaseExecution;
+    const executionReleased = new Promise(resolve => {
+      releaseExecution = resolve;
+    });
+    const run = startChatRun({ runId: 'run_heartbeat', message: 'hi' }, {
+      execute: async ({ emit }) => {
+        await executionReleased;
+        emit({ type: 'done' });
+      },
+    });
+
+    const { res, writes, close } = fakeSseResponse();
+    subscribeResponseToRun(run, res, { heartbeatMs: 5 });
+
+    await wait(20);
+    close();
+    const heartbeatCount = writes.filter(chunk => chunk === ': ping\n\n').length;
+
+    releaseExecution();
+    await run.promise;
+
+    assert.ok(heartbeatCount > 0);
+    assert.equal(getChatRunSnapshot('run_heartbeat').status, 'completed');
+  });
+
   it('stops a running chat run and closes subscribers', async () => {
     let sawAbortedSignal = null;
     let releaseExecution;

@@ -159,15 +159,17 @@ export function hydrateAssistantMessages(messages) {
   const hydrated = messages.map((message, i) => {
     if (message.role !== 'assistant') return message;
     const toolMap = toolResultsByAssistant[i];
+    const rebuiltBlocks = contentToBlocks(message.content, message.sources, message.searchCount, toolMap);
     if (Array.isArray(message.blocks)) {
       if (toolMap && !message.blocks.some(block => block.type === 'uuid-list')) {
-        const blocks = contentToBlocks(message.content, message.sources, message.searchCount, toolMap);
-        if (blocks) return { ...message, blocks };
+        if (rebuiltBlocks) return { ...message, blocks: rebuiltBlocks };
+      }
+      if (!assistantBlocksMatchContent(message) && rebuiltBlocks) {
+        return { ...message, blocks: rebuiltBlocks };
       }
       return message;
     }
-    const blocks = contentToBlocks(message.content, message.sources, message.searchCount, toolMap);
-    return blocks ? { ...message, blocks } : message;
+    return rebuiltBlocks ? { ...message, blocks: rebuiltBlocks } : message;
   });
 
   for (const msg of hydrated) {
@@ -192,6 +194,18 @@ export function hydrateAssistantMessages(messages) {
 export function isVisibleMessage(message) {
   if (message.role === 'tool') return false;
   return messageText(message).trim().length > 0 || messageImages(message).length > 0;
+}
+
+function normalizedAssistantText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function assistantBlocksMatchContent(message) {
+  if (!Array.isArray(message?.blocks)) return true;
+  const blockText = normalizedAssistantText(messageText(message));
+  const contentText = normalizedAssistantText(messageText({ role: 'assistant', content: message.content }));
+  if (!contentText) return true;
+  return blockText === contentText;
 }
 
 export function renderMessages() {
